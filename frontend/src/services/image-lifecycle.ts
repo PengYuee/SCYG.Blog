@@ -20,6 +20,8 @@ export type ImageLifecycle = {
 export function createImageLifecycle(repository: AuthorArticleRepository, guard: MutationGuard): ImageLifecycle {
   /** 本地对象地址集合；取消时逐一释放。 */
   const localUrls = new Set<string>()
+  /** 每个文件独占的本地预览地址，上传成功只释放自己的预览。 */
+  const previewByFile = new WeakMap<File, string>()
   /** 已上传但尚未随文章提交的远程地址集合。 */
   const temporaryRemoteUrls = new Set<string>()
   /** 释放当前编辑会话创建的全部本地对象地址。 */
@@ -27,10 +29,19 @@ export function createImageLifecycle(repository: AuthorArticleRepository, guard:
     for (const url of localUrls) URL.revokeObjectURL(url)
     localUrls.clear()
   }
+  /** 释放指定上传文件拥有的预览地址。 */
+  const revokeFilePreview = (file: File): void => {
+    const url = previewByFile.get(file)
+    if (url === undefined) return
+    URL.revokeObjectURL(url)
+    localUrls.delete(url)
+    previewByFile.delete(file)
+  }
   return {
     preview(file) {
       const url = URL.createObjectURL(file)
       localUrls.add(url)
+      previewByFile.set(file, url)
       return url
     },
     async upload(file) {
@@ -38,7 +49,7 @@ export function createImageLifecycle(repository: AuthorArticleRepository, guard:
         const result = await guard.execute("image", () => repository.uploadImage(file))
         if (!result.ok) throw new ImageUploadError(result.error)
         if (result.value.startsWith("data:")) throw new ImageUploadError("data URL rejected")
-        revokeLocalUrls()
+        revokeFilePreview(file)
         temporaryRemoteUrls.add(result.value)
         return result.value
       } catch (error) {
@@ -49,11 +60,13 @@ export function createImageLifecycle(repository: AuthorArticleRepository, guard:
     commit() { temporaryRemoteUrls.clear() },
     async cancel() {
       revokeLocalUrls()
-      for (const url of temporaryRemoteUrls) {
-        const imageName = new URL(url).pathname.split("/").filter(Boolean).at(-1)
-        if (imageName !== undefined) await guard.execute("image", () => repository.deleteImage(imageName))
-      }
+      const pendingUrls = [...temporaryRemoteUrls]
       temporaryRemoteUrls.clear()
+      await Promise.allSettled(pendingUrls.map(async (url) => {
+        const path = url.split(/[?#]/, 1)[0] ?? ""
+        const imageName = path.split("/").filter(Boolean).at(-1)
+        if (imageName !== undefined) await guard.execute("image", () => repository.deleteImage(imageName))
+      }))
     },
   }
 }

@@ -2,20 +2,31 @@
 import { onMounted, ref } from "vue"
 import AppModal from "@/components/shared/AppModal.vue"
 import AppToast from "@/components/shared/AppToast.vue"
-import { createFakeAuthorRuntime } from "@/services/author-runtime"
+import { createFakeAuthorRuntime, type AuthorRuntime } from "@/services/author-runtime"
 import { useUiStore } from "@/stores/ui"
 import type { ArticleType, Tag } from "@/types/taxonomy"
 
-/** 显式 Fake 作者运行时。 */ const runtime = createFakeAuthorRuntime()
+/** 测试可注入的作者运行时；路由页面默认使用显式 Fake。 */
+const props = defineProps<{ readonly runtime?: AuthorRuntime }>()
+/** 当前作者运行时。 */ const runtime = props.runtime ?? createFakeAuthorRuntime()
 /** 全局反馈。 */ const ui = useUiStore()
 /** 分类列表。 */ const articleTypes = ref<readonly ArticleType[]>([])
 /** 标签列表。 */ const tags = ref<readonly Tag[]>([])
 /** 创建弹窗类型。 */ const createKind = ref<"articleType" | "tag" | null>(null)
 /** 删除目标。 */ const deleteTarget = ref<{ readonly kind: "articleType" | "tag"; readonly id: number; readonly name: string } | null>(null)
 /** 新名称。 */ const name = ref("")
+/** 初始化状态，失败时呈现重试操作。 */ const initialization = ref<"loading" | "ready" | "error">("loading")
 
 /** 刷新 Fake 分类字典。 */
-async function refresh(): Promise<void> { articleTypes.value = await runtime.taxonomy.listArticleTypes(); tags.value = await runtime.taxonomy.listTags() }
+async function refresh(): Promise<void> {
+  initialization.value = "loading"
+  const articleTypesRequest = Promise.resolve().then(() => runtime.taxonomy.listArticleTypes())
+  const tagsRequest = Promise.resolve().then(() => runtime.taxonomy.listTags())
+  await Promise.all([articleTypesRequest, tagsRequest]).then(
+    ([nextArticleTypes, nextTags]) => { articleTypes.value = nextArticleTypes; tags.value = nextTags; initialization.value = "ready" },
+    () => { initialization.value = "error"; ui.showToast("error", "分类加载失败", "请重试载入分类与标签") },
+  )
+}
 onMounted(refresh)
 
 /** 通过共享守卫创建分类或标签。 */
@@ -39,7 +50,9 @@ async function deleteItem(): Promise<void> {
 
 <template>
   <div class="grid gap-6"><AppToast /><header><p class="text-sm text-text-secondary">受保护的作者工作区</p><h1 class="font-display text-3xl font-bold">分类与标签</h1></header>
-    <section class="grid grid-cols-2 gap-6"><div class="rounded-[var(--radius-card)] border border-border bg-surface p-6"><div class="mb-4 flex items-center justify-between"><h2 class="text-lg font-semibold">文章分类</h2><button class="rounded-lg bg-accent px-4 py-3 text-sm font-semibold text-white" @click="createKind = 'articleType'">新建分类</button></div><ul class="divide-y divide-border-subtle"><li v-for="item in articleTypes" :key="item.id" class="flex min-h-14 items-center justify-between"><span>{{ item.name }}</span><button class="min-h-11 px-3 text-error" @click="deleteTarget = { kind: 'articleType', id: item.id, name: item.name }">删除</button></li></ul></div>
+    <p v-if="initialization === 'loading'" role="status" class="rounded-[var(--radius-card)] border border-border bg-surface p-6">正在载入分类与标签…</p>
+    <section v-else-if="initialization === 'error'" role="alert" class="rounded-[var(--radius-card)] border border-error bg-error-soft p-6"><h2 class="font-semibold text-error">分类加载失败</h2><button data-testid="retry-taxonomy-init" class="mt-4 rounded-lg bg-accent px-4 py-3 font-semibold text-white" @click="refresh">重新载入</button></section>
+    <section v-else class="grid grid-cols-2 gap-6"><div class="rounded-[var(--radius-card)] border border-border bg-surface p-6"><div class="mb-4 flex items-center justify-between"><h2 class="text-lg font-semibold">文章分类</h2><button class="rounded-lg bg-accent px-4 py-3 text-sm font-semibold text-white" @click="createKind = 'articleType'">新建分类</button></div><ul class="divide-y divide-border-subtle"><li v-for="item in articleTypes" :key="item.id" class="flex min-h-14 items-center justify-between"><span>{{ item.name }}</span><button class="min-h-11 px-3 text-error" @click="deleteTarget = { kind: 'articleType', id: item.id, name: item.name }">删除</button></li></ul></div>
       <div class="rounded-[var(--radius-card)] border border-border bg-surface p-6"><div class="mb-4 flex items-center justify-between"><h2 class="text-lg font-semibold">文章标签</h2><button data-testid="create-tag" class="rounded-lg bg-accent px-4 py-3 text-sm font-semibold text-white" @click="createKind = 'tag'">新建标签</button></div><ul class="divide-y divide-border-subtle"><li v-for="item in tags" :key="item.id" class="flex min-h-14 items-center justify-between"><span>{{ item.name }}</span><button class="min-h-11 px-3 text-error" @click="deleteTarget = { kind: 'tag', id: item.id, name: item.name }">删除</button></li></ul></div></section>
     <AppModal :open="createKind !== null" :title="createKind === 'articleType' ? '新建分类' : '新建标签'" @close="createKind = null"><label class="grid gap-2 text-sm font-medium">名称<input v-model="name" class="h-11 rounded-lg border border-border px-3" /></label><template #footer><button class="min-h-11 px-4" @click="createKind = null">取消</button><button class="min-h-11 rounded-lg bg-accent px-4 text-white" @click="createItem">创建</button></template></AppModal>
     <AppModal :open="deleteTarget !== null" title="确认删除" :description="deleteTarget === null ? '' : `将删除“${deleteTarget.name}”，此操作不可撤销。`" @close="deleteTarget = null"><template #footer><button class="min-h-11 px-4" @click="deleteTarget = null">取消</button><button class="min-h-11 rounded-lg bg-error px-4 text-white" @click="deleteItem">确认删除</button></template></AppModal>
