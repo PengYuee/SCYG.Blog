@@ -11,7 +11,7 @@ import (
 	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/observability"
 )
 
-// App 持有已完成迁移校验的 API 生命周期资源。
+// App 持有已完成迁移校验、尚未开放 readiness 的 API 生命周期资源。
 type App struct {
 	config       config.Config
 	health       *observability.Health
@@ -31,7 +31,7 @@ func newApp(cfg config.Config, health *observability.Health, server HTTPServer, 
 	return &App{config: cfg, health: health, server: server, telemetry: telemetry, database: db}
 }
 
-// Start 同步绑定监听地址；重复调用返回现有运行状态。
+// Start 同步绑定监听地址，并仅在启动结果完整有效后开放 readiness。
 func (app *App) Start() error {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
@@ -42,15 +42,23 @@ func (app *App) Start() error {
 		return nil
 	}
 	listener, serveErrors, err := app.server.Start()
+	if err == nil && nilLike(listener) {
+		err = errors.New("HTTP 启动返回空监听器")
+	}
+	if err == nil && serveErrors == nil {
+		err = errors.New("HTTP 启动返回空错误通道")
+	}
 	if err != nil {
 		app.health.Withdraw()
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), app.config.HTTP().ShutdownTimeout())
 		defer cancel()
-		app.shutdownErr = errors.Join(fmt.Errorf("绑定 HTTP: %w", err), app.telemetry.Shutdown(shutdownCtx), app.database.Close())
+		// HTTP 已构造，因此启动失败仍按 HTTP、数据库、遥测的创建逆序清理。
+		app.shutdownErr = errors.Join(fmt.Errorf("绑定 HTTP: %w", err), app.server.Shutdown(shutdownCtx), app.database.Close(), app.telemetry.Shutdown(shutdownCtx))
 		app.stopped = true
 		return app.shutdownErr
 	}
 	app.listener, app.serveErrors = listener, serveErrors
+	app.health.Activate()
 	return nil
 }
 
@@ -86,7 +94,7 @@ func (app *App) Run(ctx context.Context) error {
 	return errors.Join(root, app.Shutdown(shutdownCtx))
 }
 
-// Shutdown 先撤回 readiness，再按 HTTP、遥测、数据库顺序关闭；并发调用共享一次结果。
+// Shutdown 第一步撤回 readiness，再严格按 HTTP、数据库、遥测顺序关闭；并发调用共享一次结果。
 func (app *App) Shutdown(ctx context.Context) error {
 	app.mutex.Lock()
 	if app.stopped {
@@ -112,7 +120,8 @@ func (app *App) Shutdown(ctx context.Context) error {
 	done := app.shutdownDone
 	app.health.Withdraw()
 	app.mutex.Unlock()
-	err := errors.Join(app.server.Shutdown(ctx), app.telemetry.Shutdown(ctx), app.database.Close())
+	// server、database、telemetry 是真实创建顺序的严格逆序。
+	err := errors.Join(app.server.Shutdown(ctx), app.database.Close(), app.telemetry.Shutdown(ctx))
 	app.mutex.Lock()
 	app.shutdownErr = err
 	app.shuttingDown = false

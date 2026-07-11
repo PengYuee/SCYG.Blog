@@ -9,7 +9,6 @@ import (
 	"os"
 
 	"github.com/gin-gonic/gin"
-
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	module "github.com/PengYuee/SCYG.Blog/backend/internal/modules/content"
@@ -56,14 +55,17 @@ func DefaultDependencies() Dependencies {
 	}
 }
 
-// New 按严格顺序构造应用；任一步失败都反向关闭已创建资源。
-func New(ctx context.Context, options Options, dependencies Dependencies) (_ *App, err error) {
-	if dependencies.LoadConfig == nil {
-		dependencies = DefaultDependencies()
+// New 按严格顺序构造应用；任一步失败都按资源创建逆序关闭。
+func New(ctx context.Context, options Options, dependencies Dependencies) (*App, error) {
+	if err := validateDependencies(dependencies); err != nil {
+		return nil, err
 	}
 	writer := options.LogWriter
 	if writer == nil {
 		writer = io.Writer(os.Stderr)
+	}
+	if nilLike(writer) {
+		return nil, errors.New("日志输出为空")
 	}
 	cfg, err := dependencies.LoadConfig(config.Options{File: options.ConfigFile})
 	if err != nil {
@@ -73,52 +75,74 @@ func New(ctx context.Context, options Options, dependencies Dependencies) (_ *Ap
 	if err != nil {
 		return nil, fmt.Errorf("构造日志器: %w", err)
 	}
+	if logger == nil {
+		return nil, errors.New("日志构造器返回空结果")
+	}
 	telemetry, err := dependencies.NewTelemetry(cfg.Telemetry())
 	if err != nil {
 		return nil, fmt.Errorf("构造遥测: %w", err)
 	}
-	cleanup := func(root error, db Database) error {
-		shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), cfg.HTTP().ShutdownTimeout())
+	if nilLike(telemetry) {
+		return nil, errors.New("遥测构造器返回空结果")
+	}
+	stack := cleanupStack{{name: "遥测", close: telemetry.Shutdown}}
+	cleanupContext := func() (context.Context, context.CancelFunc) {
+		return context.WithTimeout(context.WithoutCancel(ctx), cfg.HTTP().ShutdownTimeout())
+	}
+	fail := func(root error) error {
+		cleanupCtx, cancel := cleanupContext()
 		defer cancel()
-		if db == nil {
-			return errors.Join(root, telemetry.Shutdown(shutdownCtx))
-		}
-		return errors.Join(root, telemetry.Shutdown(shutdownCtx), db.Close())
+		return stack.Close(cleanupCtx, root)
 	}
 	databaseConfig := cfg.Database()
 	db, err := dependencies.NewDatabase(ctx, database.Options{Logger: logger, DSN: databaseConfig.DSN().Value(), ConnMaxLifetime: databaseConfig.ConnMaxLifetime(), MaxOpenConns: databaseConfig.MaxOpenConns(), MaxIdleConns: databaseConfig.MaxIdleConns()})
 	if err != nil {
-		return nil, cleanup(fmt.Errorf("连接数据库: %w", err), nil)
+		return nil, fail(fmt.Errorf("连接数据库: %w", err))
 	}
+	if nilLike(db) {
+		return nil, fail(errors.New("数据库构造器返回空结果"))
+	}
+	stack = append(stack, cleanupStep{name: "数据库", close: func(context.Context) error { return db.Close() }})
 	migration, err := dependencies.NewMigration(databaseConfig.DSN())
 	if err != nil {
-		return nil, cleanup(fmt.Errorf("构造迁移检查: %w", err), db)
+		return nil, fail(fmt.Errorf("构造迁移检查: %w", err))
 	}
+	if nilLike(migration) {
+		return nil, fail(errors.New("迁移构造器返回空结果"))
+	}
+	stack = append(stack, cleanupStep{name: "迁移检查器", close: func(context.Context) error { return migration.Close() }})
 	version, dirty, versionErr := migration.Version()
-	migrationErr := migration.Close()
 	if versionErr != nil || dirty || version != migrations.CurrentVersion {
-		stateErr := fmt.Errorf("迁移状态无效: 当前版本=%d dirty=%t", version, dirty)
-		return nil, cleanup(errors.Join(stateErr, versionErr, migrationErr), db)
+		return nil, fail(errors.Join(fmt.Errorf("迁移状态无效: 当前版本=%d dirty=%t", version, dirty), versionErr))
 	}
-	if migrationErr != nil {
-		return nil, cleanup(fmt.Errorf("关闭迁移检查器: %w", migrationErr), db)
+	if closeErr := migration.Close(); closeErr != nil {
+		return nil, fail(fmt.Errorf("关闭迁移检查器: %w", closeErr))
 	}
+	stack = stack[:len(stack)-1]
 	content, err := dependencies.NewContent(db, options.Authorizer)
 	if err != nil {
-		return nil, cleanup(fmt.Errorf("构造内容模块: %w", err), db)
+		return nil, fail(fmt.Errorf("构造内容模块: %w", err))
+	}
+	if content == nil {
+		return nil, fail(errors.New("内容构造器返回空结果"))
 	}
 	health, err := observability.NewHealth(db.Ping, func(context.Context) error { return nil })
 	if err != nil {
-		return nil, cleanup(fmt.Errorf("构造健康检查: %w", err), db)
+		return nil, fail(fmt.Errorf("构造健康检查: %w", err))
 	}
 	mount, err := dependencies.NewREST(content, health, cfg.Docs().Enabled())
 	if err != nil {
-		return nil, cleanup(fmt.Errorf("构造 REST: %w", err), db)
+		return nil, fail(fmt.Errorf("构造 REST: %w", err))
+	}
+	if nilLike(mount) {
+		return nil, fail(errors.New("REST 构造器返回空结果"))
 	}
 	server, err := dependencies.NewHTTP(httpserver.Options{Logger: logger, Mount: mount, HTTP: cfg.HTTP()})
 	if err != nil {
-		return nil, cleanup(fmt.Errorf("构造 HTTP: %w", err), db)
+		return nil, fail(fmt.Errorf("构造 HTTP: %w", err))
 	}
-	health.Activate()
+	if nilLike(server) {
+		return nil, fail(errors.New("HTTP 构造器返回空结果"))
+	}
 	return newApp(cfg, health, server, telemetry, db), nil
 }
