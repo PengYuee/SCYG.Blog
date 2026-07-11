@@ -55,6 +55,3 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
-
-# T13 generated browser and reference evidence
-.omo/evidence/**/t13/
