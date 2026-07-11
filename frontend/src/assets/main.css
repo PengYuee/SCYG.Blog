@@ -156,7 +156,8 @@
     box-shadow: 0 0 0 var(--focus-halo-width) var(--color-focus-ring);
   }
 
-  section[id] {
+  section[id],
+  main[id] {
     scroll-margin-top: var(--layout-nav-height);
   }
 }

@@ -38,7 +38,17 @@ test("三个 Edge 桌面视口满足布局、性能与无障碍契约", async ({
   await page.keyboard.press("Tab")
   await expect(page.getByRole("link", { name: "跳到主要内容" })).toBeFocused()
   await page.keyboard.press("Enter")
-  await expect(page.locator("#blog-content")).toBeFocused()
+  const content = page.locator("#blog-content")
+  await expect(content).toBeFocused()
+  // 固定导航下的主内容锚点必须完整露出。
+  const anchorGeometry = await page.evaluate(() => {
+    const header = document.querySelector<HTMLElement>("header[data-state]")
+    const target = document.querySelector<HTMLElement>("#blog-content")
+    if (header === null || target === null) return null
+    return { headerBottom: header.getBoundingClientRect().bottom, targetTop: target.getBoundingClientRect().top }
+  })
+  expect(anchorGeometry).not.toBeNull()
+  expect(anchorGeometry?.targetTop).toBeGreaterThanOrEqual(anchorGeometry?.headerBottom ?? Number.POSITIVE_INFINITY)
   expectHealthy(health)
 })
 
