@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"math"
 	"regexp"
 	"strings"
 )
@@ -110,9 +111,14 @@ func NewVersion(raw uint64) (Version, error) {
 	}
 	return Version{raw}, nil
 }
-func initialVersion() Version         { return Version{1} }
-func (version Version) next() Version { return Version{version.value + 1} }
-func invalid(field string) error      { return fmt.Errorf("%s: %w", field, ErrInvalidValue) }
+func initialVersion() Version { return Version{1} }
+func (version Version) next() (Version, error) {
+	if version.value == math.MaxUint64 {
+		return Version{}, ErrVersionExhausted
+	}
+	return Version{version.value + 1}, nil
+}
+func invalid(field string) error { return fmt.Errorf("%s: %w", field, ErrInvalidValue) }
 
 // Int64 returns the article identifier value.
 func (id ArticleID) Int64() int64 { return id.value }
@@ -140,3 +146,16 @@ func (value Name) String() string { return value.value }
 
 // Uint64 returns the optimistic-concurrency version.
 func (version Version) Uint64() uint64 { return version.value }
+
+func (id ArticleID) valid() bool     { return id.value > 0 }
+func (id ArticleTypeID) valid() bool { return id.value > 0 }
+func (id TagID) valid() bool         { return id.value > 0 }
+func (value Title) valid() bool      { return value.value != "" && len([]rune(value.value)) <= 200 }
+func (value Slug) valid() bool {
+	matched, _ := regexp.MatchString(`^[a-z0-9]+(?:-[a-z0-9]+)*$`, value.value)
+	return len(value.value) <= 200 && matched
+}
+func (value Digest) valid() bool    { return value.value != "" && len([]rune(value.value)) <= 500 }
+func (value Content) valid() bool   { return value.value != "" }
+func (value Name) valid() bool      { return value.value != "" && len([]rune(value.value)) <= 100 }
+func (version Version) valid() bool { return version.value > 0 }

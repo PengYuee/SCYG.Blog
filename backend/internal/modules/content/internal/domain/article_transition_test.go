@@ -14,7 +14,7 @@ func (clock fixedClock) Now() time.Time { return clock.now }
 
 func Test_Article_Revise_rejects_archived_article(t *testing.T) {
 	article := newPublishedArticle(t)
-	clock := fixedClock{time.Date(2026, 7, 11, 3, 0, 0, 0, time.UTC)}
+	clock := fixedClock{article.ModifiedAt().Add(time.Hour)}
 	if err := article.Archive(article.Version(), clock); err != nil {
 		t.Fatalf("archive: %v", err)
 	}
@@ -56,7 +56,7 @@ func Test_Article_Revise_rejects_stale_version_atomically(t *testing.T) {
 	article := newArticle(t)
 	stale, _ := domain.NewVersion(9)
 	before := article.Title()
-	err := article.Revise(stale, validRevision(t), fixedClock{time.Now()})
+	err := article.Revise(stale, validRevision(t), fixedClock{article.ModifiedAt().Add(time.Hour)})
 	var conflict *domain.VersionConflict
 	if !errors.As(err, &conflict) || !errors.Is(err, domain.ErrStaleVersion) {
 		t.Fatalf("expected typed stale conflict, got %v", err)
@@ -69,7 +69,7 @@ func Test_Article_Revise_rejects_stale_version_atomically(t *testing.T) {
 func Test_Article_NewArticle_rejects_duplicate_tags(t *testing.T) {
 	draft := validDraft(t)
 	draft.TagIDs = []domain.TagID{mustTagID(t, 1), mustTagID(t, 1)}
-	_, err := domain.NewArticle(draft, fixedClock{time.Now()})
+	_, err := domain.NewArticle(draft, fixedClock{time.Date(2026, 7, 11, 1, 0, 0, 0, time.UTC)})
 	if !errors.Is(err, domain.ErrDuplicateTag) {
 		t.Fatalf("expected duplicate tag, got %v", err)
 	}
@@ -95,7 +95,7 @@ func newArticle(t *testing.T) *domain.Article {
 func newPublishedArticle(t *testing.T) *domain.Article {
 	t.Helper()
 	article := newArticle(t)
-	if err := article.Publish(article.Version(), fixedClock{time.Now()}); err != nil {
+	if err := article.Publish(article.Version(), fixedClock{article.ModifiedAt().Add(time.Hour)}); err != nil {
 		t.Fatalf("publish: %v", err)
 	}
 	return article

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"reflect"
 	"time"
 )
 
@@ -36,6 +37,18 @@ type Resource struct {
 // Authorizer decides whether an action is allowed for a resource.
 type Authorizer interface {
 	Authorize(context.Context, Action, Resource) error
+}
+
+// AuthorizerOrDeny preserves a concrete authorizer and safely defaults nil interfaces and typed nils to DenyAll.
+func AuthorizerOrDeny(candidate Authorizer) Authorizer {
+	if candidate == nil {
+		return DenyAll{}
+	}
+	value := reflect.ValueOf(candidate)
+	if (value.Kind() == reflect.Pointer || value.Kind() == reflect.Interface) && value.IsNil() {
+		return DenyAll{}
+	}
+	return candidate
 }
 
 // DenyAll rejects every authorization decision and is the safe default implementation.

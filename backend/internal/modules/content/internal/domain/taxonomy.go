@@ -12,30 +12,58 @@ type ArticleType struct {
 	deletedAt  time.Time
 }
 
-// NewArticleType creates a version-one article type.
-func NewArticleType(id ArticleTypeID, name Name, clock Clock) *ArticleType {
-	now := clock.Now().UTC()
-	return &ArticleType{id: id, name: name, version: initialVersion(), createdAt: now, modifiedAt: now}
+// NewArticleType creates a validated version-one article type.
+func NewArticleType(id ArticleTypeID, name Name, clock Clock) (*ArticleType, error) {
+	if !id.valid() {
+		return nil, invalid("article_type_id")
+	}
+	if !name.valid() {
+		return nil, invalid("name")
+	}
+	now, err := clockTime(clock, time.Time{})
+	if err != nil {
+		return nil, err
+	}
+	return &ArticleType{id: id, name: name, version: initialVersion(), createdAt: now, modifiedAt: now}, nil
 }
 
-// Rename changes the name exactly once when the version matches.
+// Rename atomically changes the name when the entity is active and version matches.
 func (item *ArticleType) Rename(expected Version, name Name, clock Clock) error {
-	if item.version != expected {
-		return &VersionConflict{Expected: expected, Actual: item.version}
+	if err := taxonomyCurrent(item.version, expected, item.deletedAt); err != nil {
+		return err
 	}
-	item.name = name
-	item.modifiedAt = clock.Now().UTC()
-	item.version = item.version.next()
+	if !name.valid() {
+		return invalid("name")
+	}
+	if item.name == name {
+		return ErrNoChange
+	}
+	next, err := item.version.next()
+	if err != nil {
+		return err
+	}
+	now, err := clockTime(clock, item.modifiedAt)
+	if err != nil {
+		return err
+	}
+	item.name, item.modifiedAt, item.version = name, now, next
 	return nil
 }
 
-// Delete soft-deletes the article type when the version matches.
+// Delete atomically soft-deletes the active article type.
 func (item *ArticleType) Delete(expected Version, clock Clock) error {
-	if item.version != expected {
-		return &VersionConflict{Expected: expected, Actual: item.version}
+	if err := taxonomyCurrent(item.version, expected, item.deletedAt); err != nil {
+		return err
 	}
-	item.deletedAt = clock.Now().UTC()
-	item.version = item.version.next()
+	next, err := item.version.next()
+	if err != nil {
+		return err
+	}
+	now, err := clockTime(clock, item.modifiedAt)
+	if err != nil {
+		return err
+	}
+	item.deletedAt, item.modifiedAt, item.version = now, now, next
 	return nil
 }
 func (item *ArticleType) ID() ArticleTypeID    { return item.id }
@@ -53,30 +81,58 @@ type Tag struct {
 	deletedAt  time.Time
 }
 
-// NewTag creates a version-one tag.
-func NewTag(id TagID, name Name, clock Clock) *Tag {
-	now := clock.Now().UTC()
-	return &Tag{id: id, name: name, version: initialVersion(), createdAt: now, modifiedAt: now}
+// NewTag creates a validated version-one tag.
+func NewTag(id TagID, name Name, clock Clock) (*Tag, error) {
+	if !id.valid() {
+		return nil, invalid("tag_id")
+	}
+	if !name.valid() {
+		return nil, invalid("name")
+	}
+	now, err := clockTime(clock, time.Time{})
+	if err != nil {
+		return nil, err
+	}
+	return &Tag{id: id, name: name, version: initialVersion(), createdAt: now, modifiedAt: now}, nil
 }
 
-// Rename changes the name exactly once when the version matches.
+// Rename atomically changes the name when the tag is active and version matches.
 func (tag *Tag) Rename(expected Version, name Name, clock Clock) error {
-	if tag.version != expected {
-		return &VersionConflict{Expected: expected, Actual: tag.version}
+	if err := taxonomyCurrent(tag.version, expected, tag.deletedAt); err != nil {
+		return err
 	}
-	tag.name = name
-	tag.modifiedAt = clock.Now().UTC()
-	tag.version = tag.version.next()
+	if !name.valid() {
+		return invalid("name")
+	}
+	if tag.name == name {
+		return ErrNoChange
+	}
+	next, err := tag.version.next()
+	if err != nil {
+		return err
+	}
+	now, err := clockTime(clock, tag.modifiedAt)
+	if err != nil {
+		return err
+	}
+	tag.name, tag.modifiedAt, tag.version = name, now, next
 	return nil
 }
 
-// Delete soft-deletes the tag when the version matches.
+// Delete atomically soft-deletes the active tag.
 func (tag *Tag) Delete(expected Version, clock Clock) error {
-	if tag.version != expected {
-		return &VersionConflict{Expected: expected, Actual: tag.version}
+	if err := taxonomyCurrent(tag.version, expected, tag.deletedAt); err != nil {
+		return err
 	}
-	tag.deletedAt = clock.Now().UTC()
-	tag.version = tag.version.next()
+	next, err := tag.version.next()
+	if err != nil {
+		return err
+	}
+	now, err := clockTime(clock, tag.modifiedAt)
+	if err != nil {
+		return err
+	}
+	tag.deletedAt, tag.modifiedAt, tag.version = now, now, next
 	return nil
 }
 func (tag *Tag) ID() TagID            { return tag.id }
@@ -84,15 +140,31 @@ func (tag *Tag) Name() Name           { return tag.name }
 func (tag *Tag) Version() Version     { return tag.version }
 func (tag *Tag) DeletedAt() time.Time { return tag.deletedAt }
 
+func taxonomyCurrent(actual, expected Version, deletedAt time.Time) error {
+	if !expected.valid() || actual != expected {
+		return &VersionConflict{Expected: expected, Actual: actual}
+	}
+	if !deletedAt.IsZero() {
+		return ErrDeleted
+	}
+	return nil
+}
+
 // TagArticle represents only the business association between article and tag.
 type TagArticle struct {
 	articleID ArticleID
 	tagID     TagID
 }
 
-// NewTagArticle creates an association from parsed identifiers.
-func NewTagArticle(articleID ArticleID, tagID TagID) TagArticle {
-	return TagArticle{articleID: articleID, tagID: tagID}
+// NewTagArticle creates a validated association from parsed identifiers.
+func NewTagArticle(articleID ArticleID, tagID TagID) (TagArticle, error) {
+	if !articleID.valid() {
+		return TagArticle{}, invalid("article_id")
+	}
+	if !tagID.valid() {
+		return TagArticle{}, invalid("tag_id")
+	}
+	return TagArticle{articleID: articleID, tagID: tagID}, nil
 }
 func (link TagArticle) ArticleID() ArticleID { return link.articleID }
 func (link TagArticle) TagID() TagID         { return link.tagID }

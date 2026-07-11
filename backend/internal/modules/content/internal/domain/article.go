@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"slices"
 	"time"
 )
 
@@ -45,38 +46,48 @@ type Article struct {
 	deletedAt     time.Time
 }
 
-// NewArticle creates a version-one draft using the injected clock.
+// NewArticle creates a valid version-one draft using the injected clock.
 func NewArticle(draft ArticleDraft, clock Clock) (*Article, error) {
+	if err := validateDraft(draft); err != nil {
+		return nil, err
+	}
 	tags, err := uniqueTags(draft.TagIDs)
 	if err != nil {
 		return nil, err
 	}
-	if draft.ArticleTypeID.Int64() == 0 {
-		return nil, ErrArticleTypeRequired
+	now, err := clockTime(clock, time.Time{})
+	if err != nil {
+		return nil, err
 	}
-	now := clock.Now().UTC()
 	return &Article{id: draft.ID, articleTypeID: draft.ArticleTypeID, title: draft.Title, slug: draft.Slug, digest: draft.Digest, content: draft.Content, status: StatusDraft, tagIDs: tags, version: initialVersion(), createdAt: now, modifiedAt: now}, nil
 }
 
 // Revise atomically updates editable values when expected version is current.
 func (article *Article) Revise(expected Version, revision ArticleRevision, clock Clock) error {
-	if err := article.mutable(expected); err != nil {
+	if err := article.changeable(expected); err != nil {
 		return err
 	}
-	if revision.ArticleTypeID.Int64() == 0 {
-		return ErrArticleTypeRequired
+	if err := validateRevision(revision); err != nil {
+		return err
 	}
 	tags, err := uniqueTags(revision.TagIDs)
 	if err != nil {
 		return err
 	}
-	article.articleTypeID = revision.ArticleTypeID
-	article.title = revision.Title
-	article.slug = revision.Slug
-	article.digest = revision.Digest
-	article.content = revision.Content
-	article.tagIDs = tags
-	article.touch(clock)
+	if article.sameRevision(revision, tags) {
+		return ErrNoChange
+	}
+	next, err := article.version.next()
+	if err != nil {
+		return err
+	}
+	now, err := clockTime(clock, article.modifiedAt)
+	if err != nil {
+		return err
+	}
+	article.articleTypeID, article.title, article.slug = revision.ArticleTypeID, revision.Title, revision.Slug
+	article.digest, article.content, article.tagIDs = revision.Digest, revision.Content, tags
+	article.modifiedAt, article.version = now, next
 	return nil
 }
 
@@ -88,18 +99,19 @@ func (article *Article) Publish(expected Version, clock Clock) error {
 	if article.status != StatusDraft {
 		return fmt.Errorf("publish %s: %w", article.status, ErrInvalidTransition)
 	}
-	if article.articleTypeID.Int64() == 0 {
-		return ErrArticleTypeRequired
+	next, err := article.version.next()
+	if err != nil {
+		return err
 	}
-	if article.content.String() == "" {
-		return ErrContentRequired
+	now, err := clockTime(clock, article.modifiedAt)
+	if err != nil {
+		return err
 	}
-	article.status = StatusPublished
-	article.touch(clock)
+	article.status, article.modifiedAt, article.version = StatusPublished, now, next
 	return nil
 }
 
-// Archive transitions a published article to archived.
+// Archive transitions a published article to a terminal archived state.
 func (article *Article) Archive(expected Version, clock Clock) error {
 	if err := article.current(expected); err != nil {
 		return err
@@ -107,21 +119,77 @@ func (article *Article) Archive(expected Version, clock Clock) error {
 	if article.status != StatusPublished {
 		return fmt.Errorf("archive %s: %w", article.status, ErrInvalidTransition)
 	}
-	article.status = StatusArchived
-	article.touch(clock)
+	next, err := article.version.next()
+	if err != nil {
+		return err
+	}
+	now, err := clockTime(clock, article.modifiedAt)
+	if err != nil {
+		return err
+	}
+	article.status, article.modifiedAt, article.version = StatusArchived, now, next
 	return nil
 }
 
-// Delete soft-deletes the article at the supplied domain time.
+// Delete soft-deletes a non-archived article at monotonic domain time.
 func (article *Article) Delete(expected Version, clock Clock) error {
 	if err := article.current(expected); err != nil {
 		return err
 	}
-	article.deletedAt = clock.Now().UTC()
-	article.version = article.version.next()
+	if article.status == StatusArchived {
+		return fmt.Errorf("delete archived: %w", ErrInvalidTransition)
+	}
+	next, err := article.version.next()
+	if err != nil {
+		return err
+	}
+	now, err := clockTime(clock, article.modifiedAt)
+	if err != nil {
+		return err
+	}
+	article.deletedAt, article.modifiedAt, article.version = now, now, next
 	return nil
 }
-func (article *Article) mutable(expected Version) error {
+
+func validateDraft(draft ArticleDraft) error {
+	if !draft.ID.valid() {
+		return invalid("article_id")
+	}
+	if !draft.ArticleTypeID.valid() {
+		return ErrArticleTypeRequired
+	}
+	return validateText(draft.Title, draft.Slug, draft.Digest, draft.Content)
+}
+func validateRevision(revision ArticleRevision) error {
+	if !revision.ArticleTypeID.valid() {
+		return ErrArticleTypeRequired
+	}
+	return validateText(revision.Title, revision.Slug, revision.Digest, revision.Content)
+}
+func validateText(title Title, slug Slug, digest Digest, content Content) error {
+	switch {
+	case !title.valid():
+		return invalid("title")
+	case !slug.valid():
+		return invalid("slug")
+	case !digest.valid():
+		return invalid("digest")
+	case !content.valid():
+		return ErrContentRequired
+	default:
+		return nil
+	}
+}
+func (article *Article) current(expected Version) error {
+	if !expected.valid() || article.version != expected {
+		return &VersionConflict{Expected: expected, Actual: article.version}
+	}
+	if !article.deletedAt.IsZero() {
+		return ErrDeleted
+	}
+	return nil
+}
+func (article *Article) changeable(expected Version) error {
 	if err := article.current(expected); err != nil {
 		return err
 	}
@@ -130,15 +198,8 @@ func (article *Article) mutable(expected Version) error {
 	}
 	return nil
 }
-func (article *Article) current(expected Version) error {
-	if article.version != expected {
-		return &VersionConflict{Expected: expected, Actual: article.version}
-	}
-	return nil
-}
-func (article *Article) touch(clock Clock) {
-	article.modifiedAt = clock.Now().UTC()
-	article.version = article.version.next()
+func (article *Article) sameRevision(revision ArticleRevision, tags []TagID) bool {
+	return article.articleTypeID == revision.ArticleTypeID && article.title == revision.Title && article.slug == revision.Slug && article.digest == revision.Digest && article.content == revision.Content && slices.Equal(article.tagIDs, tags)
 }
 func uniqueTags(input []TagID) ([]TagID, error) {
 	if len(input) == 0 {
@@ -147,7 +208,7 @@ func uniqueTags(input []TagID) ([]TagID, error) {
 	seen := make(map[TagID]struct{}, len(input))
 	result := make([]TagID, 0, len(input))
 	for _, id := range input {
-		if id.Int64() == 0 {
+		if !id.valid() {
 			return nil, invalid("tag_id")
 		}
 		if _, exists := seen[id]; exists {
