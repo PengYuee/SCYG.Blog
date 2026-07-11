@@ -134,6 +134,19 @@ type ReviseArticle struct {
 	TagIDs        []int64
 }
 
+// PatchArticle partially updates article values and optionally changes lifecycle status.
+type PatchArticle struct {
+	ID            int64
+	Version       uint64
+	ArticleTypeID *int64
+	Title         *string
+	Slug          *string
+	Digest        *string
+	Content       *string
+	TagIDs        *[]int64
+	Status        *string
+}
+
 // PublishArticle publishes a versioned draft.
 type PublishArticle struct {
 	ID      int64
@@ -197,11 +210,27 @@ type ListArticles struct {
 	Sort          string
 }
 
-// ListArticleTypes lists article types by optional name.
-type ListArticleTypes struct{ Name string }
+// ListArticleTypes lists article types with protocol-neutral filtering and paging.
+type ListArticleTypes struct {
+	Page     int
+	PageSize int
+	Name     string
+	Sort     string
+}
 
-// ListTags lists tags by optional name.
-type ListTags struct{ Name string }
+// GetArticleType finds one nondeleted article type.
+type GetArticleType struct{ ID int64 }
+
+// ListTags lists tags with protocol-neutral filtering and paging.
+type ListTags struct {
+	Page     int
+	PageSize int
+	Name     string
+	Sort     string
+}
+
+// GetTag finds one nondeleted tag.
+type GetTag struct{ ID int64 }
 
 // ArticleResult is a protocol-neutral article result.
 type ArticleResult struct {
@@ -239,6 +268,24 @@ type TagResult struct {
 // ArticlePage is a protocol-neutral article page.
 type ArticlePage struct {
 	Items      []ArticleResult
+	Number     int
+	Size       int
+	TotalItems int64
+	TotalPages int
+}
+
+// ArticleTypePage is a protocol-neutral article-type page.
+type ArticleTypePage struct {
+	Items      []ArticleTypeResult
+	Number     int
+	Size       int
+	TotalItems int64
+	TotalPages int
+}
+
+// TagPage is a protocol-neutral tag page.
+type TagPage struct {
+	Items      []TagResult
 	Number     int
 	Size       int
 	TotalItems int64

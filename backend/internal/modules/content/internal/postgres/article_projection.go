@@ -18,6 +18,7 @@ type articleProjectionRow struct {
 	Title                string     `gorm:"column:Title"`
 	Slug                 string     `gorm:"column:Slug"`
 	Digest               string     `gorm:"column:Digest"`
+	Content              string     `gorm:"column:Content"`
 	Status               int16      `gorm:"column:Status"`
 	Version              int64      `gorm:"column:Version"`
 	CreationTime         time.Time  `gorm:"column:CreationTime"`
@@ -98,7 +99,7 @@ func (read *ReadModel) list(ctx context.Context, filter application.ArticleFilte
 		return application.ArticlePage{}, err
 	}
 	var rows []articleProjectionRow
-	columns := `a."Id", a."ArticleTypeId", a."Title", a."Slug", a."Digest", a."Status", a."Version", a."CreationTime", a."LastModificationTime"`
+	columns := `a."Id", a."ArticleTypeId", a."Title", a."Slug", a."Digest", a."Content", a."Status", a."Version", a."CreationTime", a."LastModificationTime"`
 	if err = query.Select(columns).Order(order).Limit(size).Offset((page - 1) * size).Scan(&rows).Error; err != nil {
 		return application.ArticlePage{}, translate(err)
 	}
@@ -177,6 +178,10 @@ func projectionView(row articleProjectionRow, tags []domain.TagID) (application.
 	if err != nil {
 		return application.ArticleView{}, err
 	}
+	contentValue, err := domain.NewContent(row.Content)
+	if err != nil {
+		return application.ArticleView{}, err
+	}
 	status, err := articleStatusFromDB(row.Status)
 	if err != nil {
 		return application.ArticleView{}, err
@@ -185,7 +190,7 @@ func projectionView(row articleProjectionRow, tags []domain.TagID) (application.
 	if err != nil {
 		return application.ArticleView{}, err
 	}
-	return application.ArticleView{ID: id, ArticleTypeID: typeID, Title: title, Slug: slug, Digest: digest, Status: status, TagIDs: append([]domain.TagID(nil), tags...), Version: version, CreatedAt: row.CreationTime.UTC(), ModifiedAt: timeValue(row.LastModificationTime, row.CreationTime)}, nil
+	return application.ArticleView{ID: id, ArticleTypeID: typeID, Title: title, Slug: slug, Digest: digest, Content: contentValue, Status: status, TagIDs: append([]domain.TagID(nil), tags...), Version: version, CreatedAt: row.CreationTime.UTC(), ModifiedAt: timeValue(row.LastModificationTime, row.CreationTime)}, nil
 }
 
 var _ application.ArticleReadModel = (*ReadModel)(nil)

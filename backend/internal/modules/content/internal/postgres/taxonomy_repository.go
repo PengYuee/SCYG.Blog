@@ -10,6 +10,14 @@ import (
 
 type articleTypeRepository struct{ db *gorm.DB }
 
+func (repo *articleTypeRepository) NextID(ctx context.Context) (domain.ArticleTypeID, error) {
+	var value int64
+	if err := repo.db.WithContext(ctx).Raw(`SELECT nextval(pg_get_serial_sequence('"ArticleType"', 'Id'))`).Scan(&value).Error; err != nil {
+		return domain.ArticleTypeID{}, translate(err)
+	}
+	return domain.NewArticleTypeID(value)
+}
+
 func (repo *articleTypeRepository) Find(ctx context.Context, id domain.ArticleTypeID) (*domain.ArticleType, error) {
 	var row articleTypeModel
 	result := repo.db.WithContext(ctx).Where(`"Id" = ? AND "IsDeleted" = false`, id.Int64()).First(&row)
@@ -52,6 +60,14 @@ func (repo *articleTypeRepository) Save(ctx context.Context, item *domain.Articl
 }
 
 type tagRepository struct{ db *gorm.DB }
+
+func (repo *tagRepository) NextID(ctx context.Context) (domain.TagID, error) {
+	var value int64
+	if err := repo.db.WithContext(ctx).Raw(`SELECT nextval(pg_get_serial_sequence('"Tag"', 'Id'))`).Scan(&value).Error; err != nil {
+		return domain.TagID{}, translate(err)
+	}
+	return domain.NewTagID(value)
+}
 
 func (repo *tagRepository) Find(ctx context.Context, id domain.TagID) (*domain.Tag, error) {
 	var row tagModel

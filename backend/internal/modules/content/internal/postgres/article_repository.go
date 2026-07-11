@@ -11,6 +11,14 @@ import (
 
 type articleRepository struct{ db *gorm.DB }
 
+func (repo *articleRepository) NextID(ctx context.Context) (domain.ArticleID, error) {
+	var value int64
+	if err := repo.db.WithContext(ctx).Raw(`SELECT nextval(pg_get_serial_sequence('"Article"', 'Id'))`).Scan(&value).Error; err != nil {
+		return domain.ArticleID{}, translate(err)
+	}
+	return domain.NewArticleID(value)
+}
+
 func (repo *articleRepository) Find(ctx context.Context, id domain.ArticleID) (*domain.Article, error) {
 	var row articleModel
 	result := repo.db.WithContext(ctx).Where(`"Id" = ? AND "IsDeleted" = false`, id.Int64()).First(&row)

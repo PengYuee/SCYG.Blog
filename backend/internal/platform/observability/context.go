@@ -69,6 +69,11 @@ func ContextAttrs(ctx context.Context) []slog.Attr {
 	return attrs
 }
 
+// RequestIDFromContext returns the trusted inbound request identifier when present.
+func RequestIDFromContext(ctx context.Context) string {
+	return fieldsFromContext(ctx).request.RequestID
+}
+
 func fieldsFromContext(ctx context.Context) fields {
 	value, ok := ctx.Value(fieldsKey).(fields)
 	if !ok {

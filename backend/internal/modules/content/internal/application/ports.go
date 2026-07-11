@@ -13,18 +13,24 @@ type Clock interface{ Now() time.Time }
 
 // ArticleRepository persists article aggregates with optimistic versions.
 type ArticleRepository interface {
+	// NextID reserves an identifier inside the active transaction.
+	NextID(context.Context) (domain.ArticleID, error)
 	Find(context.Context, domain.ArticleID) (*domain.Article, error)
 	Save(context.Context, *domain.Article) error
 }
 
 // ArticleTypeRepository persists article-type entities.
 type ArticleTypeRepository interface {
+	// NextID reserves an identifier inside the active transaction.
+	NextID(context.Context) (domain.ArticleTypeID, error)
 	Find(context.Context, domain.ArticleTypeID) (*domain.ArticleType, error)
 	Save(context.Context, *domain.ArticleType) error
 }
 
 // TagRepository persists tag entities.
 type TagRepository interface {
+	// NextID reserves an identifier inside the active transaction.
+	NextID(context.Context) (domain.TagID, error)
 	Find(context.Context, domain.TagID) (*domain.Tag, error)
 	Save(context.Context, *domain.Tag) error
 }
@@ -42,7 +48,9 @@ type ArticleAdminReadModel interface {
 
 // TaxonomyReadModel serves article-type and tag projections.
 type TaxonomyReadModel interface {
+	FindArticleType(context.Context, domain.ArticleTypeID) (ArticleTypeView, error)
 	ListArticleTypes(context.Context, string) ([]ArticleTypeView, error)
+	FindTag(context.Context, domain.TagID) (TagView, error)
 	ListTags(context.Context, string) ([]TagView, error)
 }
 
@@ -76,6 +84,7 @@ type ArticleView struct {
 	Title         domain.Title
 	Slug          domain.Slug
 	Digest        domain.Digest
+	Content       domain.Content
 	Status        domain.Status
 	TagIDs        []domain.TagID
 	Version       domain.Version
@@ -94,14 +103,18 @@ type ArticlePage struct {
 
 // ArticleTypeView is a protocol-neutral taxonomy projection.
 type ArticleTypeView struct {
-	ID      domain.ArticleTypeID
-	Name    domain.Name
-	Version domain.Version
+	ID         domain.ArticleTypeID
+	Name       domain.Name
+	Version    domain.Version
+	CreatedAt  time.Time
+	ModifiedAt time.Time
 }
 
 // TagView is a protocol-neutral taxonomy projection.
 type TagView struct {
-	ID      domain.TagID
-	Name    domain.Name
-	Version domain.Version
+	ID         domain.TagID
+	Name       domain.Name
+	Version    domain.Version
+	CreatedAt  time.Time
+	ModifiedAt time.Time
 }
