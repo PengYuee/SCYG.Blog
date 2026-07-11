@@ -1,0 +1,12 @@
+{
+  "package": "@scalar/api-reference",
+  "version": "1.62.5",
+  "release": "https://github.com/scalar/scalar/releases/tag/release-2026-07-08-8cbf82d",
+  "upstream": "https://registry.npmjs.org/@scalar/api-reference/-/api-reference-1.62.5.tgz",
+  "artifact": "package/dist/browser/standalone.js",
+  "artifact_sha256": "b5edb255af0e112c4530c41da2350fca28a72f4388694880ba50acb442fda88f",
+  "tarball_sha1": "bdc9e2cf15c55158914756a6d1d167ad244abff7",
+  "tarball_integrity": "sha512-6VZhjtXiYygWrh6llwg/pnKN7S4eWqINOGt2Fu7TQkCdNUKwZEq7/XiOTqzZvGp/1Uu60ne/9nJK+UbQTSVpBg==",
+  "license": "MIT",
+  "license_source": "https://raw.githubusercontent.com/scalar/scalar/release-2026-07-08-8cbf82d/LICENSE"
+}

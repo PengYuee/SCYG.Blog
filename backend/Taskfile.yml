@@ -106,6 +106,15 @@ tasks:
     cmds:
       - '{{.OAPI_CODEGEN_CMD}} --config oapi-codegen.yaml api/openapi.yaml'
 
+  api:docs:sync:
+    desc: Synchronize the API docs copy from the authoritative specification
+    cmds:
+      - go run ./internal/docsync
+
+  api:docs:check:
+    desc: Reject API documentation specification drift
+    cmds:
+      - go run ./internal/docsync --check
   api:generate:check:
     desc: Reject OpenAPI generation drift without modifying committed output
     cmds:
@@ -141,6 +150,7 @@ tasks:
       - task: mod:verify
       - task: api:lint
       - task: api:generate:check
+      - task: api:docs:check
       - go test ./internal/contracttest -count=1
       - task: vet
       - task: lint
