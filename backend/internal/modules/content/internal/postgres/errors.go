@@ -1,6 +1,7 @@
 package postgres
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -10,16 +11,19 @@ import (
 )
 
 func notFound(kind string) error {
-	return &content.ApplicationError{Code: content.CodeNotFound, Kind: content.KindMissing, Cause: fmt.Errorf("%s not found", kind)}
+	return &content.ApplicationError{Code: content.CodeNotFound, Kind: content.KindMissing, Cause: fmt.Errorf("%s: %w", kind, content.ErrNotFound)}
 }
-func conflict(cause error) error {
-	return &content.ApplicationError{Code: content.CodeAlreadyExists, Kind: content.KindConflict, Cause: cause}
+func conflict() error {
+	return &content.ApplicationError{Code: content.CodeAlreadyExists, Kind: content.KindConflict, Cause: content.ErrConflict}
 }
-func failedPrecondition(cause error) error {
-	return &content.ApplicationError{Code: content.CodeFailedPrecondition, Kind: content.KindConflict, Cause: cause}
+func failedPrecondition() error {
+	return &content.ApplicationError{Code: content.CodeFailedPrecondition, Kind: content.KindConflict, Cause: content.ErrFailedPrecondition}
 }
 func stale(expected, actual uint64) error {
 	return &content.ApplicationError{Code: content.CodeStaleVersion, Kind: content.KindConflict, Cause: domain.ErrStaleVersion, ExpectedVersion: expected, ActualVersion: actual}
+}
+func internalFailure() error {
+	return &content.ApplicationError{Code: content.CodeInternal, Kind: content.KindInternal, Cause: content.ErrPersistence}
 }
 func translate(err error) error {
 	if err == nil {
@@ -27,15 +31,21 @@ func translate(err error) error {
 	}
 	var applicationError *content.ApplicationError
 	if errors.As(err, &applicationError) {
-		return err
+		return applicationError
 	}
 	translated := database.TranslateError(err)
 	switch {
 	case database.IsUnique(translated):
-		return conflict(translated)
+		return conflict()
 	case database.IsForeignKey(translated):
-		return failedPrecondition(translated)
+		return failedPrecondition()
+	case database.IsNotFound(translated):
+		return notFound("resource")
+	case database.IsCanceled(translated):
+		return context.Canceled
+	case database.IsDeadline(translated):
+		return context.DeadlineExceeded
 	default:
-		return translated
+		return internalFailure()
 	}
 }

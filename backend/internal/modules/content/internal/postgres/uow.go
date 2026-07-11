@@ -25,9 +25,9 @@ func (unit *UnitOfWork) Within(ctx context.Context, callback func(context.Contex
 	if callback == nil {
 		return errors.New("content transaction callback is nil")
 	}
-	return unit.transaction.WithinTransaction(ctx, func(transactionContext context.Context, handle *gorm.DB) error {
+	return translate(unit.transaction.WithinTransaction(ctx, func(transactionContext context.Context, handle *gorm.DB) error {
 		return callback(transactionContext, &repositories{articles: &articleRepository{db: handle}, articleTypes: &articleTypeRepository{db: handle}, tags: &tagRepository{db: handle}})
-	})
+	}))
 }
 
 type repositories struct {

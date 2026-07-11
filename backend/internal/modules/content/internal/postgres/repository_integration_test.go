@@ -63,6 +63,7 @@ func Test_Repository_CRUD_persists_reloads_updates_tags_and_soft_deletes(t *test
 		_, findErr := tx.Articles().Find(ctx, articleID)
 		return findErr
 	})
+	assertNoAdapterCause(t, err)
 	var appErr *content.ApplicationError
 	if !errors.As(err, &appErr) || appErr.Code != content.CodeNotFound {
 		t.Fatalf("expected not found, got %v", err)
@@ -107,6 +108,7 @@ func Test_Repository_conflicts_stale_and_referenced_deletion_leave_rows_unchange
 		t.Fatal(err)
 	}
 	err := fixture.uow.Within(context.Background(), func(ctx context.Context, tx application.Transaction) error { return tx.Articles().Save(ctx, second) })
+	assertNoAdapterCause(t, err)
 	var staleErr *content.ApplicationError
 	if !errors.As(err, &staleErr) || staleErr.Code != content.CodeStaleVersion {
 		t.Fatalf("expected stale, got %v", err)
@@ -141,6 +143,7 @@ func Test_Repository_constraints_cancellation_and_transaction_rollback(t *testin
 	}
 	duplicate := newArticle(t, fixture, mustArticleID(t, 2), typeID, []domain.TagID{tagID}, "Conflict", "other")
 	err := fixture.uow.Within(context.Background(), func(ctx context.Context, tx application.Transaction) error { return tx.Articles().Save(ctx, duplicate) })
+	assertNoAdapterCause(t, err)
 	var appErr *content.ApplicationError
 	if !errors.As(err, &appErr) || appErr.Code != content.CodeAlreadyExists {
 		t.Fatalf("expected unique conflict, got %v", err)
@@ -149,12 +152,14 @@ func Test_Repository_constraints_cancellation_and_transaction_rollback(t *testin
 	err = fixture.uow.Within(context.Background(), func(ctx context.Context, tx application.Transaction) error {
 		return tx.Articles().Save(ctx, slugDuplicate)
 	})
+	assertNoAdapterCause(t, err)
 	if !errors.As(err, &appErr) || appErr.Code != content.CodeAlreadyExists {
 		t.Fatalf("expected slug conflict, got %v", err)
 	}
 	missingType, _ := domain.NewArticleTypeID(999)
 	missing := newArticle(t, fixture, mustArticleID(t, 3), missingType, []domain.TagID{tagID}, "Missing", "missing")
 	err = fixture.uow.Within(context.Background(), func(ctx context.Context, tx application.Transaction) error { return tx.Articles().Save(ctx, missing) })
+	assertNoAdapterCause(t, err)
 	if !errors.As(err, &appErr) || appErr.Code != content.CodeFailedPrecondition {
 		t.Fatalf("expected foreign key, got %v", err)
 	}
@@ -163,6 +168,7 @@ func Test_Repository_constraints_cancellation_and_transaction_rollback(t *testin
 	if _, err = fixture.read.ListPublished(ctx, application.ArticleFilter{}); err == nil {
 		t.Fatal("expected cancellation")
 	}
+	assertNoAdapterCause(t, err)
 	missingTag, _ := domain.NewTagID(999)
 	err = fixture.uow.Within(context.Background(), func(ctx context.Context, tx application.Transaction) error {
 		loaded, findErr := tx.Articles().Find(ctx, articleID)
@@ -181,6 +187,7 @@ func Test_Repository_constraints_cancellation_and_transaction_rollback(t *testin
 	if err == nil {
 		t.Fatal("expected association rollback")
 	}
+	assertNoAdapterCause(t, err)
 	var title string
 	fixture.db.GORM().Table(`"Article"`).Select(`"Title"`).Where(`"Id"=?`, articleID.Int64()).Scan(&title)
 	if title != "Conflict" {

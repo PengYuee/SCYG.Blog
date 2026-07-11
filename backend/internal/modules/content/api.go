@@ -84,6 +84,14 @@ const (
 	KindInternal           ErrorKind = "internal"
 )
 
+// Stable application sentinels expose business semantics without adapter causes.
+var (
+	ErrConflict           = errors.New("content: conflict")
+	ErrFailedPrecondition = errors.New("content: failed precondition")
+	ErrNotFound           = errors.New("content: not found")
+	ErrPersistence        = errors.New("content: persistence failure")
+)
+
 // ErrPermissionDenied is the stable authorization sentinel.
 var ErrPermissionDenied = errors.New("content: permission denied")
 

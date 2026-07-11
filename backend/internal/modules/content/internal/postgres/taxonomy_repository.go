@@ -37,7 +37,7 @@ func (repo *articleTypeRepository) Save(ctx context.Context, item *domain.Articl
 			return translate(err)
 		}
 		if count > 0 {
-			return failedPrecondition(errors.New("article type is referenced by active article"))
+			return failedPrecondition()
 		}
 	}
 	expected := row.Version - 1
