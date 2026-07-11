@@ -32,43 +32,43 @@ describe("T9 production route contract", () => {
     ["/article/42", "/articles/42"],
     ["/writeBlog", "/author/articles/new"],
     ["/writeBlog?id=42", "/author/articles/42/edit"],
-  ])("redirects exact legacy URL %s to %s", async (legacy, expected) => {
-    // Given / When: 旧书签被生产路由解析。
-    await navigate(legacy)
+  ])("redirects exact legacy URL %s to %s", (legacy, expected) => {
+    // Given / When: 重定向契约同步解析，无需加载无关的懒视图。
+    const resolvedRoute = router.resolve(legacy)
     // Then: 跳转落到唯一规范地址。
-    expect(router.currentRoute.value.fullPath).toBe(expected)
+    expect(resolvedRoute.fullPath).toBe(expected)
   })
 
-  it("keeps an invalid legacy article id on a typed failure route", async () => {
-    // Given / When: 旧文章链接携带非正整数标识。
-    await navigate("/article/not-a-number")
+  it("keeps an invalid legacy article id on a typed failure route", () => {
+    // Given / When: 失败路由契约同步解析，避免加载无关的懒视图。
+    const resolvedRoute = router.resolve("/article/not-a-number")
     // Then: 地址保持不变并暴露稳定失败代码，不进入普通详情 404。
-    expect(router.currentRoute.value.fullPath).toBe("/article/not-a-number")
-    expect(router.currentRoute.value.name).toBe("legacy-article-invalid")
-    expect(router.currentRoute.value.meta["errorCode"]).toBe("INVALID_ARTICLE_ID")
+    expect(resolvedRoute.fullPath).toBe("/article/not-a-number")
+    expect(resolvedRoute.name).toBe("legacy-article-invalid")
+    expect(resolvedRoute.meta["errorCode"]).toBe("INVALID_ARTICLE_ID")
   })
-  it("keeps an invalid legacy editor id on a typed failure route", async () => {
-    // Given / When: 旧写作链接携带非法标识。
-    await navigate("/writeBlog?id=oops")
+  it("keeps an invalid legacy editor id on a typed failure route", () => {
+    // Given / When: 失败路由契约同步解析，避免加载无关的懒视图。
+    const resolvedRoute = router.resolve("/writeBlog?id=oops")
     // Then: 地址不被静默改写，且暴露稳定失败代码。
-    expect(router.currentRoute.value.name).toBe("legacy-write-invalid")
-    expect(router.currentRoute.value.meta["errorCode"]).toBe("INVALID_ARTICLE_ID")
+    expect(resolvedRoute.name).toBe("legacy-write-invalid")
+    expect(resolvedRoute.meta["errorCode"]).toBe("INVALID_ARTICLE_ID")
   })
 
-  it("lets the admin module own every admin descendant before the public catch-all", async () => {
-    // Given / When: 未实现的未来后台子路径被直接打开。
-    await navigate("/admin/future/child")
+  it("lets the admin module own every admin descendant before the public catch-all", () => {
+    // Given / When: 所有权匹配同步解析，避免加载无关的懒视图。
+    const resolvedRoute = router.resolve("/admin/future/child")
     // Then: 后台不可用边界处理该路径，公共 404 不会吞掉它。
-    expect(router.currentRoute.value.name).toBe("admin-unavailable-child")
-    expect(router.currentRoute.value.matched.some(({ name }) => name === "public-not-found")).toBe(false)
+    expect(resolvedRoute.name).toBe("admin-unavailable-child")
+    expect(resolvedRoute.matched.some(({ name }) => name === "public-not-found")).toBe(false)
   })
 
-  it("shows the public 404 for an unknown non-admin path", async () => {
-    // Given / When: 未知公共地址被直接打开。
-    await navigate("/missing-page")
+  it("shows the public 404 for an unknown non-admin path", () => {
+    // Given / When: 所有权匹配同步解析，避免加载无关的懒视图。
+    const resolvedRoute = router.resolve("/missing-page")
     // Then: 公共 catch-all 保留原地址并呈现 404。
-    expect(router.currentRoute.value.name).toBe("public-not-found")
-    expect(router.currentRoute.value.fullPath).toBe("/missing-page")
+    expect(resolvedRoute.name).toBe("public-not-found")
+    expect(resolvedRoute.fullPath).toBe("/missing-page")
   })
 
   it("keeps admin matching independent from public and author route records", async () => {
