@@ -18,7 +18,7 @@ pnpm build
 pnpm preview
 ```
 
-开发服务默认入口为 `http://localhost:5173/`。复制 `.env.example` 为 `.env.local` 后再按本地后端地址调整环境变量。
+开发服务默认入口为 `http://localhost:5173/`。复制 `.env.example` 为 `.env.local` 后，本地真实后端地址为 `http://localhost:5000`；部署环境可按实际后端地址覆盖该环境变量。
 
 ## 路由边界
 
@@ -35,7 +35,7 @@ pnpm preview
 
 ## 环境变量
 
-- `VITE_API_BASE_URL`：真实 API 根地址，可使用绝对 HTTP(S) 地址或同源 `/api`。
+- `VITE_API_BASE_URL`：真实 API 根地址。本地使用 `http://localhost:5000`，运行时会将既有的 Article、ArticleType、Tag 请求路径直接拼接到此根地址；部署环境可覆盖为对应的绝对 HTTP(S) 地址或同源 `/api`。
 - `VITE_FAKE_AUTHOR`：Fake 作者与 Fake Auth 的显式联合开关；仅字面值 `true` 生效，生产环境始终关闭。安全默认值为 `false`。
 
 当前不支持真实登录、会话恢复或后台管理能力。`/login` 只返回“登录暂不可用”的真实状态。
