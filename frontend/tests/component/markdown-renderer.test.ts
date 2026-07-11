@@ -1,4 +1,4 @@
-﻿import { mount } from "@vue/test-utils"
+import { mount } from "@vue/test-utils"
 import { defineComponent, h } from "vue"
 import { describe, expect, it, vi } from "vitest"
 import MarkdownRenderer from "@/components/article/MarkdownRenderer.vue"
@@ -18,6 +18,7 @@ const MdCatalogStub = defineComponent({
   inheritAttrs: false,
   props: { editorId: { type: String, required: true } },
   setup(props) { return () => h("nav", { "data-catalog-for": props.editorId }, "Safe heading") },
+
 })
 
 describe("MarkdownRenderer", () => {
@@ -43,5 +44,16 @@ describe("MarkdownRenderer", () => {
     expect(wrapper.get("table").text()).toBe("cell")
     expect(wrapper.get("img").attributes("src")).toBe("/images/safe.png")
     expect(wrapper.get("nav").text()).toBe("Safe heading")
+  })
+
+  it("uses an isolated preview and catalog ID for every renderer instance", () => {
+    // Given: two renderers owned by one Vue application.
+    const Harness = defineComponent({ setup: () => () => h("div", [h(MarkdownRenderer, { markdown: "# First" }), h(MarkdownRenderer, { markdown: "# Second" })]) })
+    // When: both renderer instances mount together.
+    const wrapper = mount(Harness, { global: { stubs: { MdPreview: MdPreviewStub, MdCatalog: MdCatalogStub } } })
+    const previews = wrapper.findAll("article")
+    // Then: each catalog binds to a distinct preview ID.
+    expect(previews[0]?.attributes("data-preview-id")).not.toBe(previews[1]?.attributes("data-preview-id"))
+    expect(wrapper.findAll("nav")[0]?.attributes("data-catalog-for")).toBe(previews[0]?.attributes("data-preview-id"))
   })
 })

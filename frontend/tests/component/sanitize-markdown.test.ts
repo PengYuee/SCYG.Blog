@@ -1,4 +1,4 @@
-﻿import { describe, expect, it } from "vitest"
+import { describe, expect, it } from "vitest"
 import { sanitizeMarkdown } from "@/security/sanitize-markdown"
 
 const XSS_FIXTURES = [
@@ -36,6 +36,8 @@ describe("sanitizeMarkdown", () => {
     ['<img src="data:image/png;base64,abc" alt="x">', "data image"],
     ['<img src="javascript:alert(1)" alt="x">', "javascript image"],
     ['<img src="//evil.test/x.png" alt="x">', "protocol-relative image"],
+    ['<img src="/\\evil.test/x.png" alt="x">', "backslash-normalized image"],
+    ['<a href="/\\evil.test/x">file</a>', "backslash-normalized link"],
     ['<a href="ftp://evil.test/file">file</a>', "unknown link protocol"],
   ])("removes unsafe URL from %s (%s)", (dirty) => {
     // Given / When / Then: unsafe URL schemes cannot survive sanitization.

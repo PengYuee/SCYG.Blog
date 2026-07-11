@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue"
+import { computed, useId } from "vue"
 import { MdCatalog, MdPreview } from "md-editor-v3"
 import "md-editor-v3/lib/preview.css"
 import { sanitizeMarkdown } from "@/security/sanitize-markdown"
@@ -8,12 +8,12 @@ import { sanitizeMarkdown } from "@/security/sanitize-markdown"
 type Props = {
   /** 来自文章接口或未来编辑器的未受信任 Markdown。 */
   readonly markdown: string
-  /** 预览与目录共享的稳定 DOM 标识。 */
-  readonly previewId?: string
 }
 
-/** 响应式解构确保可选标识在模板中始终为字符串。 */
-const { markdown, previewId = "article-markdown-preview" } = defineProps<Props>()
+const { markdown } = defineProps<Props>()
+
+/** 当前组件实例独有的预览与目录 DOM 标识。 */
+const previewId = `article-markdown-${useId()}`
 
 /** 目录与预览共同消费的安全 Markdown 源，阻止原始 HTML 标题绕过安全边界。 */
 const sanitizedMarkdown = computed(

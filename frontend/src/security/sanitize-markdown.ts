@@ -24,14 +24,14 @@ export const MARKDOWN_SANITIZE_POLICY: Readonly<Config> = {
  * @param value 未受信任的 href 属性值。
  * @returns HTTP(S)、mailto、站内相对地址或页内锚点是否安全。
  */
-const isSafeLink = (value: string): boolean => /^(?:https?:\/\/|mailto:|#|\?|\/(?!\/)|\.\.?\/)/iu.test(value.trim())
+const isSafeLink = (value: string): boolean => !/[\\\u0000-\u001f\u007f]/u.test(value) && /^(?:https?:\/\/|mailto:|#|\?|\/(?!\/)|\.\.?\/)/iu.test(value.trim())
 
 /**
  * 判断图片是否属于 Markdown 阅读界面允许的地址。
  * @param value 未受信任的 src 属性值。
  * @returns HTTP(S) 或明确的站内相对图片地址是否安全。
  */
-const isSafeImage = (value: string): boolean => /^(?:https?:\/\/|\/(?!\/)|\.\.?\/)/iu.test(value.trim())
+const isSafeImage = (value: string): boolean => !/[\\\u0000-\u001f\u007f]/u.test(value) && /^(?:https?:\/\/|\/(?!\/)|\.\.?\/)/iu.test(value.trim())
 
 /**
  * 约束 DOMPurify 保留下来的 URL、外链隔离属性和标题锚点。
