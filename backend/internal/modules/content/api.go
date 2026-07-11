@@ -41,12 +41,15 @@ type Authorizer interface {
 
 // AuthorizerOrDeny preserves a concrete authorizer and safely defaults nil interfaces and typed nils to DenyAll.
 func AuthorizerOrDeny(candidate Authorizer) Authorizer {
-	if candidate == nil {
+	value := reflect.ValueOf(candidate)
+	if !value.IsValid() {
 		return DenyAll{}
 	}
-	value := reflect.ValueOf(candidate)
-	if (value.Kind() == reflect.Pointer || value.Kind() == reflect.Interface) && value.IsNil() {
-		return DenyAll{}
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		if value.IsNil() {
+			return DenyAll{}
+		}
 	}
 	return candidate
 }
