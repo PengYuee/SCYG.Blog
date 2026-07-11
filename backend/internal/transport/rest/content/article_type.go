@@ -27,7 +27,11 @@ func (handler *Handler) ListArticleTypes(ctx context.Context, request generated.
 		}
 		items[index] = mapped
 	}
-	return generated.ListArticleTypes200JSONResponse{Items: items, Page: generated.PageInfo{Number: int32(result.Number), Size: int32(result.Size), TotalItems: result.TotalItems, TotalPages: int64(result.TotalPages)}}, nil
+	metadata, err := pageInfo(result.Number, result.Size, result.TotalItems, result.TotalPages, len(items))
+	if err != nil {
+		return nil, err
+	}
+	return generated.ListArticleTypes200JSONResponse{Items: items, Page: metadata}, nil
 }
 
 // CreateArticleType implements the generated article-type creation operation.

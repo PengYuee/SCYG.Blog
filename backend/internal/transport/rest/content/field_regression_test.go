@@ -152,6 +152,21 @@ func Test_ContentREST_Article_list_preserves_nonzero_counters(t *testing.T) {
 	}
 }
 
+func Test_ContentREST_list_with_invalid_page_returns_safe_500(t *testing.T) {
+	// Given
+	service := &testService{articlePage: module.ArticlePage{Number: 0, Size: 20, TotalItems: -1, TotalPages: 0}}
+	router := routerForService(t, service)
+	response := httptest.NewRecorder()
+
+	// When
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/articles", nil))
+
+	// Then
+	if response.Code != http.StatusInternalServerError || strings.Contains(response.Body.String(), `"items"`) {
+		t.Fatalf("status/body = %d/%s", response.Code, response.Body.String())
+	}
+}
+
 func validArticleTypeResult(image string, meun int32) module.ArticleTypeResult {
 	now := time.Unix(1, 0).UTC()
 	var value *string

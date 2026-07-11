@@ -3,6 +3,8 @@ package domain
 import (
 	"math"
 	"time"
+	"unicode"
+	"unicode/utf8"
 )
 
 // ArticleType classifies articles and owns naming, deletion, and version rules.
@@ -226,12 +228,20 @@ func parseImage(image *string) (*string, error) {
 	if image == nil {
 		return nil, nil
 	}
-	if len([]rune(*image)) > 512 {
+	if !utf8.ValidString(*image) || len([]rune(*image)) > 512 {
 		return nil, invalid("image")
+	}
+	for _, character := range *image {
+		if unicode.IsControl(character) {
+			return nil, invalid("image")
+		}
 	}
 	value := *image
 	return &value, nil
 }
+
+// ValidateImage validates optional article-type image text without mutating it.
+func ValidateImage(image *string) error { _, err := parseImage(image); return err }
 func copyString(value *string) *string {
 	if value == nil {
 		return nil

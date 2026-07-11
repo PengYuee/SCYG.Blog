@@ -31,7 +31,7 @@ func parseEntityTag(value string) (uint64, error) {
 
 func articleDTO(item module.ArticleResult) (generated.Article, error) {
 	version, err := generatedVersion(item.Version)
-	if err != nil || item.ID <= 0 || item.ArticleTypeID <= 0 || item.CreatedAt.IsZero() || item.Support < 0 || item.Comment < 0 || item.Visited < 0 {
+	if err != nil || module.ValidateArticleResponseText(item) != nil || item.ID <= 0 || item.ArticleTypeID <= 0 || invalidTimes(item.CreatedAt, item.ModifiedAt) || item.Support < 0 || item.Comment < 0 || item.Visited < 0 {
 		return generated.Article{}, responseMappingError()
 	}
 	tags := make([]generated.PositiveID, len(item.TagIDs))
@@ -62,7 +62,7 @@ func articleDTO(item module.ArticleResult) (generated.Article, error) {
 
 func articleTypeDTO(item module.ArticleTypeResult) (generated.ArticleType, error) {
 	version, err := generatedVersion(item.Version)
-	if err != nil || item.ID <= 0 || item.CreatedAt.IsZero() || item.Meun < 0 {
+	if err != nil || module.ValidateArticleTypeResponseText(item) != nil || item.ID <= 0 || invalidTimes(item.CreatedAt, item.ModifiedAt) || item.Meun < 0 {
 		return generated.ArticleType{}, responseMappingError()
 	}
 	var updated *time.Time
@@ -75,7 +75,7 @@ func articleTypeDTO(item module.ArticleTypeResult) (generated.ArticleType, error
 
 func tagDTO(item module.TagResult) (generated.Tag, error) {
 	version, err := generatedVersion(item.Version)
-	if err != nil || item.ID <= 0 || item.CreatedAt.IsZero() {
+	if err != nil || module.ValidateTagResponseText(item) != nil || item.ID <= 0 || invalidTimes(item.CreatedAt, item.ModifiedAt) {
 		return generated.Tag{}, responseMappingError()
 	}
 	var updated *time.Time
@@ -95,6 +95,36 @@ func generatedVersion(version uint64) (generated.Version, error) {
 
 func responseMappingError() error {
 	return &module.ApplicationError{Code: module.CodeInternal, Kind: module.KindInternal, Cause: module.ErrPersistence}
+}
+
+func pageInfo(number, size int, totalItems int64, totalPages, itemCount int) (generated.PageInfo, error) {
+	if number < 1 || number > math.MaxInt32 || size < 1 || size > 100 || totalItems < 0 || totalPages < 0 || itemCount < 0 || itemCount > size {
+		return generated.PageInfo{}, responseMappingError()
+	}
+	expectedPages := int64(0)
+	if totalItems > 0 {
+		expectedPages = totalItems / int64(size)
+		if totalItems%int64(size) != 0 { expectedPages++ }
+	}
+	if int64(totalPages) != expectedPages {
+		return generated.PageInfo{}, responseMappingError()
+	}
+	expectedItems := int64(0)
+	start := int64(number-1) * int64(size)
+	if start < totalItems {
+		expectedItems = totalItems - start
+		if expectedItems > int64(size) {
+			expectedItems = int64(size)
+		}
+	}
+	if int64(itemCount) != expectedItems {
+		return generated.PageInfo{}, responseMappingError()
+	}
+	return generated.PageInfo{Number: int32(number), Size: int32(size), TotalItems: totalItems, TotalPages: int64(totalPages)}, nil
+}
+
+func invalidTimes(createdAt, modifiedAt time.Time) bool {
+	return createdAt.IsZero() || (!modifiedAt.IsZero() && modifiedAt.Before(createdAt))
 }
 
 func articleSort(value *generated.ListArticlesParamsSort) string {

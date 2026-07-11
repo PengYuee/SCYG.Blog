@@ -5,6 +5,8 @@ import (
 	"math"
 	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // ArticleID is a parsed positive article identifier.
@@ -61,7 +63,7 @@ func NewTagID(raw int64) (TagID, error) {
 // NewTitle parses and trims an article title.
 func NewTitle(raw string) (Title, error) {
 	value := strings.TrimSpace(raw)
-	if value == "" || len([]rune(value)) > 200 {
+	if !validResponseText(value, 120) {
 		return Title{}, invalid("title")
 	}
 	return Title{value}, nil
@@ -71,7 +73,7 @@ func NewTitle(raw string) (Title, error) {
 func NewSlug(raw string) (Slug, error) {
 	value := strings.TrimSpace(strings.ToLower(raw))
 	matched, err := regexp.MatchString(`^[a-z0-9]+(?:-[a-z0-9]+)*$`, value)
-	if err != nil || len(value) > 200 || !matched {
+	if err != nil || !utf8.ValidString(value) || len([]rune(value)) > 160 || !matched {
 		return Slug{}, invalid("slug")
 	}
 	return Slug{value}, nil
@@ -80,7 +82,7 @@ func NewSlug(raw string) (Slug, error) {
 // NewDigest parses and trims an article digest.
 func NewDigest(raw string) (Digest, error) {
 	value := strings.TrimSpace(raw)
-	if value == "" || len([]rune(value)) > 500 {
+	if !validResponseText(value, 500) {
 		return Digest{}, invalid("digest")
 	}
 	return Digest{value}, nil
@@ -89,7 +91,7 @@ func NewDigest(raw string) (Digest, error) {
 // NewContent parses non-empty article content.
 func NewContent(raw string) (Content, error) {
 	value := strings.TrimSpace(raw)
-	if value == "" {
+	if !validResponseText(value, 0) {
 		return Content{}, invalid("content")
 	}
 	return Content{value}, nil
@@ -98,7 +100,7 @@ func NewContent(raw string) (Content, error) {
 // NewName parses and trims a taxonomy name.
 func NewName(raw string) (Name, error) {
 	value := strings.TrimSpace(raw)
-	if value == "" || len([]rune(value)) > 100 {
+	if !validResponseText(value, 60) {
 		return Name{}, invalid("name")
 	}
 	return Name{value}, nil
@@ -150,12 +152,24 @@ func (version Version) Uint64() uint64 { return version.value }
 func (id ArticleID) valid() bool     { return id.value > 0 }
 func (id ArticleTypeID) valid() bool { return id.value > 0 }
 func (id TagID) valid() bool         { return id.value > 0 }
-func (value Title) valid() bool      { return value.value != "" && len([]rune(value.value)) <= 200 }
+func (value Title) valid() bool      { return validResponseText(value.value, 120) }
 func (value Slug) valid() bool {
 	matched, _ := regexp.MatchString(`^[a-z0-9]+(?:-[a-z0-9]+)*$`, value.value)
-	return len(value.value) <= 200 && matched
+	return utf8.ValidString(value.value) && len([]rune(value.value)) <= 160 && matched
 }
-func (value Digest) valid() bool    { return value.value != "" && len([]rune(value.value)) <= 500 }
-func (value Content) valid() bool   { return value.value != "" }
-func (value Name) valid() bool      { return value.value != "" && len([]rune(value.value)) <= 100 }
+func (value Digest) valid() bool    { return validResponseText(value.value, 500) }
+func (value Content) valid() bool   { return validResponseText(value.value, 0) }
+func (value Name) valid() bool      { return validResponseText(value.value, 60) }
 func (version Version) valid() bool { return version.value > 0 }
+
+func validResponseText(value string, maximum int) bool {
+	if value == "" || !utf8.ValidString(value) || (maximum > 0 && len([]rune(value)) > maximum) {
+		return false
+	}
+	for _, character := range value {
+		if unicode.IsControl(character) {
+			return false
+		}
+	}
+	return true
+}
