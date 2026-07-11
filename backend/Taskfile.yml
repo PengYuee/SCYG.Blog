@@ -72,9 +72,9 @@ tasks:
       - go test -tags=e2e -race -shuffle=on -count=1 ./...
 
   generate:
-    desc: Run declared Go generators
+    desc: Regenerate all committed source artifacts
     cmds:
-      - go generate ./...
+      - task: api:generate
 
   build:
     desc: Build the API binary
@@ -97,14 +97,24 @@ tasks:
       - '{{.GOVULNCHECK_CMD}} ./...'
 
   api:lint:
-    desc: Lint the future OpenAPI contract when present
+    desc: Lint the authoritative OpenAPI contract
     cmds:
       - '{{.OPENAPI_LINT_CMD}} lint api/openapi.yaml'
 
   api:generate:
-    desc: Generate the future OpenAPI adapter with the pinned generator
+    desc: Generate OpenAPI Gin interfaces and transport models
     cmds:
       - '{{.OAPI_CODEGEN_CMD}} --config oapi-codegen.yaml api/openapi.yaml'
+
+  api:generate:check:
+    desc: Reject OpenAPI generation drift without modifying committed output
+    cmds:
+      - cmd: go build -trimpath -o bin/generationcheck.exe ./internal/generationcheck
+        platforms: [windows]
+      - cmd: bin/generationcheck.exe
+        platforms: [windows]
+      - cmd: go run ./internal/generationcheck
+        platforms: [linux, darwin]
 
   migrate:version:
     desc: Print the pinned migration CLI version
@@ -121,13 +131,17 @@ tasks:
       - '{{.NILAWAY_CMD}} -V'
       - '{{.GOVULNCHECK_CMD}} -version'
       - '{{.OPENAPI_LINT_CMD}} version'
+      - '{{.OAPI_CODEGEN_CMD}} -version'
 
   ci:
-    desc: Run every Gate B check available at bootstrap
+    desc: Run every available backend quality check
     cmds:
       - task: task:version:check
       - task: fmt:check
       - task: mod:verify
+      - task: api:lint
+      - task: api:generate:check
+      - go test ./internal/contracttest -count=1
       - task: vet
       - task: lint
       - task: unit
