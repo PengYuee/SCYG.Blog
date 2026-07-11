@@ -1,16 +1,16 @@
-import type { AxiosInstance } from "axios"
 import { describe, expect, it, vi } from "vitest"
 import { createArticleApi } from "@/request/api/article"
 import { createArticleTypeApi } from "@/request/api/article-type"
 import { createTagApi } from "@/request/api/tag"
+import type { HttpTransport } from "@/request/transport"
 
 const article = {
   id: 7, title: "T", slug: "typed", digest: "D", content: "M", article_type_id: 2, tag_ids: [3], status: 2,
   support: 0, comment: 0, visited: 0, version: 1, created_at: "2026-07-11T00:00:00Z", updated_at: null,
 }
 
-function client(): AxiosInstance {
-  return { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() } as never
+function client(): HttpTransport {
+  return { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() }
 }
 
 describe("legacy API contract mappings", () => {

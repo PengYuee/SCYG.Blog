@@ -40,5 +40,11 @@ export async function loadRuntimeConfig(fetcher: typeof fetch = fetch): Promise<
     throw new RuntimeConfigError("运行时配置加载失败", "CONFIG_FETCH_FAILED", error)
   }
   if (!response.ok) throw new RuntimeConfigError("运行时配置加载失败", "CONFIG_FETCH_FAILED", response.status)
-  return parseRuntimeConfig(await response.json())
+  let input: unknown
+  try {
+    input = await response.json()
+  } catch (error) {
+    throw new RuntimeConfigError("运行时配置无效", "CONFIG_INVALID", error)
+  }
+  return parseRuntimeConfig(input)
 }

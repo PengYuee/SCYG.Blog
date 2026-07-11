@@ -1,5 +1,5 @@
-import type { AxiosInstance } from "axios"
 import { z } from "zod"
+import type { HttpTransport } from "@/request/transport"
 import type { ArticleDetail, ArticleListRequest, ArticleUpdate, ArticleWrite } from "@/types/article"
 import type { PageResult } from "@/types/api"
 import { normalizeImageUrl, parseBoundary } from "@/types/api"
@@ -21,7 +21,7 @@ export function parseArticleList(input: unknown): PageResult<ArticleDetail> {
 }
 
 /** 旧文章 API 的类型化适配器。 */
-export function createArticleApi(client: AxiosInstance, serverUrl: string) {
+export function createArticleApi(client: HttpTransport, serverUrl: string) {
   const body = (request: ArticleWrite) => ({ title: request.title, body: request.markdown, digest: request.digest, tagIds: request.tagIds, articleTypeId: request.articleTypeId })
   return {
     /** 获取文章列表。 */ async list(request: ArticleListRequest) { const response = await client.get("/Article/GetArticleList", { params: request }); return parseArticleList(response.data) },

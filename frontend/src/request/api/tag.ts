@@ -1,5 +1,5 @@
-import type { AxiosInstance } from "axios"
 import { z } from "zod"
+import type { HttpTransport } from "@/request/transport"
 import type { Tag } from "@/types/taxonomy"
 import { parseBoundary } from "@/types/api"
 import { mutationSchema, pageSchema, tagSchema } from "./schemas"
@@ -12,7 +12,7 @@ export function parseTags(input: unknown): readonly Tag[] {
 }
 
 /** 旧标签 API 的类型化适配器。 */
-export function createTagApi(client: AxiosInstance) {
+export function createTagApi(client: HttpTransport) {
   return {
     /** 获取标签字典。 */ async list(filter?: string) { const response = await client.get("/Tag/GetTagDic", { params: filter === undefined ? {} : { filter } }); return parseTags(response.data) },
     /** 创建标签。 */ async create(name: string) { const response = await client.post("/Tag/CreateTag", { name }); return parseBoundary(mutationSchema, response.data, "tag create") },

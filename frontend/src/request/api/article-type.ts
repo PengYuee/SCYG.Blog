@@ -1,5 +1,5 @@
-import type { AxiosInstance } from "axios"
 import { z } from "zod"
+import type { HttpTransport } from "@/request/transport"
 import type { ArticleType, ArticleTypeCreate } from "@/types/taxonomy"
 import { normalizeImageUrl, parseBoundary } from "@/types/api"
 import { articleTypeSchema, mutationSchema, pageSchema } from "./schemas"
@@ -12,7 +12,7 @@ export function parseArticleTypes(input: unknown, serverUrl: string): readonly A
 }
 
 /** 旧分类 API 的类型化适配器。 */
-export function createArticleTypeApi(client: AxiosInstance, serverUrl: string) {
+export function createArticleTypeApi(client: HttpTransport, serverUrl: string) {
   return {
     /** 获取分类字典。 */ async list(filter?: string) { const response = await client.get("/ArticleType/GetArticleTypeDic", { params: filter === undefined ? {} : { filter } }); return parseArticleTypes(response.data, serverUrl) },
     /** 创建分类，沿用旧接口 FormData。 */ async create(request: ArticleTypeCreate) { const form = new FormData(); form.append("name", request.name); form.append("meun", String(request.menu)); if (request.image !== null) form.append("image", request.image); const response = await client.post("/ArticleType/CreateArticleType", form); return parseBoundary(mutationSchema, response.data, "article type create") },

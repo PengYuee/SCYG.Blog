@@ -1,7 +1,7 @@
 import type { UnsupportedResult } from "@/types/api"
 
 /** 未来远程搜索请求。 */
-export type SearchRequest = { readonly query: string; readonly pageIndex: number; readonly pageSize: number; readonly articleTypeId?: number; readonly tagId?: number }
+export type SearchRequest = { readonly q: string; readonly pageIndex: number; readonly pageSize: number; readonly articleTypeId?: number; readonly tagId?: number }
 
 /** 远程搜索 API 契约。 */
 export interface SearchApi { /** 搜索文章；未启用时返回 unsupported。 */ search(request: SearchRequest): Promise<UnsupportedResult> }
