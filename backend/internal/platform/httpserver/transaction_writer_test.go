@@ -2,6 +2,7 @@ package httpserver
 
 import (
 	"bufio"
+	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -14,11 +15,14 @@ import (
 type hijackRecorder struct {
 	*httptest.ResponseRecorder
 	connection   net.Conn
+	buffer       *bufio.ReadWriter
 	disconnected chan bool
+	hijacked     bool
 }
 
 func (recorder *hijackRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	return recorder.connection, bufio.NewReadWriter(bufio.NewReader(recorder.connection), bufio.NewWriter(recorder.connection)), nil
+	recorder.hijacked = true
+	return recorder.connection, recorder.buffer, nil
 }
 
 func (recorder *hijackRecorder) CloseNotify() <-chan bool { return recorder.disconnected }
@@ -69,25 +73,58 @@ func Test_TransactionWriter_Flush_commits_and_preserves_streaming(t *testing.T) 
 	}
 }
 
-func Test_TransactionWriter_Hijack_and_CloseNotify_delegate(t *testing.T) {
-	serverConnection, clientConnection := net.Pipe()
-	defer func() {
-		if closeErr := clientConnection.Close(); closeErr != nil {
-			t.Errorf("close client connection: %v", closeErr)
-		}
+func Test_TransactionWriter_Hijack_returns_error_when_underlying_writer_is_unsupported(t *testing.T) {
+	response := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(response)
+	writer := newTransactionWriter(ctx.Writer)
+
+	var connection net.Conn
+	var buffer *bufio.ReadWriter
+	var hijackErr error
+	func() {
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				t.Fatalf("Hijack panicked: %v", recovered)
+			}
+		}()
+		connection, buffer, hijackErr = writer.Hijack()
 	}()
-	recorder := &hijackRecorder{ResponseRecorder: httptest.NewRecorder(), connection: serverConnection, disconnected: make(chan bool, 1)}
+
+	if connection != nil || buffer != nil || hijackErr == nil {
+		t.Fatalf("connection=%v buffer=%v error=%v", connection, buffer, hijackErr)
+	}
+	if strings.Contains(strings.ToLower(hijackErr.Error()), "secret") {
+		t.Fatalf("unsafe error=%q", hijackErr)
+	}
+}
+
+func Test_TransactionWriter_Hijack_rejects_buffered_output(t *testing.T) {
+	response := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(response)
+	writer := newTransactionWriter(ctx.Writer)
+	if _, writeErr := writer.WriteString("buffered"); writeErr != nil {
+		t.Fatalf("write: %v", writeErr)
+	}
+
+	connection, buffer, hijackErr := writer.Hijack()
+
+	if connection != nil || buffer != nil || hijackErr == nil {
+		t.Fatalf("connection=%v buffer=%v error=%v", connection, buffer, hijackErr)
+	}
+}
+
+func Test_TransactionWriter_Hijack_and_CloseNotify_delegate(t *testing.T) {
+	var expectedConnection net.Conn = (*net.TCPConn)(nil)
+	expectedBuffer := bufio.NewReadWriter(bufio.NewReader(strings.NewReader("")), bufio.NewWriter(io.Discard))
+	recorder := &hijackRecorder{ResponseRecorder: httptest.NewRecorder(), connection: expectedConnection, buffer: expectedBuffer, disconnected: make(chan bool, 1)}
 	ctx, _ := gin.CreateTestContext(recorder)
 	writer := newTransactionWriter(ctx.Writer)
 
-	connection, _, err := writer.Hijack()
+	connection, buffer, err := writer.Hijack()
 	if err != nil {
 		t.Fatalf("hijack: %v", err)
 	}
-	if connection != serverConnection || writer.CloseNotify() != recorder.disconnected {
+	if !recorder.hijacked || connection != expectedConnection || buffer != expectedBuffer || writer.CloseNotify() != recorder.disconnected {
 		t.Fatal("optional writer interfaces were not delegated")
-	}
-	if closeErr := connection.Close(); closeErr != nil {
-		t.Fatalf("close hijacked connection: %v", closeErr)
 	}
 }

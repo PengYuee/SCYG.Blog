@@ -115,7 +115,15 @@ func (writer *transactionWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	if writer.status != 0 || writer.body.Len() != 0 {
 		return nil, nil, fmt.Errorf("hijack after buffered response write")
 	}
-	connection, buffer, err := writer.delegate.Hijack()
+	underlying := http.ResponseWriter(writer.delegate)
+	if unwrapper, ok := writer.delegate.(interface{ Unwrap() http.ResponseWriter }); ok {
+		underlying = unwrapper.Unwrap()
+	}
+	hijacker, ok := underlying.(http.Hijacker)
+	if !ok {
+		return nil, nil, fmt.Errorf("response writer does not support hijacking")
+	}
+	connection, buffer, err := hijacker.Hijack()
 	if err == nil {
 		writer.committed = true
 		writer.hijacked = connection
