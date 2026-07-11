@@ -1,0 +1,134 @@
+version: '3'
+
+vars:
+  BINARY: api
+  MODULE: github.com/PengYuee/SCYG.Blog/backend
+  GO_VERSION: 1.25.0
+  GO_IMAGE: golang:1.25.0-bookworm@sha256:81dc45d05a7444ead8c92a389621fafabc8e40f8fd1a19d7e5df14e61e98bc1a
+  POSTGRES_IMAGE: postgres:17.5@sha256:aadf2c0696f5ef357aa7a68da995137f0cf17bad0bf6e1f17de06ae5c769b302
+  TASK_VERSION: v3.49.1
+  GOFUMPT_CMD: go run mvdan.cc/gofumpt@v0.10.0
+  GOIMPORTS_CMD: go run golang.org/x/tools/cmd/goimports@v0.48.0
+  GOLANGCI_LINT_CMD: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+  NILAWAY_CMD: go run go.uber.org/nilaway/cmd/nilaway@v0.0.0-20260710181136-2378218750e4
+  GOVULNCHECK_CMD: go run golang.org/x/vuln/cmd/govulncheck@v1.6.0
+  OPENAPI_LINT_CMD: go run github.com/daveshanley/vacuum@v0.29.0
+  OAPI_CODEGEN_CMD: go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.7.2
+  MIGRATE_CMD: go run github.com/golang-migrate/migrate/v4/cmd/migrate@v4.19.0
+
+tasks:
+  default:
+    desc: Run the current backend quality gate
+    cmds:
+      - task: ci
+
+  task:version:check:
+    desc: Require the pinned Task runner version
+    cmds:
+      - cmd: >-
+          powershell.exe -NoProfile -Command
+          "if ((task --version).Trim() -ne '{{trimPrefix "v" .TASK_VERSION}}') { Write-Error 'Task {{.TASK_VERSION}} is required'; exit 1 }"
+        platforms: [windows]
+      - cmd: >-
+          sh -c 'test "$(task --version)" = "{{trimPrefix "v" .TASK_VERSION}}"'
+        platforms: [linux, darwin]
+
+  format:
+    desc: Format all Go source files
+    cmds:
+      - '{{.GOFUMPT_CMD}} -w .'
+      - '{{.GOIMPORTS_CMD}} -w -local {{.MODULE}} .'
+
+  fmt:check:
+    desc: Reject Go formatting drift without modifying files
+    cmds:
+      - cmd: >-
+          powershell.exe -NoProfile -Command
+          "\$files = @({{.GOFUMPT_CMD}} -l .); if (\$files.Count -gt 0) { \$files | ForEach-Object { Write-Output \$_ }; exit 1 }"
+        platforms: [windows]
+      - cmd: >-
+          sh -c 'files="$({{.GOFUMPT_CMD}} -l .)"; if [ -n "\$files" ]; then printf "%s\n" "\$files"; exit 1; fi'
+        platforms: [linux, darwin]
+
+  lint:
+    desc: Run pinned static analyzers outside the runtime module graph
+    cmds:
+      - '{{.GOLANGCI_LINT_CMD}} run ./...'
+      - '{{.NILAWAY_CMD}} -include-pkgs={{.MODULE}}/... ./...'
+
+  unit:
+    desc: Run uncached race-enabled unit tests
+    cmds:
+      - go test -race -shuffle=on -count=1 ./...
+
+  integration:
+    desc: Run integration-tagged tests
+    cmds:
+      - go test -tags=integration -race -shuffle=on -count=1 ./...
+
+  e2e:
+    desc: Run end-to-end-tagged tests
+    cmds:
+      - go test -tags=e2e -race -shuffle=on -count=1 ./...
+
+  generate:
+    desc: Run declared Go generators
+    cmds:
+      - go generate ./...
+
+  build:
+    desc: Build the API binary
+    cmds:
+      - go build -trimpath -o bin/{{.BINARY}}{{exeExt}} ./cmd/api
+
+  vet:
+    desc: Run Go vet
+    cmds:
+      - go vet ./...
+
+  mod:verify:
+    desc: Verify downloaded module content
+    cmds:
+      - go mod verify
+
+  vuln:
+    desc: Scan packages with pinned govulncheck
+    cmds:
+      - '{{.GOVULNCHECK_CMD}} ./...'
+
+  api:lint:
+    desc: Lint the future OpenAPI contract when present
+    cmds:
+      - '{{.OPENAPI_LINT_CMD}} lint api/openapi.yaml'
+
+  api:generate:
+    desc: Generate the future OpenAPI adapter with the pinned generator
+    cmds:
+      - '{{.OAPI_CODEGEN_CMD}} --config oapi-codegen.yaml api/openapi.yaml'
+
+  migrate:version:
+    desc: Print the pinned migration CLI version
+    cmds:
+      - '{{.MIGRATE_CMD}} -version'
+
+  tools:versions:
+    desc: Print pinned tool versions
+    cmds:
+      - go version
+      - task --version
+      - '{{.GOFUMPT_CMD}} -version'
+      - '{{.GOLANGCI_LINT_CMD}} version'
+      - '{{.NILAWAY_CMD}} -V'
+      - '{{.GOVULNCHECK_CMD}} -version'
+      - '{{.OPENAPI_LINT_CMD}} version'
+
+  ci:
+    desc: Run every Gate B check available at bootstrap
+    cmds:
+      - task: task:version:check
+      - task: fmt:check
+      - task: mod:verify
+      - task: vet
+      - task: lint
+      - task: unit
+      - task: build
