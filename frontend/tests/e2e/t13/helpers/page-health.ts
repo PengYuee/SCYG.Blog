@@ -1,5 +1,6 @@
 import { expect, type Locator, type Page, type TestInfo } from "@playwright/test"
 import path from "node:path"
+import { fileURLToPath } from "node:url"
 
 /** 单页运行期间按来源分离的浏览器与网络异常记录。 */
 export type PageHealth = {
@@ -60,9 +61,12 @@ export async function settleVisualState(page: Page): Promise<void> {
   })
 }
 
-/** 将视觉证据写入统一且被忽略的 T13 路径。 */
+/** 从当前 helper 模块位置上溯五级到仓库根目录，不依赖 Playwright rootDir。 */
+const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../../..")
+
+/** 将视觉证据写入仓库根目录下统一且被忽略的 T13 路径。 */
 export function evidencePath(testInfo: TestInfo, fileName: string): string {
-  return path.resolve(testInfo.config.rootDir, "../.omo/evidence/zfy-blog-vue3-desktop-redesign/t13", testInfo.project.name, fileName)
+  return path.resolve(repositoryRoot, ".omo/evidence/zfy-blog-vue3-desktop-redesign/t13", testInfo.project.name, fileName)
 }
 
 /** 断言健康路径没有任何浏览器或网络异常。 */
