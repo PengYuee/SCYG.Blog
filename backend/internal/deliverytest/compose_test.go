@@ -1,6 +1,7 @@
 package deliverytest_test
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -57,13 +58,57 @@ func Test_Compose_contains_only_API_and_PostgreSQL_with_health_dependency(t *tes
 func Test_Compose_rejects_missing_database_config(t *testing.T) {
 	// Given
 	raw := readDeliveryFile(t, "compose.yaml")
-	requiredExpression := "${SCYG_POSTGRES_PASSWORD:?必须设置 SCYG_POSTGRES_PASSWORD}"
+	var document composeDocument
 
 	// When
-	hasFailClosedSecret := strings.Contains(raw, requiredExpression) && strings.Contains(raw, "SCYG_DATABASE_DSN:")
+	err := yaml.Unmarshal([]byte(raw), &document)
 
 	// Then
-	if !hasFailClosedSecret {
-		t.Fatal("数据库密码缺失时 Compose 必须通过 required 环境表达式失败关闭")
+	if err != nil {
+		t.Fatalf("解析 compose.yaml 失败：%v", err)
 	}
+	requirements := map[string]string{
+		"SCYG_DATABASE_DSN":      document.Services["api"].Environment["SCYG_DATABASE_DSN"],
+		"SCYG_POSTGRES_PASSWORD": document.Services["postgres"].Environment["POSTGRES_PASSWORD"],
+	}
+	for key, value := range requirements {
+		if !isRequiredEnvironment(value, key) {
+			t.Fatalf("%s 必须使用带中文提示的 required 环境表达式，实际为 %q", key, value)
+		}
+	}
+}
+
+func Test_RequiredEnvironment_rejects_bypass_values(t *testing.T) {
+	// Given
+	cases := []struct {
+		name  string
+		value string
+		valid bool
+	}{
+		{"接受中文 required 表达式", "${SCYG_DATABASE_DSN:?必须设置数据库连接}", true},
+		{"拒绝明文", "postgres://user:secret@postgres/blog", false},
+		{"拒绝空值", "", false},
+		{"拒绝普通插值", "${SCYG_DATABASE_DSN}", false},
+		{"拒绝默认值插值", "${SCYG_DATABASE_DSN:-postgres://fallback}", false},
+		{"拒绝空提示", "${SCYG_DATABASE_DSN:?}", false},
+		{"拒绝非中文提示", "${SCYG_DATABASE_DSN:?required}", false},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			// When
+			valid := isRequiredEnvironment(testCase.value, "SCYG_DATABASE_DSN")
+
+			// Then
+			if valid != testCase.valid {
+				t.Fatalf("required 表达式判定错误：value=%q valid=%t", testCase.value, valid)
+			}
+		})
+	}
+}
+
+// isRequiredEnvironment 仅接受目标变量带非空中文提示的 Compose required 插值。
+func isRequiredEnvironment(value, key string) bool {
+	pattern := `^\$\{` + regexp.QuoteMeta(key) + `:\?[^}]*[\p{Han}][^}]*\}$`
+	return regexp.MustCompile(pattern).MatchString(value)
 }
