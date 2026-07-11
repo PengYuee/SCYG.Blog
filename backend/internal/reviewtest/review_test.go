@@ -63,38 +63,52 @@ func Test_PlanCompliance_reads_explicit_artifacts_without_product_commit(t *test
 }
 
 func Test_ReviewE2E_AST_proves_nine_real_scenarios(t *testing.T) {
+	required := map[string][]string{
+		"Test_E2E_migrations_roundtrip":                   {"newHarness", "Shutdown", "migrateDown", "migrateUp", "QueryRowContext", "Scan", "Fatalf"},
+		"Test_E2E_scalar_is_offline_and_self_hosted":      {"newHarness", "request", "ReadAll", "Contains", "Fatalf"},
+		"Test_E2E_public_reads_hide_drafts":               {"newHarness", "createContent", "createArticle", "request", "Fatalf"},
+		"Test_E2E_allow_all_performs_real_crud":           {"newHarness", "createContent", "createArticle", "request", "Fatalf"},
+		"Test_E2E_production_denies_writes":               {"newHarness", "request", "Fatalf"},
+		"Test_E2E_stale_etag_is_rejected":                 {"newHarness", "createContent", "Get", "request", "Fatalf"},
+		"Test_E2E_readiness_fails_during_database_outage": {"newHarness", "openPool", "ExecContext", "request", "Fatal"},
+		"Test_E2E_restart_preserves_committed_data":       {"newHarness", "createContent", "Shutdown", "start", "request", "ReadAll", "Contains", "Fatalf"},
+		"Test_E2E_cancellation_cleans_runtime":            {"newHarness", "Run", "cancel", "After", "Fatal"},
+	}
 	root := filepath.Join(repositoryRoot(t), "backend", "internal", "e2e")
 	paths, err := filepath.Glob(filepath.Join(root, "*_e2e_test.go"))
 	if err != nil {
 		t.Fatalf("枚举 tagged E2E 失败：%v", err)
 	}
-	calls, tests := map[string]bool{}, 0
+	seen := make(map[string]bool)
 	for _, path := range paths {
 		file, parseErr := parser.ParseFile(token.NewFileSet(), path, nil, 0)
 		if parseErr != nil {
 			t.Fatalf("解析 tagged E2E 失败：%v", parseErr)
 		}
-		ast.Inspect(file, func(node ast.Node) bool {
-			call, ok := node.(*ast.CallExpr)
-			if ok {
-				calls[callName(call.Fun)] = true
+		for _, declaration := range file.Decls {
+			function, ok := declaration.(*ast.FuncDecl)
+			if !ok {
+				continue
 			}
-			function, ok := node.(*ast.FuncDecl)
-			if ok && strings.HasPrefix(function.Name.Name, "Test_E2E_") {
-				tests++
-				if !functionCalls(function, "newHarness") || !functionCallsAny(function, "Fatal", "Fatalf") {
-					t.Fatalf("E2E %s 缺少真实 harness 或实际断言", function.Name.Name)
+			expected, scenario := required[function.Name.Name]
+			if !scenario {
+				continue
+			}
+			seen[function.Name.Name] = true
+			calls := functionCallSet(function)
+			for _, name := range expected {
+				if !calls[name] {
+					t.Fatalf("E2E %s 缺少关键调用/断言 %s", function.Name.Name, name)
 				}
 			}
-			return true
-		})
+			if countAssertions(function) < 1 {
+				t.Fatalf("E2E %s 缺少条件化可观察断言", function.Name.Name)
+			}
+		}
 	}
-	if tests != 9 {
-		t.Fatalf("真实 E2E 场景数量错误：得到 %d，期望 9", tests)
-	}
-	for _, required := range []string{"New", "NewRequestWithContext", "Do", "WithTimeout", "Cleanup", "Up", "Down", "Shutdown", "ExecContext"} {
-		if !calls[required] {
-			t.Fatalf("E2E harness 缺少真实调用 %s", required)
+	for name := range required {
+		if !seen[name] {
+			t.Fatalf("缺少 E2E 场景 %s", name)
 		}
 	}
 }
@@ -110,6 +124,27 @@ func Test_ReviewE2E_AST_rejects_string_catalog(t *testing.T) {
 	}
 }
 
+func functionCallSet(function *ast.FuncDecl) map[string]bool {
+	calls := make(map[string]bool)
+	ast.Inspect(function.Body, func(node ast.Node) bool {
+		if call, ok := node.(*ast.CallExpr); ok {
+			calls[callName(call.Fun)] = true
+		}
+		return true
+	})
+	return calls
+}
+
+func countAssertions(function *ast.FuncDecl) int {
+	count := 0
+	ast.Inspect(function.Body, func(node ast.Node) bool {
+		if _, ok := node.(*ast.IfStmt); ok {
+			count++
+		}
+		return true
+	})
+	return count
+}
 func functionCalls(function *ast.FuncDecl, name string) bool { return functionCallsAny(function, name) }
 func functionCallsAny(function *ast.FuncDecl, names ...string) bool {
 	found := false

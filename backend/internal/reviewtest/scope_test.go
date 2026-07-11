@@ -1,18 +1,14 @@
 package reviewtest_test
 
 import (
-	"go/ast"
 	"go/parser"
 	"go/token"
 	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
-
-	"golang.org/x/mod/modfile"
 )
 
 // scopeViolation 描述一个语义范围越界。
@@ -55,123 +51,16 @@ func scanScope(root string) ([]scopeViolation, error) {
 	return violations, err
 }
 
-// forbiddenModulePrefixes 返回本阶段禁止进入模块图或生产导入的前缀。
-func forbiddenModulePrefixes() []string {
-	return []string{"google.golang.org/grpc", "github.com/gorilla/websocket", "github.com/segmentio/kafka-go", "buf.build/"}
-}
-
-// isForbiddenDirectory 按完整路径段识别未来运行时目录。
-func isForbiddenDirectory(name string) bool {
-	switch name {
-	case "grpc", "websocket", "kafka", "outbox", "proto", "integration":
-		return true
-	default:
-		return false
-	}
-}
-func forbiddenRuntimeDirectory(path string) bool {
-	parts := strings.Split(strings.ToLower(filepath.ToSlash(path)), "/")
-	for index, part := range parts {
-		if isForbiddenDirectory(part) && !(part == "integration" && index > 0 && parts[index-1] == "testdata") {
-			return true
-		}
-	}
-	return false
-}
-
-func scanModule(path string) ([]scopeViolation, error) {
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	file, err := modfile.Parse(path, content, nil)
-	if err != nil {
-		return nil, err
-	}
-	violations := make([]scopeViolation, 0)
-	for _, requirement := range file.Require {
-		for _, prefix := range forbiddenModulePrefixes() {
-			if strings.HasPrefix(requirement.Mod.Path, prefix) {
-				violations = append(violations, scopeViolation{"go.mod", "禁止模块依赖：" + requirement.Mod.Path})
-			}
-		}
-	}
-	return violations, nil
-}
-
-func scanGoAST(path string, file *ast.File) []scopeViolation {
-	violations := make([]scopeViolation, 0)
-	for _, imported := range file.Imports {
-		value, err := strconv.Unquote(imported.Path.Value)
-		if err != nil {
-			continue
-		}
-		for _, prefix := range forbiddenModulePrefixes() {
-			if strings.HasPrefix(value, prefix) {
-				violations = append(violations, scopeViolation{path, "禁止运行时导入：" + value})
-			}
-		}
-	}
-	ast.Inspect(file, func(node ast.Node) bool {
-		switch value := node.(type) {
-		case *ast.TypeSpec:
-			if value.Name.Name == "AllowAll" {
-				violations = append(violations, scopeViolation{path, "AllowAll 只能存在于测试源码"})
-			}
-			if value.Name.Name == "Category" {
-				violations = append(violations, scopeViolation{path, "实体 ArticleType 禁止改名为 Category"})
-			}
-		case *ast.CallExpr:
-			if selector, ok := value.Fun.(*ast.SelectorExpr); ok && selector.Sel.Name == "AutoMigrate" {
-				violations = append(violations, scopeViolation{path, "禁止调用 AutoMigrate"})
-			}
-		case *ast.ValueSpec:
-			for _, expression := range value.Values {
-				if route, ok := constantString(expression); ok && legacyRoute(route) {
-					violations = append(violations, scopeViolation{path, "禁止旧式 action 路由：" + route})
-				}
-			}
-		}
-		return true
-	})
-	return violations
-}
-
-// constantString 折叠字符串字面量拼接，避免通过空白或 `+` 绕过旧路由扫描。
-func constantString(expression ast.Expr) (string, bool) {
-	switch value := expression.(type) {
-	case *ast.BasicLit:
-		if value.Kind != token.STRING {
-			return "", false
-		}
-		result, err := strconv.Unquote(value.Value)
-		return result, err == nil
-	case *ast.BinaryExpr:
-		if value.Op != token.ADD {
-			return "", false
-		}
-		left, leftOK := constantString(value.X)
-		right, rightOK := constantString(value.Y)
-		return left + right, leftOK && rightOK
-	default:
-		return "", false
-	}
-}
-
-func legacyRoute(route string) bool {
-	lower := strings.ToLower(route)
-	return strings.Contains(lower, "/article/get") || strings.Contains(lower, "/article/create") || strings.Contains(lower, "/article/update") || strings.Contains(lower, "/article/delete")
-}
-
 func Test_ScopeScanner_rejects_semantic_fixtures_and_ignores_comments(t *testing.T) {
 	cases := map[string]map[string]string{
-		"模块语法":  {"go.mod": "module fixture\nrequire (\n google.golang.org/grpc v1.0.0\n)"},
-		"导入别名":  {"runtime.go": "package fixture\nimport socket \"github.com/gorilla/websocket\"\nvar _ = socket.IsCloseError"},
-		"选择器调用": {"database.go": "package fixture\nfunc f(){ db.AutoMigrate ( &Article{} ) }"},
-		"生产声明":  {"auth.go": "package fixture\ntype AllowAll struct{}"},
-		"实体改名":  {"model.go": "package fixture\ntype Category struct{}"},
-		"拼接旧路由": {"route.go": "package fixture\nconst route = \"/Article/\" + \"Get\""},
-		"运行时目录": {"internal/outbox/worker.go": "package outbox"},
+		"模块语法":   {"go.mod": "module fixture\nrequire (\n google.golang.org/grpc v1.0.0\n)"},
+		"导入别名":   {"runtime.go": "package fixture\nimport socket \"github.com/gorilla/websocket\"\nvar _ = socket.IsCloseError"},
+		"选择器调用":  {"database.go": "package fixture\nfunc f(){ db.AutoMigrate ( &Article{} ) }"},
+		"生产声明":   {"auth.go": "package fixture\ntype allow_all struct{}"},
+		"调用参数拼接": {"route.go": "package fixture\nconst prefix = (\"/Article/\"); func mount(){ router.GET(prefix + \"Get\", handler) }"},
+		"实体改名":   {"model.go": "package fixture\ntype Category struct{}"},
+		"拼接旧路由":  {"route.go": "package fixture\nconst route = \"/Article/\" + \"Get\""},
+		"运行时目录":  {"internal/outbox/worker.go": "package outbox"},
 	}
 	for name, files := range cases {
 		t.Run(name, func(t *testing.T) {

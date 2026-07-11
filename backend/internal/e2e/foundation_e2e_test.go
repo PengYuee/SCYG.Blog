@@ -5,8 +5,10 @@ package e2e_test
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -50,25 +52,47 @@ func Test_E2E_scalar_is_offline_and_self_hosted(t *testing.T) {
 func Test_E2E_public_reads_hide_drafts(t *testing.T) {
 	h := newHarness(t, allowAll{})
 	defer h.close()
-	createContent(t, h)
+	articleType, tag := createContent(t, h)
+	draft := createArticle(t, h, articleType, tag, "draft", "draft")
+	published := createArticle(t, h, articleType, tag, "published", "published")
+	publish := h.request(http.MethodPatch, published.Header.Get("Location"), "{\"status\":\"published\"}", map[string]string{"If-Match": published.Header.Get("ETag")})
+	if publish.StatusCode != http.StatusOK {
+		t.Fatalf("发布文章失败：%d", publish.StatusCode)
+	}
 	response := h.request(http.MethodGet, "/api/v1/articles", "", nil)
 	body, _ := io.ReadAll(response.Body)
-	if response.StatusCode != http.StatusOK || strings.Contains(string(body), "e2e-draft") {
-		t.Fatalf("公开读取暴露草稿：%s", body)
+	if response.StatusCode != http.StatusOK || strings.Contains(string(body), "e2e-draft") || !strings.Contains(string(body), "e2e-published") {
+		t.Fatalf("公开列表可见性错误：%s", body)
+	}
+	if hidden := h.request(http.MethodGet, draft.Header.Get("Location"), "", nil); hidden.StatusCode != http.StatusNotFound {
+		t.Fatalf("公开详情暴露草稿：%d", hidden.StatusCode)
+	}
+	if visible := h.request(http.MethodGet, published.Header.Get("Location"), "", nil); visible.StatusCode != http.StatusOK {
+		t.Fatalf("公开详情未返回已发布文章：%d", visible.StatusCode)
 	}
 }
 
 func Test_E2E_allow_all_performs_real_crud(t *testing.T) {
 	h := newHarness(t, allowAll{})
 	defer h.close()
-	typeResponse, tagResponse := createContent(t, h)
-	if typeResponse.StatusCode != http.StatusCreated || tagResponse.StatusCode != http.StatusCreated {
-		t.Fatalf("AllowAll 创建失败：type=%d tag=%d", typeResponse.StatusCode, tagResponse.StatusCode)
+	articleType, tag := createContent(t, h)
+	article := createArticle(t, h, articleType, tag, "crud", "draft")
+	for _, location := range []string{articleType.Header.Get("Location"), tag.Header.Get("Location"), article.Header.Get("Location")} {
+		if got := h.request(http.MethodGet, location, "", nil); got.StatusCode != http.StatusOK && location != article.Header.Get("Location") {
+			t.Fatalf("读取已创建资源失败：%s status=%d", location, got.StatusCode)
+		}
 	}
-	list := h.request(http.MethodGet, "/api/v1/tags", "", nil)
-	body, _ := io.ReadAll(list.Body)
-	if !strings.Contains(string(body), "e2e-tag") {
-		t.Fatalf("真实 CRUD 未持久化标签：%s", body)
+	articlePatch := h.request(http.MethodPatch, article.Header.Get("Location"), "{\"title\":\"e2e-crud-updated\"}", map[string]string{"If-Match": article.Header.Get("ETag")})
+	if articlePatch.StatusCode != http.StatusOK {
+		t.Fatalf("更新 Article 失败：%d", articlePatch.StatusCode)
+	}
+	if deleted := h.request(http.MethodDelete, article.Header.Get("Location"), "", map[string]string{"If-Match": articlePatch.Header.Get("ETag")}); deleted.StatusCode != http.StatusNoContent {
+		t.Fatalf("删除 Article 失败：%d", deleted.StatusCode)
+	}
+	for _, resource := range []*http.Response{tag, articleType} {
+		if deleted := h.request(http.MethodDelete, resource.Header.Get("Location"), "", map[string]string{"If-Match": resource.Header.Get("ETag")}); deleted.StatusCode != http.StatusNoContent {
+			t.Fatalf("删除 taxonomy 失败：%d", deleted.StatusCode)
+		}
 	}
 }
 
@@ -146,6 +170,25 @@ func createContent(t *testing.T, h *harness) (*http.Response, *http.Response) {
 	return typeResponse, tagResponse
 }
 
+func createArticle(t *testing.T, h *harness, articleType, tag *http.Response, suffix, status string) *http.Response {
+	t.Helper()
+	body := fmt.Sprintf("{\"title\":\"e2e-%s\",\"slug\":\"e2e-%s\",\"digest\":\"digest\",\"content\":\"content\",\"article_type_id\":%d,\"tag_ids\":[%d],\"status\":\"%s\"}", suffix, suffix, locationID(t, articleType), locationID(t, tag), status)
+	response := h.request(http.MethodPost, "/api/v1/articles", body, nil)
+	if response.StatusCode != http.StatusCreated {
+		t.Fatalf("创建 Article 失败：%d", response.StatusCode)
+	}
+	return response
+}
+
+func locationID(t *testing.T, response *http.Response) int64 {
+	t.Helper()
+	parts := strings.Split(strings.TrimSuffix(response.Header.Get("Location"), "/"), "/")
+	id, err := strconv.ParseInt(parts[len(parts)-1], 10, 64)
+	if err != nil {
+		t.Fatalf("解析 Location 主键失败：%v", err)
+	}
+	return id
+}
 func openPool(t *testing.T, dsn string) *sql.DB {
 	t.Helper()
 	pool, err := sql.Open("pgx", dsn)

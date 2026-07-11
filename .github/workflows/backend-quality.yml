@@ -1,6 +1,16 @@
 name: backend-quality
 
 on:
+  workflow_dispatch:
+    inputs:
+      plan_document:
+        description: 'Todo13 计划文档正文（手动 F1 审计必填）'
+        required: false
+        type: string
+      evidence_manifest:
+        description: 'Todo13 evidence 正文（手动 F1 审计必填）'
+        required: false
+        type: string
   push:
     branches: [main]
     paths:
@@ -51,6 +61,26 @@ jobs:
         run: task generate:freshness
       - name: Run shared static quality gates including pinned govulncheck
         run: task qa:static
+      - name: Run push and pull-request handoff structure audit
+        if: github.event_name != 'workflow_dispatch'
+        run: go test -timeout 30s ./internal/reviewtest -run 'Test_(ReviewE2E|Scope)' -count=1
+      - name: Materialize external plan and evidence inputs
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          PLAN_DOCUMENT: ${{ inputs.plan_document }}
+          EVIDENCE_MANIFEST: ${{ inputs.evidence_manifest }}
+        run: |
+          test -n "$PLAN_DOCUMENT" || { echo '缺少 plan_document，不能运行 F1'; exit 1; }
+          test -n "$EVIDENCE_MANIFEST" || { echo '缺少 evidence_manifest，不能运行 F1'; exit 1; }
+          mkdir -p "$RUNNER_TEMP/scyg-evidence"
+          printf '%s\n' "$PLAN_DOCUMENT" > "$RUNNER_TEMP/scyg-plan.md"
+          printf '%s\n' "$EVIDENCE_MANIFEST" > "$RUNNER_TEMP/scyg-evidence/task-13-go-service-architecture-foundation.txt"
+      - name: Run explicit plan compliance audit
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          PLAN_PATH: ${{ runner.temp }}/scyg-plan.md
+          EVIDENCE_ROOT: ${{ runner.temp }}/scyg-evidence
+        run: task qa:plan PLAN_PATH="$PLAN_PATH" EVIDENCE_ROOT="$EVIDENCE_ROOT"
 
   database-quality:
     name: Migration roundtrip, integration and E2E gates
