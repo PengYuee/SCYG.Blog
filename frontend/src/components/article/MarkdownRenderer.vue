@@ -26,7 +26,7 @@ const sanitizedMarkdown = computed(
 </script>
 
 <template>
-  <div class="grid gap-8 lg:grid-cols-[minmax(0,1fr)_16rem]">
+  <div data-testid="markdown-layout" class="grid gap-8 lg:grid-cols-[minmax(0,var(--layout-reading-measure))_16rem] lg:justify-center">
     <MdPreview
       :id="previewId"
       :model-value="sanitizedMarkdown"
@@ -34,7 +34,7 @@ const sanitizedMarkdown = computed(
       language="zh-CN"
       preview-theme="github"
     />
-    <aside class="border-l border-border-subtle pl-6" aria-label="文章目录">
+    <aside class="border-l border-border-subtle pl-6 lg:sticky lg:top-[calc(var(--layout-nav-height)+var(--space-6))] lg:self-start" aria-label="文章目录">
       <MdCatalog :editor-id="previewId" scroll-element="html" />
     </aside>
   </div>

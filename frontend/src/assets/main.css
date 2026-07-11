@@ -90,7 +90,7 @@
   --layout-sidebar: 300px;
   --layout-column-gap: 32px;
   --layout-card-gap: 24px;
-  --layout-reading-measure: 42rem;
+  --layout-reading-measure: 50rem;
 }
 
 /* Author and editor layout contract; state colors remain shared semantic primitives. */

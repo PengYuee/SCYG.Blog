@@ -62,7 +62,7 @@ The CJK-first `--font-family-display` stack is `"Noto Serif SC", "Songti SC", ST
 | `--font-size-small` / `--line-height-small` | `14px / 1.6` | 400 | Metadata |
 | `--font-size-caption` / `--line-height-caption` | `12px / 1.5` | 600 | Compact labels |
 
-Use `text-wrap: balance` on display headings and `text-wrap: pretty` on paragraphs. Do not split a CJK punctuation mark from its phrase, leave a single character on a heading line, or force article text into a narrow measure. Long-form reading measure is `42rem`.
+Use `text-wrap: balance` on display headings and `text-wrap: pretty` on paragraphs. Do not split a CJK punctuation mark from its phrase, leave a single character on a heading line, or force article text into a narrow measure. Long-form detail reading measure is `50rem` (800px), paired with the existing desktop catalog without overlap.
 
 ## 4. Spacing, geometry, and depth
 
@@ -75,7 +75,7 @@ Spacing follows a 4px base unit: `--space-1: 4px`, `--space-2: 8px`, `--space-3:
 - Wave transition: `--layout-wave-height: 72px`, visually joining hero and canvas without continuous animation.
 - Content grid: `--layout-sidebar: 300px`, `--layout-column-gap: 32px`; main stream consumes the remaining width.
 - Card grid: exactly 3 columns with `--layout-card-gap: 24px` on supported desktop widths.
-- Reading measure: `--layout-reading-measure: 42rem`.
+- Reading measure: `--layout-reading-measure: 50rem`.
 
 Radii are `--radius-control: 8px`, `--radius-card: 14px`, `--radius-panel: 20px`, and `--radius-round: 9999px`. Shadows are `--shadow-card: 0 12px 32px rgb(40 55 82 / 10%)`, `--shadow-card-hover: 0 18px 42px rgb(40 55 82 / 16%)`, `--shadow-nav: 0 8px 24px rgb(40 55 82 / 10%)`, and `--shadow-dialog: 0 20px 48px rgb(40 55 82 / 18%)`.
 
