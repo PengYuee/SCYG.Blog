@@ -63,49 +63,14 @@ func Test_PlanCompliance_reads_explicit_artifacts_without_product_commit(t *test
 }
 
 func Test_ReviewE2E_AST_proves_nine_real_scenarios(t *testing.T) {
-	required := map[string][]string{
-		"Test_E2E_migrations_roundtrip":                   {"newHarness", "Shutdown", "migrateDown", "migrateUp", "QueryRowContext", "Scan", "Fatalf"},
-		"Test_E2E_scalar_is_offline_and_self_hosted":      {"newHarness", "request", "assertLocalReferences", "StatusOK", "Fatalf"},
-		"Test_E2E_public_reads_hide_drafts":               {"newHarness", "createContent", "createArticle", "request", "Fatalf"},
-		"Test_E2E_allow_all_performs_real_crud":           {"newHarness", "createContent", "createArticle", "request", "Fatalf"},
-		"Test_E2E_production_denies_writes":               {"newHarness", "snapshotDatabase", "request", "DeepEqual", "StatusForbidden", "Fatalf"},
-		"Test_E2E_stale_etag_is_rejected":                 {"newHarness", "snapshotTag", "request", "DeepEqual", "StatusPreconditionFailed", "Fatalf"},
-		"Test_E2E_readiness_fails_during_database_outage": {"newHarness", "setDatabaseConnectionsAllowed", "waitHTTPStatus", "StatusServiceUnavailable", "StatusOK", "Fatalf"},
-		"Test_E2E_restart_preserves_committed_data":       {"newHarness", "createContent", "Shutdown", "start", "request", "ReadAll", "Contains", "Fatalf"},
-		"Test_E2E_sigterm_closes_runtime":                 {"assertSignalSubprocessShutdown"},
-	}
-	root := filepath.Join(repositoryRoot(t), "backend", "internal", "e2e")
-	paths, err := filepath.Glob(filepath.Join(root, "*_e2e_test.go"))
+	path := filepath.Join(repositoryRoot(t), "backend", "internal", "e2e", "foundation_e2e_test.go")
+	file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
 	if err != nil {
-		t.Fatalf("枚举 tagged E2E 失败：%v", err)
+		t.Fatalf("解析 tagged E2E 失败：%v", err)
 	}
-	seen := make(map[string]bool)
-	for _, path := range paths {
-		file, parseErr := parser.ParseFile(token.NewFileSet(), path, nil, 0)
-		if parseErr != nil {
-			t.Fatalf("解析 tagged E2E 失败：%v", parseErr)
-		}
-		for _, declaration := range file.Decls {
-			function, ok := declaration.(*ast.FuncDecl)
-			if !ok {
-				continue
-			}
-			expected, scenario := required[function.Name.Name]
-			if !scenario {
-				continue
-			}
-			seen[function.Name.Name] = true
-			symbols := functionSymbolSet(function)
-			for _, name := range expected {
-				if !symbols[name] {
-					t.Fatalf("E2E %s 缺少关键调用/断言 %s", function.Name.Name, name)
-				}
-			}
-		}
-	}
-	for name := range required {
-		if !seen[name] {
-			t.Fatalf("缺少 E2E 场景 %s", name)
+	for _, requirement := range scenarioRequirements() {
+		if failures := validateScenario(file, requirement); len(failures) != 0 {
+			t.Fatalf("E2E 场景验证失败：%v", failures)
 		}
 	}
 }

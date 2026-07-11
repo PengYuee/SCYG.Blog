@@ -44,10 +44,16 @@ type harness struct {
 	app      *bootstrap.App
 	client   *http.Client
 	baseURL  string
+	observer bootstrap.LifecycleObserver
 }
 
 // newHarness 创建随机数据库、执行真实迁移并启动真实 bootstrap HTTP 应用。
 func newHarness(t *testing.T, authorizer content.Authorizer) *harness {
+	return newHarnessWithObserver(t, authorizer, nil)
+}
+
+// newHarnessWithObserver 为信号叙事注入 App-owned 生命周期观察器。
+func newHarnessWithObserver(t *testing.T, authorizer content.Authorizer, observer bootstrap.LifecycleObserver) *harness {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), e2eTimeout)
 	adminDSN := os.Getenv("SCYG_POSTGRES_ADMIN_DSN")
@@ -56,7 +62,7 @@ func newHarness(t *testing.T, authorizer content.Authorizer) *harness {
 		t.Fatal("缺少 E2E 所需 SCYG_POSTGRES_ADMIN_DSN")
 	}
 	name, dsn := createDatabase(t, ctx, adminDSN)
-	h := &harness{t: t, ctx: ctx, cancel: cancel, adminDSN: adminDSN, dsn: dsn, name: name, client: &http.Client{Timeout: 5 * time.Second}}
+	h := &harness{t: t, ctx: ctx, cancel: cancel, adminDSN: adminDSN, dsn: dsn, name: name, client: &http.Client{Timeout: 5 * time.Second}, observer: observer}
 	h.migrateUp()
 	h.start(authorizer)
 	return h
@@ -76,7 +82,7 @@ func (h *harness) start(authorizer content.Authorizer) {
 	for key, value := range map[string]string{"SCYG_DATABASE_DSN": h.dsn, "SCYG_HTTP_HOST": "127.0.0.1", "SCYG_HTTP_PORT": fmt.Sprint(port), "SCYG_APP_ENV": "test", "SCYG_DOCS_ENABLED": "true"} {
 		h.t.Setenv(key, value)
 	}
-	h.app, err = bootstrap.New(h.ctx, bootstrap.Options{LogWriter: io.Discard, Authorizer: authorizer}, bootstrap.DefaultDependencies())
+	h.app, err = bootstrap.New(h.ctx, bootstrap.Options{LogWriter: io.Discard, Authorizer: authorizer, LifecycleObserver: h.observer}, bootstrap.DefaultDependencies())
 	if err != nil {
 		h.t.Fatalf("构造 E2E 应用失败：%v", err)
 	}

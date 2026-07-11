@@ -144,5 +144,5 @@ func New(ctx context.Context, options Options, dependencies Dependencies) (*App,
 	if nilLike(server) {
 		return nil, fail(errors.New("HTTP 构造器返回空结果"))
 	}
-	return newApp(cfg, health, server, telemetry, db), nil
+	return newApp(cfg, health, server, telemetry, db, options.LifecycleObserver), nil
 }

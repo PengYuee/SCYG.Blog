@@ -18,6 +18,7 @@ type App struct {
 	server       HTTPServer
 	telemetry    Telemetry
 	database     Database
+	observer     LifecycleObserver
 	mutex        sync.Mutex
 	listener     net.Listener
 	serveErrors  <-chan error
@@ -27,8 +28,8 @@ type App struct {
 	stopped      bool
 }
 
-func newApp(cfg config.Config, health *observability.Health, server HTTPServer, telemetry Telemetry, db Database) *App {
-	return &App{config: cfg, health: health, server: server, telemetry: telemetry, database: db}
+func newApp(cfg config.Config, health *observability.Health, server HTTPServer, telemetry Telemetry, db Database, observer LifecycleObserver) *App {
+	return &App{config: cfg, health: health, server: server, telemetry: telemetry, database: db, observer: lifecycleObserverOrDefault(observer)}
 }
 
 // Start 同步绑定监听地址，并仅在启动结果完整有效后开放 readiness。
@@ -119,9 +120,22 @@ func (app *App) Shutdown(ctx context.Context) error {
 	app.shutdownDone = make(chan struct{})
 	done := app.shutdownDone
 	app.health.Withdraw()
+	app.observer.ReadinessWithdrawn()
 	app.mutex.Unlock()
-	// server、database、telemetry 是真实创建顺序的严格逆序。
-	err := errors.Join(app.server.Shutdown(ctx), app.database.Close(), app.telemetry.Shutdown(ctx))
+	// server、database、telemetry 是真实创建顺序的严格逆序；仅成功关闭后发布事实。
+	httpErr := app.server.Shutdown(ctx)
+	if httpErr == nil {
+		app.observer.HTTPClosed()
+	}
+	databaseErr := app.database.Close()
+	if databaseErr == nil {
+		app.observer.DatabaseClosed()
+	}
+	telemetryErr := app.telemetry.Shutdown(ctx)
+	if telemetryErr == nil {
+		app.observer.TelemetryClosed()
+	}
+	err := errors.Join(httpErr, databaseErr, telemetryErr)
 	app.mutex.Lock()
 	app.shutdownErr = err
 	app.shuttingDown = false

@@ -4,15 +4,62 @@ package e2e_test
 
 import (
 	"context"
-	"errors"
+	"encoding/json"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
+
+// lifecycleSnapshot 是由 bootstrap 实际关闭回调形成的可序列化状态。
+type lifecycleSnapshot struct {
+	// ReadinessWithdrawn 表示 App 已撤回 readiness。
+	ReadinessWithdrawn bool
+	// HTTPClosed 表示 App-owned HTTP 已关闭。
+	HTTPClosed bool
+	// DatabaseClosed 表示 App-owned database 已关闭。
+	DatabaseClosed bool
+	// TelemetryClosed 表示 App-owned telemetry 已关闭。
+	TelemetryClosed bool
+}
+
+// lifecycleSnapshotObserver 并发安全记录 App-owned 资源关闭事实。
+type lifecycleSnapshotObserver struct {
+	// mutex 保护关闭回调和快照读取。
+	mutex sync.Mutex
+	// snapshot 只由 bootstrap observer 回调更新。
+	snapshot lifecycleSnapshot
+}
+
+func (observer *lifecycleSnapshotObserver) ReadinessWithdrawn() {
+	observer.mutex.Lock()
+	defer observer.mutex.Unlock()
+	observer.snapshot.ReadinessWithdrawn = true
+}
+func (observer *lifecycleSnapshotObserver) HTTPClosed() {
+	observer.mutex.Lock()
+	defer observer.mutex.Unlock()
+	observer.snapshot.HTTPClosed = true
+}
+func (observer *lifecycleSnapshotObserver) DatabaseClosed() {
+	observer.mutex.Lock()
+	defer observer.mutex.Unlock()
+	observer.snapshot.DatabaseClosed = true
+}
+func (observer *lifecycleSnapshotObserver) TelemetryClosed() {
+	observer.mutex.Lock()
+	defer observer.mutex.Unlock()
+	observer.snapshot.TelemetryClosed = true
+}
+func (observer *lifecycleSnapshotObserver) Snapshot() lifecycleSnapshot {
+	observer.mutex.Lock()
+	defer observer.mutex.Unlock()
+	return observer.snapshot
+}
 
 // TestSignalChildProcess 是 E2E 测试二进制的真实 API 子进程入口。
 func TestSignalChildProcess(t *testing.T) {
@@ -20,8 +67,8 @@ func TestSignalChildProcess(t *testing.T) {
 	if marker == "" {
 		return
 	}
-	h := newHarness(t, nil)
-	pool := openPool(t, h.dsn)
+	observer := &lifecycleSnapshotObserver{}
+	h := newHarnessWithObserver(t, nil, observer)
 	if err := os.WriteFile(marker+".ready", []byte(h.baseURL), 0o600); err != nil {
 		t.Fatalf("写入子进程就绪标记失败：%v", err)
 	}
@@ -31,14 +78,12 @@ func TestSignalChildProcess(t *testing.T) {
 		t.Fatalf("SIGTERM 关闭应用失败：%v", err)
 	}
 	h.app = nil
-	if err := pool.Close(); err != nil {
-		t.Fatalf("关闭子进程 SQL pool 失败：%v", err)
+	snapshot, err := json.Marshal(observer.Snapshot())
+	if err != nil {
+		t.Fatalf("序列化真实生命周期快照失败：%v", err)
 	}
-	if err := pool.PingContext(context.Background()); !errors.Is(err, os.ErrClosed) && err == nil {
-		t.Fatal("SQLDB 关闭后仍可 Ping")
-	}
-	if err := os.WriteFile(marker+".closed", []byte("telemetry=shutdown\ndatabase=closed"), 0o600); err != nil {
-		t.Fatalf("写入关闭标记失败：%v", err)
+	if err = os.WriteFile(marker+".closed", snapshot, 0o600); err != nil {
+		t.Fatalf("写入真实关闭快照失败：%v", err)
 	}
 	h.close()
 }
@@ -62,9 +107,13 @@ func assertSignalSubprocessShutdown(t *testing.T) {
 	if err := command.Wait(); err != nil {
 		t.Fatalf("等待信号子进程失败：%v", err)
 	}
-	closed := string(waitMarker(t, ctx, marker+".closed"))
-	if !strings.Contains(closed, "telemetry=shutdown") || !strings.Contains(closed, "database=closed") {
-		t.Fatalf("关闭标记不完整：%s", closed)
+	closed := waitMarker(t, ctx, marker+".closed")
+	var snapshot lifecycleSnapshot
+	if err := json.Unmarshal(closed, &snapshot); err != nil {
+		t.Fatalf("解析真实生命周期快照失败：%v", err)
+	}
+	if !snapshot.ReadinessWithdrawn || !snapshot.HTTPClosed || !snapshot.DatabaseClosed || !snapshot.TelemetryClosed {
+		t.Fatalf("真实生命周期快照不完整：%+v", snapshot)
 	}
 	client := &http.Client{Timeout: time.Second}
 	if _, err := client.Get(baseURL + "/ready"); err == nil {

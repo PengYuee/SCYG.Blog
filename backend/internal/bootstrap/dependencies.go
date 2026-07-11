@@ -65,4 +65,6 @@ type Options struct {
 	LogWriter io.Writer
 	// Authorizer 是测试可注入策略；生产 nil 即 DenyAll。
 	Authorizer module.Authorizer
+	// LifecycleObserver 接收 App 实际完成的关闭事实；生产可省略。
+	LifecycleObserver LifecycleObserver
 }
