@@ -1,5 +1,5 @@
-import DOMPurify from "dompurify"
-import type { Config } from "dompurify"
+import createDOMPurify from "dompurify"
+import type { Config, DOMPurify } from "dompurify"
 
 /** Markdown 渲染所需的最小 HTML 标签白名单。 */
 const MARKDOWN_TAGS = [
@@ -19,12 +19,26 @@ export const MARKDOWN_SANITIZE_POLICY: Readonly<Config> = {
   ALLOW_ARIA_ATTR: false,
 } as const
 
+/** Markdown sanitizer 在无 DOM 环境被执行时的边界错误。 */
+class MarkdownSanitizerUnavailableError extends Error {
+  /** 创建可诊断的 DOM 环境错误。 */
+  public constructor() {
+    super("Markdown sanitization requires a browser Window")
+    this.name = "MarkdownSanitizerUnavailableError"
+  }
+}
+
 /**
  * 判断链接是否属于 Markdown 阅读界面允许的地址。
  * @param value 未受信任的 href 属性值。
  * @returns HTTP(S)、mailto、站内相对地址或页内锚点是否安全。
  */
-const isSafeLink = (value: string): boolean => !/[\\\u0000-\u001f\u007f]/u.test(value) && /^(?:https?:\/\/|mailto:|#|\?|\/(?!\/)|\.\.?\/)/iu.test(value.trim())
+const isSafeLink = (value: string): boolean => {
+  const location = value.trim()
+  if (location.length === 0 || /[\\\u0000-\u0020\u007f]/u.test(location) || location.startsWith("//")) return false
+  if (/^(?:https?:\/\/|mailto:|#|\?|\/(?!\/)|\.\.?\/)/iu.test(location)) return true
+  return !/^[a-z][a-z\d+.-]*:/iu.test(location) && /^[\p{L}\p{N}_~%-][^\\\s:]*$/u.test(location)
+}
 
 /**
  * 判断图片是否属于 Markdown 阅读界面允许的地址。
@@ -66,12 +80,26 @@ const enforceMarkdownAttributes = (node: Element): void => {
   }
 }
 
-DOMPurify.addHook("afterSanitizeAttributes", enforceMarkdownAttributes)
+/**
+ * 创建仅归 Markdown 边界所有的 DOMPurify 实例并注册一次私有 hook。
+ * @returns 与包级全局 hook 完全隔离的 sanitizer。
+ */
+const createMarkdownPurifier = (): DOMPurify => {
+  if (typeof window === "undefined") throw new MarkdownSanitizerUnavailableError()
+  const purifier = createDOMPurify(window)
+  purifier.addHook("afterSanitizeAttributes", enforceMarkdownAttributes)
+  return purifier
+}
+
+let markdownPurifier: DOMPurify | undefined
 
 /**
  * 清理未受信任的 Markdown 源或 md-editor-v3 生成的 HTML。
- * 同一策略同时保护预览输入、预览 sanitize 钩子和目录标题来源。
+ * 同一私有策略同时保护预览输入、预览 sanitize 钩子和目录标题来源。
  * @param untrustedContent 未受信任的 Markdown 或 HTML 字符串。
  * @returns 仅包含 Markdown 阅读所需安全结构的字符串。
  */
-export const sanitizeMarkdown = (untrustedContent: string): string => DOMPurify.sanitize(untrustedContent, MARKDOWN_SANITIZE_POLICY)
+export const sanitizeMarkdown = (untrustedContent: string): string => {
+  markdownPurifier ??= createMarkdownPurifier()
+  return markdownPurifier.sanitize(untrustedContent, MARKDOWN_SANITIZE_POLICY)
+}

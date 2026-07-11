@@ -1,3 +1,4 @@
+import DOMPurify from "dompurify"
 import { describe, expect, it } from "vitest"
 import { sanitizeMarkdown } from "@/security/sanitize-markdown"
 
@@ -42,5 +43,32 @@ describe("sanitizeMarkdown", () => {
   ])("removes unsafe URL from %s (%s)", (dirty) => {
     // Given / When / Then: unsafe URL schemes cannot survive sanitization.
     expect(sanitizeMarkdown(dirty)).not.toMatch(/(?:src|href)=/u)
+  })
+
+  it("does not leak Markdown hooks into the global DOMPurify consumer", () => {
+    // Given: an unrelated global DOMPurify consumer with a safe application ID.
+    const unrelatedHtml = '<div id="application-shell">Shell</div>'
+    // When: it sanitizes after the Markdown module has registered its policy.
+    const clean = DOMPurify.sanitize(unrelatedHtml)
+    // Then: Markdown-specific ID rules do not alter the unrelated consumer.
+    expect(clean).toContain('id="application-shell"')
+  })
+
+  it("preserves safe bare relative links as internal navigation", () => {
+    // Given / When: a safe bare relative path crosses the Markdown boundary.
+    const clean = sanitizeMarkdown('<a href="docs/page">Docs</a>')
+    // Then: the internal href remains without external-window attributes.
+    expect(clean).toContain('href="docs/page"')
+    expect(clean).not.toContain("target=")
+    expect(clean).not.toContain("rel=")
+  })
+
+  it("keeps Markdown URL enforcement after global hooks are reset", () => {
+    // Given: unrelated code clears hooks on the package-global purifier.
+    DOMPurify.removeAllHooks()
+    // When: a browser-normalized external path crosses the Markdown boundary.
+    const clean = sanitizeMarkdown('<a href="/\\evil.test/x">unsafe</a>')
+    // Then: the private Markdown policy remains active.
+    expect(clean).not.toContain("href=")
   })
 })
