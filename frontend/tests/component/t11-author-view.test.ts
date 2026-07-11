@@ -8,7 +8,7 @@ import RichMarkdownEditor from "@/components/editor/RichMarkdownEditor.vue"
 import { createFakeAuthorRuntime } from "@/services/author-runtime"
 import { ImageUploadError, type ImageLifecycle } from "@/services/image-lifecycle"
 
-vi.mock("md-editor-v3", () => ({ MdEditor: { props: ["modelValue", "onUploadImg"], template: "<div><textarea data-testid='markdown-editor' :value='modelValue' @input='$emit(\"update:modelValue\", $event.target.value)' /><button data-testid='upload-image' @click='onUploadImg([new File([\"x\"], \"failed.png\")], (urls) => $emit(\"update:modelValue\", modelValue + urls[0]))'>上传</button></div>" }, MdPreview: { props: ["modelValue"], template: "<div data-testid='safe-preview'>{{ modelValue }}</div>" }, MdCatalog: { template: "<nav />" } }))
+vi.mock("md-editor-v3", () => ({ MdEditor: { props: ["modelValue", "onUploadImg"], data: () => ({ uploadFile: new globalThis.File(["x"], "failed.png") }), template: "<div><textarea data-testid='markdown-editor' :value='modelValue' @input='$emit(\"update:modelValue\", $event.target.value)' /><button data-testid='upload-image' @click='onUploadImg([uploadFile], (urls) => $emit(\"update:modelValue\", modelValue + urls[0]))'>上传</button></div>" }, MdPreview: { props: ["modelValue"], template: "<div data-testid='safe-preview'>{{ modelValue }}</div>" }, MdCatalog: { template: "<nav />" } }))
 
 /** Headless UI 弹窗在浏览器中依赖的尺寸观察器测试替身。 */
 class TestResizeObserver { observe(): void {} unobserve(): void {} disconnect(): void {} }
