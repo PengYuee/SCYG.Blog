@@ -167,6 +167,23 @@ func Test_ContentREST_list_with_invalid_page_returns_safe_500(t *testing.T) {
 	}
 }
 
+func Test_ContentREST_list_with_noncanonical_slug_returns_safe_500(t *testing.T) {
+	// Given
+	item := validArticleResultForHTTP()
+	item.Slug = "UPPER"
+	service := &testService{articlePage: module.ArticlePage{Items: []module.ArticleResult{item}, Number: 1, Size: 20, TotalItems: 1, TotalPages: 1}}
+	router := routerForService(t, service)
+	response := httptest.NewRecorder()
+
+	// When
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/v1/articles", nil))
+
+	// Then
+	if response.Code != http.StatusInternalServerError || strings.Contains(response.Body.String(), "UPPER") || strings.Contains(response.Body.String(), `"items"`) {
+		t.Fatalf("状态码/响应体 = %d/%s", response.Code, response.Body.String())
+	}
+}
+
 func validArticleTypeResult(image string, meun int32) module.ArticleTypeResult {
 	now := time.Unix(1, 0).UTC()
 	var value *string

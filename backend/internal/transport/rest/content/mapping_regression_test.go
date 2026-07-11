@@ -119,6 +119,38 @@ func Test_ContentREST_response_mapping_rejects_invalid_article_text(t *testing.T
 	}
 }
 
+func Test_ContentREST_response_mapping_rejects_noncanonical_slug(t *testing.T) {
+	tests := []string{"UPPER", " Mixed ", " leading", "trailing ", "Go-Lang", "ＦＯＯ"}
+	for _, slug := range tests {
+		t.Run(slug, func(t *testing.T) {
+			// Given
+			item := validArticleResult()
+			item.Slug = slug
+
+			// When
+			_, err := articleDTO(item)
+
+			// Then
+			if err == nil {
+				t.Fatalf("articleDTO(%q) 未拒绝非规范 slug", slug)
+			}
+		})
+	}
+}
+
+func Test_ContentREST_response_mapping_accepts_canonical_slug_boundaries(t *testing.T) {
+	tests := []string{"a", strings.Repeat("a", 160), "a-b-0"}
+	for _, slug := range tests {
+		t.Run(slug[:1], func(t *testing.T) {
+			item := validArticleResult()
+			item.Slug = slug
+			if _, err := articleDTO(item); err != nil {
+				t.Fatalf("articleDTO(%q) 错误 = %v", slug, err)
+			}
+		})
+	}
+}
+
 func Test_ContentREST_page_mapping_validates_metadata_consistency(t *testing.T) {
 	tests := []struct {
 		name         string
