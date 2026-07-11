@@ -20,11 +20,11 @@ describe("T9 production route contract", () => {
     ["/articles", "article-list"],
     ["/articles/42", "article-detail"],
     ["/login", "login-unavailable"],
-  ])("resolves public deep link %s", async (path, routeName) => {
-    // Given / When: 生产公共路由直接收到深链。
-    await navigate(path)
+  ])("resolves public deep link %s", (path, routeName) => {
+    // Given / When: 路由归属只需同步解析，不需要触发懒加载视图。
+    const resolvedRoute = router.resolve(path)
     // Then: 深链由明确公共路由拥有。
-    expect(router.currentRoute.value.name).toBe(routeName)
+    expect(resolvedRoute.name).toBe(routeName)
   })
 
   it.each([
