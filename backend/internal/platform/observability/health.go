@@ -28,9 +28,7 @@ func NewHealth(database, migration Probe) (*Health, error) {
 	if migration == nil {
 		return nil, &OptionsError{field: "migration_probe", rule: "must not be nil"}
 	}
-	health := &Health{database: database, migration: migration}
-	health.accepting.Store(true)
-	return health, nil
+	return &Health{database: database, migration: migration}, nil
 }
 
 // Live reports process liveness only and remains true while code can answer.
@@ -55,6 +53,9 @@ func (health *Health) Ready(ctx context.Context) (bool, error) {
 	}
 	return true, nil
 }
+
+// Activate 在数据库连通且迁移状态有效后原子开放 readiness。
+func (health *Health) Activate() { health.accepting.Store(true) }
 
 // Withdraw atomically revokes readiness before shutdown begins.
 func (health *Health) Withdraw() { health.accepting.Store(false) }

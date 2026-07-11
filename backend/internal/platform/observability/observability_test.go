@@ -128,6 +128,8 @@ func Test_Health_live_only_reflects_process_and_ready_is_revocable(t *testing.T)
 		t.Fatalf("new health: %v", constructorErr)
 	}
 
+	health.Activate()
+
 	// When / Then
 	if !health.Live() {
 		t.Fatal("process should be live")
@@ -276,6 +278,8 @@ func Test_Health_database_failure_prevents_migration_probe(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new health: %v", err)
 	}
+
+	health.Activate()
 
 	// When
 	ready, readyErr := health.Ready(context.Background())

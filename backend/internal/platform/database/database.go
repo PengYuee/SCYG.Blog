@@ -61,6 +61,9 @@ func New(ctx context.Context, options Options) (*Database, error) {
 	return &Database{db: handle, pool: pool}, nil
 }
 
+// Ping 检查底层连接池是否可用。
+func (database *Database) Ping(ctx context.Context) error { return database.pool.PingContext(ctx) }
+
 // GORM returns the owned handle for explicit adapters.
 func (database *Database) GORM() *gorm.DB { return database.db }
 

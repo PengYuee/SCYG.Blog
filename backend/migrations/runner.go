@@ -11,6 +11,9 @@ import (
 	"github.com/golang-migrate/migrate/v4/source/iofs"
 )
 
+// CurrentVersion 是当前嵌入迁移要求的唯一就绪版本。
+const CurrentVersion uint = 1
+
 // Runner applies the embedded versioned schema and owns its migration resources.
 type Runner struct {
 	closeErr  error
