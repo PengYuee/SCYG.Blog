@@ -40,6 +40,14 @@ describe("T9 production route contract", () => {
     expect(router.currentRoute.value.fullPath).toBe(expected)
   })
 
+  it("keeps an invalid legacy article id on a typed failure route", async () => {
+    // Given / When: 旧文章链接携带非正整数标识。
+    await navigate("/article/not-a-number")
+    // Then: 地址保持不变并暴露稳定失败代码，不进入普通详情 404。
+    expect(router.currentRoute.value.fullPath).toBe("/article/not-a-number")
+    expect(router.currentRoute.value.name).toBe("legacy-article-invalid")
+    expect(router.currentRoute.value.meta["errorCode"]).toBe("INVALID_ARTICLE_ID")
+  })
   it("keeps an invalid legacy editor id on a typed failure route", async () => {
     // Given / When: 旧写作链接携带非法标识。
     await navigate("/writeBlog?id=oops")

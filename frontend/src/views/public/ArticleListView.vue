@@ -141,6 +141,11 @@ watch(() => route.fullPath, loadFromRoute, { immediate: true })
           <div v-if="feedState.kind === 'loading' && feedState.items.length === 0" class="blog-card flex min-h-48 items-center justify-center p-8 text-text-secondary" role="status">正在加载文章…</div>
           <div v-else-if="feedState.kind === 'error' && feedState.items.length === 0" class="blog-card border-error bg-error-soft p-6 text-error" role="alert"><p class="font-semibold">文章加载失败</p><p class="mt-1 text-sm">{{ feedState.message }}</p><button type="button" class="mt-4 inline-flex min-h-11 items-center gap-2 rounded-[var(--radius-control)] border border-error px-4 font-semibold" @click="retryFeed"><ArrowPathIcon class="size-5" aria-hidden="true" />重试</button></div>
           <ArticleSection v-else title="全部文章" :articles="visibleArticles" :categories="categories" />
+          <div v-if="feedState.kind === 'error' && feedState.items.length > 0" data-testid="load-more-error" class="mt-6 rounded-[var(--radius-card)] border border-error bg-error-soft p-5 text-error" role="alert">
+            <p class="font-semibold">加载更多失败</p>
+            <p class="mt-1 text-sm">{{ feedState.message }}</p>
+            <button type="button" data-testid="load-more-retry" class="mt-4 inline-flex min-h-11 items-center gap-2 rounded-[var(--radius-control)] border border-error px-4 font-semibold" @click="retryFeed"><ArrowPathIcon class="size-5" aria-hidden="true" />重试加载更多</button>
+          </div>
 
           <div v-if="feedState.kind === 'ready' && !feedState.endReached" class="mt-8 text-center"><button type="button" data-testid="load-more" class="inline-flex min-h-11 items-center rounded-[var(--radius-control)] border border-accent bg-surface px-6 font-semibold text-accent hover:bg-surface-hover active:scale-[0.98]" @click="loadMore">加载更多</button></div>
           <p v-else-if="feedState.kind === 'loading' && feedState.items.length > 0" class="mt-8 text-center text-sm text-text-secondary" role="status">正在加载更多文章…</p>

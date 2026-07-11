@@ -1,9 +1,10 @@
 import type { RouteLocationGeneric, RouteRecordRaw } from "vue-router"
 import { parseLegacyArticleId } from "@/router/query"
 
-/** 将旧 /article/:id 精确映射到规范详情地址。 */
-function redirectLegacyArticle(to: RouteLocationGeneric) {
-  return { path: `/articles/${String(to.params["id"])}` }
+/** 旧文章地址仅在标识合法时映射详情，非法值留在原路由呈现类型化失败。 */
+function resolveLegacyArticle(to: RouteLocationGeneric) {
+  const articleId = parseLegacyArticleId(to.params["id"])
+  return articleId === null ? true : { path: `/articles/${articleId}` }
 }
 
 /** 旧写作地址按 id 分流；非法 id 留在原地呈现类型化失败。 */
@@ -26,7 +27,14 @@ export const publicRoutes: readonly RouteRecordRaw[] = [
     meta: { title: "登录暂不可用" },
   },
   { path: "/main", redirect: { path: "/" } },
-  { path: "/article/:id", redirect: redirectLegacyArticle },
+  {
+    path: "/article/:id",
+    name: "legacy-article-invalid",
+    beforeEnter: resolveLegacyArticle,
+    component: () => import("@/views/public/PublicNotFoundView.vue"),
+    props: { mode: "invalid-legacy-id" },
+    meta: { title: "无效文章标识", errorCode: "INVALID_ARTICLE_ID" },
+  },
   {
     path: "/writeBlog",
     name: "legacy-write-invalid",
