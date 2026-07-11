@@ -22,14 +22,15 @@ test("三个 Edge 桌面视口满足布局、性能与无障碍契约", async ({
 
   // Then: T6 几何、横向边界、中文排版和宽松导航预算全部稳定。
   await expectDesktopGeometry(page)
-  await expectCjkUnclipped(page.locator("h1, h2, button").filter({ visible: true }))
+  await expectCjkUnclipped(page.locator("h1, h2, button, input, select").filter({ visible: true }))
   expect(readyElapsedMs).toBeLessThan(navigationCeilingMs)
   expect(requestCount).toBeLessThanOrEqual(requestCeiling)
 
   // Then: 仅依赖原生角色、标签和焦点顺序验证键盘可达性。
   await expect(page.getByRole("navigation", { name: "主要导航" })).toBeVisible()
   await expect(page.getByRole("search", { name: "搜索文章" })).toBeVisible()
-  await expect(page.getByLabel("搜索文章")).toBeVisible()
+  const articleSearch = page.locator("#article-search-input")
+  await expect(articleSearch).toBeVisible()
   await page.keyboard.press("Tab")
   await expect(page.getByRole("link", { name: "跳到主要内容" })).toBeFocused()
   await page.keyboard.press("Enter")
@@ -55,8 +56,10 @@ test("保存 Hero、滚动导航、悬停与焦点的稳定视觉状态", async 
   const firstArticle = page.getByRole("heading", { name: "最新文章", level: 2 }).locator("xpath=ancestor::section").getByTestId("article-grid").getByRole("link").first()
   await firstArticle.hover()
   await page.screenshot({ path: evidencePath(testInfo, "article-hover.png"), fullPage: false, animations: "disabled" })
-  await page.getByLabel("搜索文章").focus()
-  await expect(page.getByLabel("搜索文章")).toBeFocused()
+  // 下方文章搜索框拥有独立 ID，避免与 Hero 搜索框的同名标签冲突。
+  const articleSearch = page.locator("#article-search-input")
+  await articleSearch.focus()
+  await expect(articleSearch).toBeFocused()
   await page.screenshot({ path: evidencePath(testInfo, "search-focus.png"), fullPage: false, animations: "disabled" })
   expectHealthy(health)
 })
