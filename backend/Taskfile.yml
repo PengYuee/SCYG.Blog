@@ -15,6 +15,7 @@ vars:
   OPENAPI_LINT_CMD: go run github.com/daveshanley/vacuum@v0.29.0
   OAPI_CODEGEN_CMD: go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.7.2
   MIGRATE_CMD: go run github.com/golang-migrate/migrate/v4/cmd/migrate@v4.19.0
+  IMAGE: scyg-blog-backend:ci
 
 tasks:
   default:
@@ -27,7 +28,7 @@ tasks:
     cmds:
       - cmd: >-
           powershell.exe -NoProfile -Command
-          "if ((task --version).Trim() -ne '{{trimPrefix "v" .TASK_VERSION}}') { Write-Error 'Task {{.TASK_VERSION}} is required'; exit 1 }"
+          "if ((task --version).Trim() -ne '{{trimPrefix "v" .TASK_VERSION}}') { Write-Error '必须使用 Task {{.TASK_VERSION}}'; exit 1 }"
         platforms: [windows]
       - cmd: >-
           sh -c 'test "$(task --version)" = "{{trimPrefix "v" .TASK_VERSION}}"'
@@ -142,8 +143,52 @@ tasks:
       - '{{.OPENAPI_LINT_CMD}} version'
       - '{{.OAPI_CODEGEN_CMD}} -version'
 
-  ci:
-    desc: Run every available backend quality check
+  generate:freshness:
+    desc: Regenerate committed artifacts and reject Git drift
+    cmds:
+      - task: generate
+      - task: api:docs:sync
+      - git diff --exit-code -- .
+
+  migrate:up:
+    desc: Apply all embedded migrations using SCYG_DATABASE_DSN
+    cmds:
+      - go run ./cmd/migrate up
+
+  migrate:down:
+    desc: Roll back all embedded migrations using SCYG_DATABASE_DSN
+    cmds:
+      - go run ./cmd/migrate down
+
+  migrate:roundtrip:
+    desc: Prove migration up, down, up and final clean version
+    cmds:
+      - task: migrate:up
+      - task: migrate:down
+      - task: migrate:up
+      - go run ./cmd/migrate version
+
+  container:build:
+    desc: Build the pinned API image
+    cmds:
+      - docker build --pull=false --tag {{.IMAGE}} .
+
+  compose:smoke:
+    desc: Start Compose and wait for PostgreSQL and API healthchecks
+    cmds:
+      - docker compose up --detach --wait --wait-timeout 120
+      - cmd: powershell.exe -NoProfile -Command "Invoke-WebRequest -UseBasicParsing http://127.0.0.1:${SCYG_API_PORT:-8080}/live | Out-Null; Invoke-WebRequest -UseBasicParsing http://127.0.0.1:${SCYG_API_PORT:-8080}/ready | Out-Null"
+        platforms: [windows]
+      - cmd: sh -c 'curl --fail --silent --show-error http://127.0.0.1:${SCYG_API_PORT:-8080}/live >/dev/null && curl --fail --silent --show-error http://127.0.0.1:${SCYG_API_PORT:-8080}/ready >/dev/null'
+        platforms: [linux, darwin]
+
+  compose:down:
+    desc: Stop Compose and remove its anonymous resources
+    cmds:
+      - docker compose down --remove-orphans
+
+  qa:static:
+    desc: Run the bounded backend quality and delivery configuration gates
     cmds:
       - task: task:version:check
       - task: fmt:check
@@ -151,8 +196,28 @@ tasks:
       - task: api:lint
       - task: api:generate:check
       - task: api:docs:check
-      - go test ./internal/contracttest -count=1
+      - go test ./internal/contracttest ./internal/deliverytest -count=1
       - task: vet
       - task: lint
       - task: unit
       - task: build
+      - task: vuln
+
+  qa:database:
+    desc: Run migration, integration and E2E gates against configured PostgreSQL
+    cmds:
+      - task: migrate:roundtrip
+      - task: integration
+      - task: e2e
+
+  qa:container:
+    desc: Run image build and Compose health smoke gates
+    cmds:
+      - task: container:build
+      - task: compose:smoke
+      - defer: task compose:down
+
+  ci:
+    desc: Run the local backend quality gate shared with CI
+    cmds:
+      - task: qa:static

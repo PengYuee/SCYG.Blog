@@ -1,0 +1,49 @@
+name: scyg-blog-backend
+
+services:
+  postgres:
+    image: postgres:17.5@sha256:aadf2c0696f5ef357aa7a68da995137f0cf17bad0bf6e1f17de06ae5c769b302
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: scyg_blog
+      POSTGRES_USER: scyg_blog
+      POSTGRES_PASSWORD: ${SCYG_POSTGRES_PASSWORD:?必须设置 SCYG_POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U scyg_blog -d scyg_blog"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 5s
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    security_opt:
+      - no-new-privileges:true
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      SCYG_APP_ENV: production
+      SCYG_APP_LOG_LEVEL: info
+      SCYG_DATABASE_DSN: ${SCYG_DATABASE_DSN:?必须设置 SCYG_DATABASE_DSN}
+      SCYG_HTTP_HOST: 0.0.0.0
+      SCYG_HTTP_PORT: "8080"
+      SCYG_DOCS_ENABLED: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+        restart: true
+    ports:
+      - "127.0.0.1:${SCYG_API_PORT:-8080}:8080"
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  postgres-data:

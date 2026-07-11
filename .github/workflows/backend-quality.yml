@@ -1,0 +1,135 @@
+name: backend-quality
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-quality.yml"
+  pull_request:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-quality.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: backend-quality-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    shell: bash
+    working-directory: backend
+
+env:
+  GO_VERSION: "1.25.0"
+  TASK_VERSION: "3.49.1"
+
+jobs:
+  static-quality:
+    name: Generation, format, lint, race and vulnerability gates
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      # actions/checkout v7.0.0，来源：官方 release。
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          clean: true
+          persist-credentials: false
+      # actions/setup-go v6.5.0，来源：官方 release。
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: backend/go.sum
+      # go-task/setup-task v2.1.0，来源：官方 release。
+      - uses: go-task/setup-task@01a4adf9db2d14c1de7a560f09170b6e0df736aa
+        with:
+          version: ${{ env.TASK_VERSION }}
+      - name: Verify generated artifacts are fresh
+        run: task generate:freshness
+      - name: Run shared static quality gates including pinned govulncheck
+        run: task qa:static
+
+  database-quality:
+    name: Migration roundtrip, integration and E2E gates
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:17.5@sha256:aadf2c0696f5ef357aa7a68da995137f0cf17bad0bf6e1f17de06ae5c769b302
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: ci-only-password
+          POSTGRES_DB: scyg_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d scyg_ci"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      SCYG_DATABASE_DSN: postgres://postgres:ci-only-password@127.0.0.1:5432/scyg_ci?sslmode=disable
+      SCYG_TEST_DATABASE_DSN: postgres://postgres:ci-only-password@127.0.0.1:5432/scyg_ci?sslmode=disable
+      SCYG_POSTGRES_ADMIN_DSN: postgres://postgres:ci-only-password@127.0.0.1:5432/postgres?sslmode=disable
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          clean: true
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: backend/go.sum
+      - uses: go-task/setup-task@01a4adf9db2d14c1de7a560f09170b6e0df736aa # v2.1.0
+        with:
+          version: ${{ env.TASK_VERSION }}
+      - name: Run shared database gates
+        run: task qa:database
+
+  image-quality:
+    name: Container smoke, SBOM and image vulnerability gates
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      SCYG_POSTGRES_PASSWORD: ci-compose-only-password
+      SCYG_DATABASE_DSN: postgres://scyg_blog:ci-compose-only-password@postgres:5432/scyg_blog?sslmode=disable
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          clean: true
+          persist-credentials: false
+      - uses: go-task/setup-task@01a4adf9db2d14c1de7a560f09170b6e0df736aa # v2.1.0
+        with:
+          version: ${{ env.TASK_VERSION }}
+      - name: Run shared image and Compose smoke gates
+        run: task qa:container
+      # anchore/sbom-action v0.24.0，精确 SHA 来自官方 release。
+      - name: Generate SPDX SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610
+        with:
+          image: scyg-blog-backend:ci
+          format: spdx-json
+          output-file: backend-sbom.spdx.json
+          artifact-name: backend-sbom.spdx.json
+      # aquasecurity/trivy-action v0.36.0，HIGH/CRITICAL 漏洞使任务失败。
+      - name: Scan image for HIGH and CRITICAL vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25
+        with:
+          image-ref: scyg-blog-backend:ci
+          format: sarif
+          output: backend/backend-trivy.sarif
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      # actions/upload-artifact v7.0.1，扫描失败时仍上传审计结果。
+      - name: Upload image scan report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: backend-trivy
+          path: backend/backend-trivy.sarif
+          if-no-files-found: error
+          retention-days: 14

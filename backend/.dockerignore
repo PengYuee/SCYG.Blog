@@ -1,0 +1,13 @@
+.git
+.github
+.omo
+.env
+.env.*
+!.env.example
+bin
+coverage.out
+*.test
+**/*_test.go
+Dockerfile*
+compose*.yaml
+docs
