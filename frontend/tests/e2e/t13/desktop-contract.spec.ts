@@ -28,8 +28,12 @@ test("三个 Edge 桌面视口满足布局、性能与无障碍契约", async ({
 
   // Then: 仅依赖原生角色、标签和焦点顺序验证键盘可达性。
   await expect(page.getByRole("navigation", { name: "主要导航" })).toBeVisible()
-  await expect(page.getByRole("search", { name: "搜索文章" })).toBeVisible()
+  // 两个搜索 landmark 共享合法名称，使用各自唯一输入反向限定语义归属。
+  const heroSearch = page.locator("#hero-search-input")
   const articleSearch = page.locator("#article-search-input")
+  await expect(page.getByRole("search", { name: "搜索文章" }).filter({ has: heroSearch })).toBeVisible()
+  await expect(page.getByRole("search", { name: "搜索文章" }).filter({ has: articleSearch })).toBeVisible()
+  await expect(heroSearch).toBeVisible()
   await expect(articleSearch).toBeVisible()
   await page.keyboard.press("Tab")
   await expect(page.getByRole("link", { name: "跳到主要内容" })).toBeFocused()
