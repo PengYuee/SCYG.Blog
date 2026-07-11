@@ -1,4 +1,4 @@
-import { access, readFile, readdir } from "node:fs/promises"
+import { access, readFile, readdir, stat } from "node:fs/promises"
 import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 
@@ -26,10 +26,14 @@ const forbiddenTerms = [
   "订" + "阅",
 ] as const
 
-/** 递归读取可进入生产构建的文本文件。 */
+/** 递归读取可进入生产构建的文本文件，空目录贡献空文本。 */
 async function collectText(path: string): Promise<string> {
-  const entries = await readdir(path, { withFileTypes: true }).catch(() => [])
-  if (entries.length === 0) return readFile(path, "utf8")
+  const pathStats = await stat(path)
+  if (pathStats.isFile()) return readFile(path, "utf8")
+  if (!pathStats.isDirectory()) return ""
+
+  const entries = await readdir(path, { withFileTypes: true })
+  if (entries.length === 0) return ""
   const contents = await Promise.all(entries.map((entry) => collectText(join(path, entry.name))))
   return contents.join("\n")
 }
