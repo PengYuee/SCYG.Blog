@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"reflect"
 	"strconv"
 	"strings"
 	"testing"
@@ -47,6 +48,7 @@ func Test_E2E_scalar_is_offline_and_self_hosted(t *testing.T) {
 	if response.StatusCode != http.StatusOK || !strings.Contains(string(body), "/scalar.js") {
 		t.Fatalf("Scalar 未使用本地资源：status=%d", response.StatusCode)
 	}
+	assertLocalReferences(t, h, string(body))
 }
 
 func Test_E2E_public_reads_hide_drafts(t *testing.T) {
@@ -99,9 +101,14 @@ func Test_E2E_allow_all_performs_real_crud(t *testing.T) {
 func Test_E2E_production_denies_writes(t *testing.T) {
 	h := newHarness(t, nil)
 	defer h.close()
-	response := h.request(http.MethodPost, "/api/v1/tags", `{"name":"denied"}`, nil)
+	before := snapshotDatabase(t, h.ctx, h.dsn)
+	response := h.request(http.MethodPost, "/api/v1/tags", "{\"name\":\"denied\"}", nil)
 	if response.StatusCode != http.StatusForbidden {
 		t.Fatalf("生产写入未返回403：%d", response.StatusCode)
+	}
+	after := snapshotDatabase(t, h.ctx, h.dsn)
+	if !reflect.DeepEqual(before, after) {
+		t.Fatalf("403 后数据库发生变化：before=%+v after=%+v", before, after)
 	}
 }
 
@@ -110,23 +117,30 @@ func Test_E2E_stale_etag_is_rejected(t *testing.T) {
 	defer h.close()
 	_, tag := createContent(t, h)
 	location := tag.Header.Get("Location")
-	response := h.request(http.MethodPatch, location, `{"name":"stale"}`, map[string]string{"If-Match": `"0"`})
+	before := snapshotTag(t, h.ctx, h.dsn, locationID(t, tag))
+	response := h.request(http.MethodPatch, location, "{\"name\":\"stale\"}", map[string]string{"If-Match": "\"0\""})
 	if response.StatusCode != http.StatusPreconditionFailed {
 		t.Fatalf("过期 ETag 未返回412：%d", response.StatusCode)
+	}
+	after := snapshotTag(t, h.ctx, h.dsn, locationID(t, tag))
+	if !reflect.DeepEqual(before, after) {
+		t.Fatalf("412 后实体发生变化：before=%+v after=%+v", before, after)
 	}
 }
 
 func Test_E2E_readiness_fails_during_database_outage(t *testing.T) {
 	h := newHarness(t, nil)
 	defer h.close()
-	pool := openPool(t, h.adminDSN)
-	defer pool.Close()
-	if _, err := pool.ExecContext(h.ctx, `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1`, h.name); err != nil {
-		t.Fatalf("中断数据库连接失败：%v", err)
+	setDatabaseConnectionsAllowed(t, h, false)
+	defer setDatabaseConnectionsAllowed(t, h, true)
+	waitCtx, cancel := context.WithTimeout(h.ctx, 10*time.Second)
+	defer cancel()
+	if err := waitHTTPStatus(waitCtx, h.client, h.baseURL+"/ready", http.StatusServiceUnavailable); err != nil {
+		t.Fatalf("数据库故障后 readiness 未撤回：%v", err)
 	}
-	response := h.request(http.MethodGet, "/ready", "", nil)
-	if response.StatusCode == http.StatusOK {
-		t.Fatal("数据库故障期间 readiness 仍为成功")
+	setDatabaseConnectionsAllowed(t, h, true)
+	if err := waitHTTPStatus(waitCtx, h.client, h.baseURL+"/ready", http.StatusOK); err != nil {
+		t.Fatalf("数据库恢复后 readiness 未恢复：%v", err)
 	}
 }
 
@@ -145,22 +159,8 @@ func Test_E2E_restart_preserves_committed_data(t *testing.T) {
 	}
 }
 
-func Test_E2E_cancellation_cleans_runtime(t *testing.T) {
-	h := newHarness(t, nil)
-	defer h.close()
-	runCtx, cancel := context.WithCancel(context.Background())
-	done := make(chan error, 1)
-	go func() { done <- h.app.Run(runCtx) }()
-	cancel()
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatalf("取消运行失败：%v", err)
-		}
-	case <-time.After(10 * time.Second):
-		t.Fatal("取消后未在期限内完成清理")
-	}
-	h.app = nil
+func Test_E2E_sigterm_closes_runtime(t *testing.T) {
+	assertSignalSubprocessShutdown(t)
 }
 
 func createContent(t *testing.T, h *harness) (*http.Response, *http.Response) {
