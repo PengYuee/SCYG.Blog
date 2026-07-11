@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "evidenceRoot": ".omo/evidence/zfy-blog-vue3-desktop-redesign/t13",
+  "viewports": [
+    { "width": 1280, "height": 720 },
+    { "width": 1440, "height": 900 },
+    { "width": 1920, "height": 1080 }
+  ],
+  "states": ["hero-rest", "nav-scrolled", "article-hover", "search-focus"],
+  "reference": {
+    "environmentVariable": "T13_REFERENCE_URL",
+    "capturePolicy": "runtime-fresh-same-viewport",
+    "unavailablePolicy": "explicit-skip-evidence",
+    "copyReferenceAssets": false,
+    "copyReferenceText": false
+  }
+}
