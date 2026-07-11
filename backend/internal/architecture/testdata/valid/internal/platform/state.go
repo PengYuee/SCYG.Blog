@@ -2,7 +2,7 @@
 package platform
 
 import (
-	"embed"
+	emb "embed"
 	stdlibErrors "errors"
 )
 
@@ -12,4 +12,4 @@ var ErrUnavailable = stdlibErrors.New("unavailable")
 // Assets contains compile-checked embedded fixture data.
 //
 //go:embed asset.txt
-var Assets embed.FS
+var Assets emb.FS

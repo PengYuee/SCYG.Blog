@@ -76,6 +76,7 @@ func Test_Architecture_RejectsForbiddenImports(t *testing.T) {
 		{code: "ARCH_MUTABLE_GLOBAL", path: "platform_singleton.go"},
 		{code: "ARCH_MUTABLE_GLOBAL", path: "fake_errors.go"},
 		{code: "ARCH_MUTABLE_GLOBAL", path: "fake_embed.go"},
+		{code: "ARCH_MUTABLE_GLOBAL", path: "fake_embed_alias.go"},
 		{code: "ARCH_MUTABLE_GLOBAL", path: "grouped_embed.go"},
 		{code: "ARCH_MODULE_SHAPE", path: "nestedshape"},
 		{code: "ARCH_FORBIDDEN_FUTURE", path: "identity/placeholder.go"},

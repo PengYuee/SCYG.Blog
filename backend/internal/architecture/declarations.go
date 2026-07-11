@@ -94,9 +94,6 @@ func isValidEmbed(file sourceFile, spec *ast.ValueSpec, comments *ast.CommentGro
 	if comments == nil || len(spec.Values) != 0 || !hasExactEmbedDirective(comments) {
 		return false
 	}
-	if importedPath(file, "embed") != "embed" && importedPath(file, "_") != "embed" {
-		return false
-	}
 	return isEmbedType(file, spec.Type)
 }
 
@@ -113,16 +110,25 @@ func hasExactEmbedDirective(comments *ast.CommentGroup) bool {
 func isEmbedType(file sourceFile, expression ast.Expr) bool {
 	switch typed := expression.(type) {
 	case *ast.Ident:
-		return typed.Name == "string"
+		return typed.Name == "string" && importsPath(file, "embed")
 	case *ast.ArrayType:
 		element, ok := typed.Elt.(*ast.Ident)
-		return typed.Len == nil && ok && element.Name == "byte"
+		return typed.Len == nil && ok && element.Name == "byte" && importsPath(file, "embed")
 	case *ast.SelectorExpr:
 		packageName, ok := typed.X.(*ast.Ident)
 		return ok && typed.Sel.Name == "FS" && importedPath(file, packageName.Name) == "embed"
 	default:
 		return false
 	}
+}
+
+func importsPath(file sourceFile, expected string) bool {
+	for _, spec := range file.parsed.Imports {
+		if strings.Trim(spec.Path.Value, `"`) == expected && (spec.Name == nil || spec.Name.Name != ".") {
+			return true
+		}
+	}
+	return false
 }
 
 func importedPath(file sourceFile, localName string) string {
