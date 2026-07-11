@@ -1,22 +1,24 @@
 package reviewtest_test
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
+
+	"golang.org/x/mod/modfile"
 )
 
-// scopeViolation 描述一个应阻止交付的范围越界。
-type scopeViolation struct {
-	// Path 是相对后端根目录的违规路径。
-	Path string
-	// Reason 是面向开发者的中文修复提示。
-	Reason string
-}
+// scopeViolation 描述一个语义范围越界。
+type scopeViolation struct{ Path, Reason string }
 
-// scanScope 扫描运行时代码、依赖和目录；文档允许描述未来设计。
+// scanScope 使用 Go AST 与 go.mod 语法树扫描运行时范围，注释不参与判定。
 func scanScope(root string) ([]scopeViolation, error) {
 	violations := make([]scopeViolation, 0)
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
@@ -28,121 +30,209 @@ func scanScope(root string) ([]scopeViolation, error) {
 			return err
 		}
 		normalized := filepath.ToSlash(relative)
-		lowerPath := strings.ToLower(normalized)
 		if entry.IsDir() {
-			for _, segment := range []string{"/grpc", "/websocket", "/kafka", "/outbox", "/api/proto", "/internal/integration"} {
-				if strings.Contains("/"+lowerPath, segment) {
-					violations = append(violations, scopeViolation{Path: normalized, Reason: "当前阶段禁止未来运行时目录"})
-					return filepath.SkipDir
-				}
+			if normalized != "." && forbiddenRuntimeDirectory(normalized) {
+				violations = append(violations, scopeViolation{normalized, "当前阶段禁止未来运行时目录"})
+				return filepath.SkipDir
 			}
 			return nil
 		}
-		if normalized == "README.md" || strings.HasPrefix(normalized, "docs/") || strings.HasPrefix(normalized, "bin/") || strings.HasPrefix(normalized, "internal/architecture/") || strings.Contains(normalized, "/testdata/") || strings.HasSuffix(normalized, "_test.go") || strings.HasSuffix(normalized, ".sum") {
+		if normalized == "go.mod" {
+			found, parseErr := scanModule(path)
+			violations = append(violations, found...)
+			return parseErr
+		}
+		if filepath.Ext(path) != ".go" || strings.HasSuffix(path, "_test.go") {
 			return nil
 		}
-		content, err := os.ReadFile(path)
+		parsed, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
 		if err != nil {
 			return err
 		}
-		text := strings.ToLower(string(content))
-		for _, token := range []string{"google.golang.org/grpc", "gorilla/websocket", "segmentio/kafka", "buf.build/", "automigrate(", "/article/get", "type category struct"} {
-			if strings.Contains(text, token) {
-				violations = append(violations, scopeViolation{Path: normalized, Reason: "发现禁止的依赖、旧路由、自动迁移或实体改名：" + token})
-			}
-		}
-		if strings.Contains(text, "allowall") {
-			violations = append(violations, scopeViolation{Path: normalized, Reason: "AllowAll 只能存在于测试源码或测试二进制"})
-		}
+		violations = append(violations, scanGoAST(normalized, parsed)...)
 		return nil
 	})
 	return violations, err
 }
 
-func Test_ScopeScanner_rejects_every_excluded_fixture(t *testing.T) {
-	// Given
-	cases := []struct {
-		name string
-		path string
-		body string
-	}{
-		{"gRPC 依赖", "go.mod", "require google.golang.org/grpc v1.0.0"},
-		{"WebSocket 依赖", "runtime.go", "import _ \"github.com/gorilla/websocket\""},
-		{"Kafka 依赖", "runtime.go", "import _ \"github.com/segmentio/kafka-go\""},
-		{"Buf 依赖", "go.mod", "require buf.build/gen/go/example v1.0.0"},
-		{"Outbox 目录", "internal/outbox/worker.go", "package outbox"},
-		{"Proto 目录", "api/proto/content/v1/content.proto", "syntax = \"proto3\";"},
-		{"旧路由", "router.go", "const route = \"/Article/Get\""},
-		{"实体改名", "model.go", "type Category struct{}"},
-		{"自动迁移", "database.go", "db.AutoMigrate(&Article{})"},
-		{"生产 AllowAll", "authorizer.go", "type AllowAll struct{}"},
+// forbiddenModulePrefixes 返回本阶段禁止进入模块图或生产导入的前缀。
+func forbiddenModulePrefixes() []string {
+	return []string{"google.golang.org/grpc", "github.com/gorilla/websocket", "github.com/segmentio/kafka-go", "buf.build/"}
+}
+
+// isForbiddenDirectory 按完整路径段识别未来运行时目录。
+func isForbiddenDirectory(name string) bool {
+	switch name {
+	case "grpc", "websocket", "kafka", "outbox", "proto", "integration":
+		return true
+	default:
+		return false
 	}
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
-			root := t.TempDir()
-			path := filepath.Join(root, filepath.FromSlash(testCase.path))
-			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-				t.Fatalf("创建失败夹具目录失败：%v", err)
-			}
-			if err := os.WriteFile(path, []byte(testCase.body), 0o600); err != nil {
-				t.Fatalf("写入失败夹具失败：%v", err)
-			}
+}
+func forbiddenRuntimeDirectory(path string) bool {
+	parts := strings.Split(strings.ToLower(filepath.ToSlash(path)), "/")
+	for index, part := range parts {
+		if isForbiddenDirectory(part) && !(part == "integration" && index > 0 && parts[index-1] == "testdata") {
+			return true
+		}
+	}
+	return false
+}
 
-			// When
-			violations, err := scanScope(root)
+func scanModule(path string) ([]scopeViolation, error) {
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	file, err := modfile.Parse(path, content, nil)
+	if err != nil {
+		return nil, err
+	}
+	violations := make([]scopeViolation, 0)
+	for _, requirement := range file.Require {
+		for _, prefix := range forbiddenModulePrefixes() {
+			if strings.HasPrefix(requirement.Mod.Path, prefix) {
+				violations = append(violations, scopeViolation{"go.mod", "禁止模块依赖：" + requirement.Mod.Path})
+			}
+		}
+	}
+	return violations, nil
+}
 
-			// Then
+func scanGoAST(path string, file *ast.File) []scopeViolation {
+	violations := make([]scopeViolation, 0)
+	for _, imported := range file.Imports {
+		value, err := strconv.Unquote(imported.Path.Value)
+		if err != nil {
+			continue
+		}
+		for _, prefix := range forbiddenModulePrefixes() {
+			if strings.HasPrefix(value, prefix) {
+				violations = append(violations, scopeViolation{path, "禁止运行时导入：" + value})
+			}
+		}
+	}
+	ast.Inspect(file, func(node ast.Node) bool {
+		switch value := node.(type) {
+		case *ast.TypeSpec:
+			if value.Name.Name == "AllowAll" {
+				violations = append(violations, scopeViolation{path, "AllowAll 只能存在于测试源码"})
+			}
+			if value.Name.Name == "Category" {
+				violations = append(violations, scopeViolation{path, "实体 ArticleType 禁止改名为 Category"})
+			}
+		case *ast.CallExpr:
+			if selector, ok := value.Fun.(*ast.SelectorExpr); ok && selector.Sel.Name == "AutoMigrate" {
+				violations = append(violations, scopeViolation{path, "禁止调用 AutoMigrate"})
+			}
+		case *ast.ValueSpec:
+			for _, expression := range value.Values {
+				if route, ok := constantString(expression); ok && legacyRoute(route) {
+					violations = append(violations, scopeViolation{path, "禁止旧式 action 路由：" + route})
+				}
+			}
+		}
+		return true
+	})
+	return violations
+}
+
+// constantString 折叠字符串字面量拼接，避免通过空白或 `+` 绕过旧路由扫描。
+func constantString(expression ast.Expr) (string, bool) {
+	switch value := expression.(type) {
+	case *ast.BasicLit:
+		if value.Kind != token.STRING {
+			return "", false
+		}
+		result, err := strconv.Unquote(value.Value)
+		return result, err == nil
+	case *ast.BinaryExpr:
+		if value.Op != token.ADD {
+			return "", false
+		}
+		left, leftOK := constantString(value.X)
+		right, rightOK := constantString(value.Y)
+		return left + right, leftOK && rightOK
+	default:
+		return "", false
+	}
+}
+
+func legacyRoute(route string) bool {
+	lower := strings.ToLower(route)
+	return strings.Contains(lower, "/article/get") || strings.Contains(lower, "/article/create") || strings.Contains(lower, "/article/update") || strings.Contains(lower, "/article/delete")
+}
+
+func Test_ScopeScanner_rejects_semantic_fixtures_and_ignores_comments(t *testing.T) {
+	cases := map[string]map[string]string{
+		"模块语法":  {"go.mod": "module fixture\nrequire (\n google.golang.org/grpc v1.0.0\n)"},
+		"导入别名":  {"runtime.go": "package fixture\nimport socket \"github.com/gorilla/websocket\"\nvar _ = socket.IsCloseError"},
+		"选择器调用": {"database.go": "package fixture\nfunc f(){ db.AutoMigrate ( &Article{} ) }"},
+		"生产声明":  {"auth.go": "package fixture\ntype AllowAll struct{}"},
+		"实体改名":  {"model.go": "package fixture\ntype Category struct{}"},
+		"拼接旧路由": {"route.go": "package fixture\nconst route = \"/Article/\" + \"Get\""},
+		"运行时目录": {"internal/outbox/worker.go": "package outbox"},
+	}
+	for name, files := range cases {
+		t.Run(name, func(t *testing.T) {
+			root := writeFixture(t, files)
+			found, err := scanScope(root)
 			if err != nil {
 				t.Fatalf("扫描失败夹具失败：%v", err)
 			}
-			if len(violations) == 0 {
-				t.Fatalf("范围门禁未拒绝 %s", testCase.name)
+			if len(found) == 0 {
+				t.Fatalf("范围门禁未拒绝 %s", name)
 			}
 		})
 	}
-}
-
-func Test_ScopeScanner_allows_future_references_in_docs_and_test_AllowAll(t *testing.T) {
-	// Given
-	root := t.TempDir()
-	fixtures := map[string]string{"docs/future.md": "future grpc websocket Buf Kafka Outbox", "authorizer_test.go": "type AllowAll struct{}"}
-	for relative, body := range fixtures {
-		path := filepath.Join(root, filepath.FromSlash(relative))
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatalf("创建允许夹具目录失败：%v", err)
-		}
-		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
-			t.Fatalf("写入允许夹具失败：%v", err)
-		}
-	}
-
-	// When
-	violations, err := scanScope(root)
-
-	// Then
-	if err != nil {
-		t.Fatalf("扫描允许夹具失败：%v", err)
-	}
-	if len(violations) != 0 {
-		t.Fatalf("范围门禁错误拒绝文档/测试引用：%v", violations)
+	root := writeFixture(t, map[string]string{"safe.go": "package fixture\n// db.AutoMigrate(&x{}) type AllowAll struct{} /Article/Get\nconst route = \"/api/v1/articles\""})
+	found, err := scanScope(root)
+	if err != nil || len(found) != 0 {
+		t.Fatalf("注释错误触发范围门禁：%v %v", err, found)
 	}
 }
 
-func Test_Scope_current_backend_has_no_excluded_runtime(t *testing.T) {
-	// Given
-	root := filepath.Join(repositoryRoot(t), "backend")
-
-	// When
-	violations, err := scanScope(root)
-
-	// Then
+func Test_Scope_current_backend_and_tracked_repository_are_clean(t *testing.T) {
+	found, err := scanScope(filepath.Join(repositoryRoot(t), "backend"))
 	if err != nil {
 		t.Fatalf("扫描后端范围失败：%v", err)
 	}
-	if len(violations) != 0 {
-		t.Fatalf("后端存在范围越界：%v", violations)
+	if len(found) != 0 {
+		t.Fatalf("后端存在范围越界：%v", found)
 	}
-	if _, err := os.Stat(filepath.Join(repositoryRoot(t), "go.mod")); !os.IsNotExist(err) {
-		t.Fatal("仓库根目录禁止存在 go.mod")
+	command := exec.Command("git", "ls-files", "go.mod", "*.cs")
+	command.Dir = repositoryRoot(t)
+	output, err := command.Output()
+	if err != nil {
+		t.Fatalf("读取 Git tracked paths 失败：%v", err)
 	}
+	if strings.TrimSpace(string(output)) != "" {
+		t.Fatalf("仓库跟踪了禁止的根 go.mod/C# 路径：%s", output)
+	}
+	if baseline := os.Getenv("SCOPE_BASELINE"); baseline != "" {
+		diff := exec.Command("git", "diff", "--name-only", baseline, "HEAD", "--", "*.cs")
+		diff.Dir = repositoryRoot(t)
+		changed, diffErr := diff.Output()
+		if diffErr != nil {
+			t.Fatalf("按 SCOPE_BASELINE 检查 C# 差异失败：%v", diffErr)
+		}
+		if strings.TrimSpace(string(changed)) != "" {
+			t.Fatalf("检测到 C# 差异：%s", changed)
+		}
+	}
+}
+
+func writeFixture(t *testing.T, files map[string]string) string {
+	t.Helper()
+	root := t.TempDir()
+	for relative, body := range files {
+		path := filepath.Join(root, filepath.FromSlash(relative))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatalf("创建夹具目录失败：%v", err)
+		}
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatalf("写入夹具失败：%v", err)
+		}
+	}
+	return root
 }

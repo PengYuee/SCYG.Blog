@@ -16,6 +16,8 @@ vars:
   OAPI_CODEGEN_CMD: go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.7.2
   MIGRATE_CMD: go run github.com/golang-migrate/migrate/v4/cmd/migrate@v4.19.0
   IMAGE: scyg-blog-backend:ci
+  PLAN_PATH: '{{default "../.omo/plans/go-service-architecture-foundation.md" .PLAN_PATH}}'
+  EVIDENCE_ROOT: '{{default "../.omo/evidence" .EVIDENCE_ROOT}}'
 
 tasks:
   default:
@@ -222,6 +224,9 @@ tasks:
     cmds:
       - task: qa:static
   qa:plan:
+    env:
+      PLAN_PATH: '{{.PLAN_PATH}}'
+      EVIDENCE_ROOT: '{{.EVIDENCE_ROOT}}'
     desc: Audit plan, evidence, history-facing handoff surfaces and final targets
     cmds:
       - go test -timeout 30s ./internal/reviewtest -run 'Test_PlanCompliance_' -count=1
