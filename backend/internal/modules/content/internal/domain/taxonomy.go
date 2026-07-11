@@ -66,10 +66,12 @@ func (item *ArticleType) Delete(expected Version, clock Clock) error {
 	item.deletedAt, item.modifiedAt, item.version = now, now, next
 	return nil
 }
-func (item *ArticleType) ID() ArticleTypeID    { return item.id }
-func (item *ArticleType) Name() Name           { return item.name }
-func (item *ArticleType) Version() Version     { return item.version }
-func (item *ArticleType) DeletedAt() time.Time { return item.deletedAt }
+func (item *ArticleType) ID() ArticleTypeID     { return item.id }
+func (item *ArticleType) Name() Name            { return item.name }
+func (item *ArticleType) Version() Version      { return item.version }
+func (item *ArticleType) CreatedAt() time.Time  { return item.createdAt }
+func (item *ArticleType) ModifiedAt() time.Time { return item.modifiedAt }
+func (item *ArticleType) DeletedAt() time.Time  { return item.deletedAt }
 
 // Tag labels articles and owns naming, deletion, and version rules.
 type Tag struct {
@@ -135,10 +137,12 @@ func (tag *Tag) Delete(expected Version, clock Clock) error {
 	tag.deletedAt, tag.modifiedAt, tag.version = now, now, next
 	return nil
 }
-func (tag *Tag) ID() TagID            { return tag.id }
-func (tag *Tag) Name() Name           { return tag.name }
-func (tag *Tag) Version() Version     { return tag.version }
-func (tag *Tag) DeletedAt() time.Time { return tag.deletedAt }
+func (tag *Tag) ID() TagID             { return tag.id }
+func (tag *Tag) Name() Name            { return tag.name }
+func (tag *Tag) Version() Version      { return tag.version }
+func (tag *Tag) CreatedAt() time.Time  { return tag.createdAt }
+func (tag *Tag) ModifiedAt() time.Time { return tag.modifiedAt }
+func (tag *Tag) DeletedAt() time.Time  { return tag.deletedAt }
 
 func taxonomyCurrent(actual, expected Version, deletedAt time.Time) error {
 	if !expected.valid() || actual != expected {

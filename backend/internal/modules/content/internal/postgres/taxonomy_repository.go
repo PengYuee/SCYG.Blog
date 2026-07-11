@@ -1,0 +1,86 @@
+package postgres
+
+import (
+	"context"
+	"errors"
+
+	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/internal/domain"
+	"gorm.io/gorm"
+)
+
+type articleTypeRepository struct{ db *gorm.DB }
+
+func (repo *articleTypeRepository) Find(ctx context.Context, id domain.ArticleTypeID) (*domain.ArticleType, error) {
+	var row articleTypeModel
+	result := repo.db.WithContext(ctx).Where(`"Id" = ? AND "IsDeleted" = false`, id.Int64()).First(&row)
+	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		return nil, notFound("article type")
+	}
+	if result.Error != nil {
+		return nil, translate(result.Error)
+	}
+	item, err := articleTypeFromModel(row)
+	if err != nil {
+		return nil, err
+	}
+	return item, nil
+}
+func (repo *articleTypeRepository) Save(ctx context.Context, item *domain.ArticleType) error {
+	row := articleTypeModel{ID: item.ID().Int64(), Name: item.Name().String(), Version: int64(item.Version().Uint64()), CreationTime: item.CreatedAt().UTC(), LastModificationTime: nullableTime(item.ModifiedAt()), DeletionTime: nullableTime(item.DeletedAt()), IsDeleted: !item.DeletedAt().IsZero()}
+	if row.Version == 1 {
+		result := repo.db.WithContext(ctx).Select("Id", "Name", "Image", "Meun", "Version", "CreationTime", "LastModificationTime", "DeletionTime", "IsDeleted").Create(&row)
+		return translate(result.Error)
+	}
+	if row.IsDeleted {
+		var count int64
+		if err := repo.db.WithContext(ctx).Model(&articleModel{}).Where(`"ArticleTypeId" = ? AND "IsDeleted" = false`, row.ID).Count(&count).Error; err != nil {
+			return translate(err)
+		}
+		if count > 0 {
+			return failedPrecondition(errors.New("article type is referenced by active article"))
+		}
+	}
+	expected := row.Version - 1
+	result := repo.db.WithContext(ctx).Model(&articleTypeModel{}).Where(`"Id" = ? AND "Version" = ? AND "IsDeleted" = false`, row.ID, expected).Updates(map[string]any{"Name": row.Name, "LastModificationTime": row.LastModificationTime, "DeletionTime": row.DeletionTime, "IsDeleted": row.IsDeleted, "Version": gorm.Expr(`"Version" + 1`)})
+	if result.Error != nil {
+		return translate(result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return classifyMiss(ctx, repo.db, "ArticleType", row.ID, uint64(expected))
+	}
+	return nil
+}
+
+type tagRepository struct{ db *gorm.DB }
+
+func (repo *tagRepository) Find(ctx context.Context, id domain.TagID) (*domain.Tag, error) {
+	var row tagModel
+	result := repo.db.WithContext(ctx).Where(`"Id" = ? AND "IsDeleted" = false`, id.Int64()).First(&row)
+	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		return nil, notFound("tag")
+	}
+	if result.Error != nil {
+		return nil, translate(result.Error)
+	}
+	tag, err := tagFromModel(row)
+	if err != nil {
+		return nil, err
+	}
+	return tag, nil
+}
+func (repo *tagRepository) Save(ctx context.Context, tag *domain.Tag) error {
+	row := tagModel{ID: tag.ID().Int64(), Name: tag.Name().String(), Version: int64(tag.Version().Uint64()), CreationTime: tag.CreatedAt().UTC(), LastModificationTime: nullableTime(tag.ModifiedAt()), DeletionTime: nullableTime(tag.DeletedAt()), IsDeleted: !tag.DeletedAt().IsZero()}
+	if row.Version == 1 {
+		result := repo.db.WithContext(ctx).Select("Id", "Name", "Version", "CreationTime", "LastModificationTime", "DeletionTime", "IsDeleted").Create(&row)
+		return translate(result.Error)
+	}
+	expected := row.Version - 1
+	result := repo.db.WithContext(ctx).Model(&tagModel{}).Where(`"Id" = ? AND "Version" = ? AND "IsDeleted" = false`, row.ID, expected).Updates(map[string]any{"Name": row.Name, "LastModificationTime": row.LastModificationTime, "DeletionTime": row.DeletionTime, "IsDeleted": row.IsDeleted, "Version": gorm.Expr(`"Version" + 1`)})
+	if result.Error != nil {
+		return translate(result.Error)
+	}
+	if result.RowsAffected == 0 {
+		return classifyMiss(ctx, repo.db, "Tag", row.ID, uint64(expected))
+	}
+	return nil
+}

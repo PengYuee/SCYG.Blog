@@ -35,6 +35,11 @@ type ArticleReadModel interface {
 	ListPublished(context.Context, ArticleFilter) (ArticlePage, error)
 }
 
+// ArticleAdminReadModel serves explicitly non-public article projections.
+type ArticleAdminReadModel interface {
+	ListAll(context.Context, ArticleFilter) (ArticlePage, error)
+}
+
 // TaxonomyReadModel serves article-type and tag projections.
 type TaxonomyReadModel interface {
 	ListArticleTypes(context.Context, string) ([]ArticleTypeView, error)
@@ -60,6 +65,7 @@ type ArticleFilter struct {
 	ArticleTypeID domain.ArticleTypeID
 	TagID         domain.TagID
 	Query         string
+	Status        domain.Status
 	Sort          string
 }
 
