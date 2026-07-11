@@ -11,7 +11,7 @@ import { RouterLink } from "vue-router"
       </span>
       <p class="mt-6 text-xs font-semibold uppercase tracking-[0.18em] text-accent">ADMIN BOUNDARY</p>
       <h1 id="admin-unavailable-title" class="mt-2 text-balance font-[family-name:var(--font-family-display)] text-[length:var(--font-size-h1)] font-bold leading-[var(--line-height-h1)]">管理后台暂不可用</h1>
-      <p class="mx-auto mt-4 max-w-xl text-pretty text-text-secondary">当前版本只保留管理域路由边界，不提供仪表盘、套餐或订阅功能。</p>
+      <p class="mx-auto mt-4 max-w-xl text-pretty text-text-secondary">当前版本仅保留管理域路由边界，尚未开放管理功能。</p>
       <RouterLink to="/" class="mt-8 inline-flex min-h-11 items-center rounded-[var(--radius-control)] bg-accent px-6 font-semibold text-[color:var(--color-hero-text)] hover:bg-accent-hover active:scale-[0.98]">返回博客首页</RouterLink>
     </section>
   </main>

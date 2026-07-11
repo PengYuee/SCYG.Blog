@@ -1,4 +1,4 @@
-﻿# SCYG Blog Desktop Design System
+# SCYG Blog Desktop Design System
 
 ## 0. Research and scope
 
@@ -114,7 +114,7 @@ Reserved as an integration boundary only. It currently defines no concrete produ
 - **BlogCard**: linked article summary with hover, active, focus-visible, and visited-safe semantics.
 - **AuthorProfile**: uses `/images/avatar.jpg`; includes textual author identity so the portrait is not the only identifier.
 - **EditorSurface**: exposes clean, dirty, saving, saved, and error states without layout shift.
-- **Shared controls and feedback**: existing button, dialog, status tag, filter, data table, breadcrumb, toast, alert, and page header continue to consume the shared semantic tokens.
+- **Shared controls and feedback**: the referenced dialog and toast primitives continue to consume shared semantic tokens; obsolete demo-only table, filter, status, breadcrumb, alert, button, and page-header primitives are not part of the runtime surface.
 
 ## 6. Interaction and motion
 
@@ -147,5 +147,3 @@ Motion tokens are `--duration-fast: 150ms`, `--duration-standard: 220ms`, `--dur
 | Local CJK serif appearance varies by operating system | Readers on systems without the preferred local serif | No new dependency or remote font is allowed | Validate target deployment fonts or add an approved self-hosted CJK subset |
 
 T1 is accepted only when token and forbidden-term checks pass, both copied assets are readable, a fresh Microsoft Edge 1440 x 900 artifact exists, and browser/server cleanup is recorded.
-
-

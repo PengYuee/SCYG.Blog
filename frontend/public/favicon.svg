@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+  <title id="title">SCYG Blog</title>
+  <rect width="64" height="64" rx="16" fill="#263044"/>
+  <path d="M43.5 12.5a22 22 0 1 0 8 37.8A24 24 0 0 1 43.5 12.5Z" fill="#F7F9FE"/>
+  <circle cx="47" cy="18" r="3" fill="#FF623E"/>
+</svg>

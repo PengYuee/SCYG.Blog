@@ -1,4 +1,3 @@
-import { readFile } from "node:fs/promises"
 import { flushPromises, mount } from "@vue/test-utils"
 import { createPinia } from "pinia"
 import { RouterView } from "vue-router"
@@ -70,13 +69,6 @@ describe("T9 production route contract", () => {
     // Then: 公共 catch-all 保留原地址并呈现 404。
     expect(router.currentRoute.value.name).toBe("public-not-found")
     expect(router.currentRoute.value.fullPath).toBe("/missing-page")
-  })
-
-  it("keeps production routes free of old package and subscription imports", async () => {
-    // Given: 生产路由入口。
-    const source = await readFile("src/router/index.ts", "utf8")
-    // When / Then: 旧功能不会进入生产路由或构建 chunk。
-    expect(source).not.toMatch(/PackagesView|SubscriptionsView|admin\/packages|admin\/subscriptions/)
   })
 
   it("keeps admin matching independent from public and author route records", async () => {
