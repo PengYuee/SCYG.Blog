@@ -8,38 +8,40 @@ import (
 	"time"
 )
 
-// Action identifies an authorization decision independent of transport.
+// Action 表示与传输协议无关的授权动作；其字符串值是稳定权限契约。
 type Action string
 
 const (
-	// ActionCreateArticle authorizes draft creation.
+	// ActionCreateArticle 授权创建文章草稿。
 	ActionCreateArticle Action = "content.article.create"
-	// ActionReviseArticle authorizes article revision.
+	// ActionReviseArticle 授权修订文章。
 	ActionReviseArticle Action = "content.article.revise"
-	// ActionPublishArticle authorizes publication.
+	// ActionPublishArticle 授权发布文章。
 	ActionPublishArticle Action = "content.article.publish"
-	// ActionArchiveArticle authorizes archival.
+	// ActionArchiveArticle 授权归档文章。
 	ActionArchiveArticle Action = "content.article.archive"
-	// ActionDeleteArticle authorizes article deletion.
+	// ActionDeleteArticle 授权删除文章。
 	ActionDeleteArticle Action = "content.article.delete"
-	// ActionManageArticleType authorizes article-type changes.
+	// ActionManageArticleType 授权变更文章分类。
 	ActionManageArticleType Action = "content.article_type.manage"
-	// ActionManageTag authorizes tag changes.
+	// ActionManageTag 授权变更标签。
 	ActionManageTag Action = "content.tag.manage"
 )
 
-// Resource identifies the domain object under authorization.
+// Resource 描述待授权的领域资源；Kind 和 ID 必须与鉴权策略使用的资源标识一致。
 type Resource struct {
+	// Kind 是资源类别的稳定标识。
 	Kind string
-	ID   int64
+	// ID 是资源的业务主键。
+	ID int64
 }
 
-// Authorizer decides whether an action is allowed for a resource.
+// Authorizer 决定主体是否可对指定资源执行动作；拒绝时必须返回权限错误。
 type Authorizer interface {
 	Authorize(context.Context, Action, Resource) error
 }
 
-// AuthorizerOrDeny preserves a concrete authorizer and safely defaults nil interfaces and typed nils to DenyAll.
+// AuthorizerOrDeny 保留有效鉴权器，并将 nil 接口或带类型 nil 安全地降级为 DenyAll，确保默认拒绝。
 func AuthorizerOrDeny(candidate Authorizer) Authorizer {
 	value := reflect.ValueOf(candidate)
 	if !value.IsValid() {
@@ -54,18 +56,18 @@ func AuthorizerOrDeny(candidate Authorizer) Authorizer {
 	return candidate
 }
 
-// DenyAll rejects every authorization decision and is the safe default implementation.
+// DenyAll 拒绝全部授权请求，是缺省鉴权器的安全实现。
 type DenyAll struct{}
 
-// Authorize always returns permission_denied.
+// Authorize 始终返回 permission_denied，不允许缺省配置绕过授权。
 func (DenyAll) Authorize(context.Context, Action, Resource) error {
 	return &ApplicationError{Code: CodePermissionDenied, Kind: KindPermission, Cause: ErrPermissionDenied}
 }
 
-// ErrorCode is a stable protocol-neutral application error code.
+// ErrorCode 是与协议无关的稳定应用错误码；不得翻译或更改其字符串值。
 type ErrorCode string
 
-// ErrorKind groups application failures by caller behavior.
+// ErrorKind 按调用方处理方式归类应用错误。
 type ErrorKind string
 
 const (
@@ -84,234 +86,359 @@ const (
 	KindInternal           ErrorKind = "internal"
 )
 
-// Stable application sentinels expose business semantics without adapter causes.
+// 稳定应用错误哨兵仅表达业务语义，不暴露适配器底层原因。
 var (
-	ErrConflict           = errors.New("content: conflict")
-	ErrFailedPrecondition = errors.New("content: failed precondition")
-	ErrNotFound           = errors.New("content: not found")
-	ErrPersistence        = errors.New("content: persistence failure")
+	// ErrConflict 表示当前资源状态与操作冲突。
+	ErrConflict = errors.New("内容：资源状态冲突")
+	// ErrFailedPrecondition 表示操作的业务前置条件未满足。
+	ErrFailedPrecondition = errors.New("内容：前置条件不满足")
+	// ErrNotFound 表示请求资源不存在。
+	ErrNotFound = errors.New("内容：资源不存在")
+	// ErrPersistence 表示持久化失败；不得将底层原因返回给接口调用方。
+	ErrPersistence = errors.New("内容：持久化失败")
 )
 
-// ErrPermissionDenied is the stable authorization sentinel.
-var ErrPermissionDenied = errors.New("content: permission denied")
+// ErrPermissionDenied 是稳定的授权拒绝哨兵。
+var ErrPermissionDenied = errors.New("内容：权限不足")
 
-// ApplicationError carries stable semantics without an HTTP status.
+// ApplicationError 携带不绑定 HTTP 状态码的稳定错误语义；Cause 仅用于内部错误链。
 type ApplicationError struct {
-	Code            ErrorCode
-	Kind            ErrorKind
-	Cause           error
+	// Code 是面向调用方的稳定机器错误码。
+	Code ErrorCode
+	// Kind 是供应用层分支处理的错误分类。
+	Kind ErrorKind
+	// Cause 是内部根因，HTTP 响应不得直接泄露它。
+	Cause error
+	// ExpectedVersion 是并发冲突中的期望版本。
 	ExpectedVersion uint64
-	ActualVersion   uint64
+	// ActualVersion 是并发冲突中持久化的实际版本。
+	ActualVersion uint64
 }
 
-// Error renders stable failure semantics.
+// Error 返回稳定错误码与中文原因，供日志和内部调用链使用。
 func (failure *ApplicationError) Error() string {
 	return fmt.Sprintf("%s: %v", failure.Code, failure.Cause)
 }
 
-// Unwrap preserves errors.Is and errors.As chains.
+// Unwrap 保留 errors.Is 和 errors.As 所需的错误链。
 func (failure *ApplicationError) Unwrap() error { return failure.Cause }
 
-// CreateArticle creates an article draft.
+// CreateArticle 描述创建文章草稿所需的已解析输入。
 type CreateArticle struct {
+	// ArticleTypeID 是所属文章分类 ID。
 	ArticleTypeID int64
-	Title         string
-	Slug          string
-	Digest        string
-	Content       string
-	TagIDs        []int64
+	// Title 是文章标题。
+	Title string
+	// Slug 是文章的 URL 标识。
+	Slug string
+	// Digest 是文章摘要。
+	Digest string
+	// Content 是文章正文。
+	Content string
+	// TagIDs 是文章关联的标签 ID。
+	TagIDs []int64
 }
 
-// ReviseArticle revises a versioned article.
+// ReviseArticle 描述基于乐观锁版本修订文章的完整输入。
 type ReviseArticle struct {
-	ID            int64
-	Version       uint64
+	// ID 是待修订文章 ID。
+	ID int64
+	// Version 是调用方持有的乐观锁版本。
+	Version uint64
+	// ArticleTypeID 是目标文章分类 ID。
 	ArticleTypeID int64
-	Title         string
-	Slug          string
-	Digest        string
-	Content       string
-	TagIDs        []int64
+	// Title 是目标文章标题。
+	Title string
+	// Slug 是目标 URL 标识。
+	Slug string
+	// Digest 是目标摘要。
+	Digest string
+	// Content 是目标正文。
+	Content string
+	// TagIDs 是目标标签 ID 集合。
+	TagIDs []int64
 }
 
-// PatchArticle partially updates article values and optionally changes lifecycle status.
+// PatchArticle 描述文章局部更新；nil 字段表示调用方未提供，Version 必须来自强 ETag。
 type PatchArticle struct {
-	ID            int64
-	Version       uint64
+	// ID 是待更新文章 ID。
+	ID int64
+	// Version 是 If-Match 解析出的乐观锁版本。
+	Version uint64
+	// ArticleTypeID 为可选目标分类 ID。
 	ArticleTypeID *int64
-	Title         *string
-	Slug          *string
-	Digest        *string
-	Content       *string
-	TagIDs        *[]int64
-	Status        *string
+	// Title 为可选标题。
+	Title *string
+	// Slug 为可选 URL 标识。
+	Slug *string
+	// Digest 为可选摘要。
+	Digest *string
+	// Content 为可选正文。
+	Content *string
+	// TagIDs 为可选标签集合，非 nil 的空切片表示清空。
+	TagIDs *[]int64
+	// Status 为可选生命周期状态。
+	Status *string
 }
 
-// PublishArticle publishes a versioned draft.
+// PublishArticle 描述基于版本发布草稿的命令。
 type PublishArticle struct {
-	ID      int64
+	// ID 是待发布文章 ID。
+	ID int64
+	// Version 是乐观锁版本。
 	Version uint64
 }
 
-// ArchiveArticle archives a versioned published article.
+// ArchiveArticle 描述基于版本归档已发布文章的命令。
 type ArchiveArticle struct {
-	ID      int64
+	// ID 是待归档文章 ID。
+	ID int64
+	// Version 是乐观锁版本。
 	Version uint64
 }
 
-// DeleteArticle soft-deletes a versioned article.
+// DeleteArticle 描述基于版本软删除文章的命令。
 type DeleteArticle struct {
-	ID      int64
+	// ID 是待删除文章 ID。
+	ID int64
+	// Version 是乐观锁版本。
 	Version uint64
 }
 
-// CreateArticleType creates an article type with optional image and nonnegative menu order.
+// CreateArticleType 描述创建文章分类的输入；Meun 必须为非负值。
 type CreateArticleType struct {
-	Name  string
+	// Name 是分类名称。
+	Name string
+	// Image 是可选分类图片。
 	Image *string
-	Meun  int32
+	// Meun 是稳定的菜单排序字段名。
+	Meun int32
 }
 
-// OptionalImage distinguishes an omitted image from setting or clearing it.
+// OptionalImage 区分未提供图片、设置图片和显式清空图片。
 type OptionalImage struct {
+	// Provided 表示请求是否包含 image 字段。
 	Provided bool
-	Value    *string
+	// Value 是提供的图片值，nil 表示显式清空。
+	Value *string
 }
 
-// PatchArticleType partially updates a versioned article type.
+// PatchArticleType 描述基于 ETag 版本局部更新文章分类的命令。
 type PatchArticleType struct {
-	ID      int64
+	// ID 是待更新分类 ID。
+	ID int64
+	// Version 是 If-Match 解析出的乐观锁版本。
 	Version uint64
-	Name    *string
-	Image   OptionalImage
-	Meun    *int32
+	// Name 是可选分类名称。
+	Name *string
+	// Image 保留 image 的三态语义。
+	Image OptionalImage
+	// Meun 是可选菜单排序。
+	Meun *int32
 }
 
-// RenameArticleType renames a versioned article type.
+// RenameArticleType 描述基于版本重命名文章分类的命令。
 type RenameArticleType struct {
-	ID      int64
+	// ID 是待重命名分类 ID。
+	ID int64
+	// Version 是乐观锁版本。
 	Version uint64
-	Name    string
+	// Name 是新的分类名称。
+	Name string
 }
 
-// DeleteArticleType soft-deletes a versioned article type.
+// DeleteArticleType 描述基于版本软删除文章分类的命令。
 type DeleteArticleType struct {
-	ID      int64
+	// ID 是待删除分类 ID。
+	ID int64
+	// Version 是乐观锁版本。
 	Version uint64
 }
 
-// CreateTag creates a tag.
-type CreateTag struct{ Name string }
+// CreateTag 描述创建标签的输入。
+type CreateTag struct {
+	// Name 是标签名称。
+	Name string
+}
 
-// RenameTag renames a versioned tag.
+// RenameTag 描述基于版本重命名标签的命令。
 type RenameTag struct {
-	ID      int64
+	// ID 是待重命名标签 ID。
+	ID int64
+	// Version 是乐观锁版本。
 	Version uint64
-	Name    string
+	// Name 是新的标签名称。
+	Name string
 }
 
-// DeleteTag soft-deletes a versioned tag.
+// DeleteTag 描述基于版本软删除标签的命令。
 type DeleteTag struct {
-	ID      int64
+	// ID 是待删除标签 ID。
+	ID int64
+	// Version 是乐观锁版本。
 	Version uint64
 }
 
-// GetArticle finds one public article.
-type GetArticle struct{ ID int64 }
+// GetArticle 描述查询一篇公开文章的输入。
+type GetArticle struct {
+	// ID 是文章 ID。
+	ID int64
+}
 
-// ListArticles lists public articles with bounded filters supplied by a caller.
+// ListArticles 描述公开文章的分页与筛选条件，调用方必须提供已受限的页码参数。
 type ListArticles struct {
-	Page          int
-	PageSize      int
+	// Page 是从 1 开始的页码。
+	Page int
+	// PageSize 是每页条数。
+	PageSize int
+	// ArticleTypeID 是可选分类筛选。
 	ArticleTypeID int64
-	TagID         int64
-	Query         string
-	Sort          string
+	// TagID 是可选标签筛选。
+	TagID int64
+	// Query 是可选检索词。
+	Query string
+	// Sort 是稳定排序标识。
+	Sort string
 }
 
-// ListArticleTypes lists article types with protocol-neutral filtering and paging.
+// ListArticleTypes 描述文章分类的协议无关筛选和分页条件。
 type ListArticleTypes struct {
-	Page     int
+	// Page 是从 1 开始的页码。
+	Page int
+	// PageSize 是每页条数。
 	PageSize int
-	Name     string
-	Sort     string
+	// Name 是可选名称筛选。
+	Name string
+	// Sort 是稳定排序标识。
+	Sort string
 }
 
-// GetArticleType finds one nondeleted article type.
-type GetArticleType struct{ ID int64 }
+// GetArticleType 描述查询一个未删除文章分类的输入。
+type GetArticleType struct {
+	// ID 是文章分类 ID。
+	ID int64
+}
 
-// ListTags lists tags with protocol-neutral filtering and paging.
+// ListTags 描述标签的协议无关筛选和分页条件。
 type ListTags struct {
-	Page     int
+	// Page 是从 1 开始的页码。
+	Page int
+	// PageSize 是每页条数。
 	PageSize int
-	Name     string
-	Sort     string
+	// Name 是可选名称筛选。
+	Name string
+	// Sort 是稳定排序标识。
+	Sort string
 }
 
-// GetTag finds one nondeleted tag.
-type GetTag struct{ ID int64 }
+// GetTag 描述查询一个未删除标签的输入。
+type GetTag struct {
+	// ID 是标签 ID。
+	ID int64
+}
 
-// ArticleResult is a protocol-neutral article result.
+// ArticleResult 是协议无关的文章读取结果，所有文本已通过领域规则校验。
 type ArticleResult struct {
-	ID            int64
+	// ID 是文章 ID。
+	ID int64
+	// ArticleTypeID 是所属分类 ID。
 	ArticleTypeID int64
-	Title         string
-	Slug          string
-	Digest        string
-	Content       string
-	Status        string
-	TagIDs        []int64
-	Support       int64
-	Comment       int64
-	Visited       int64
-	Version       uint64
-	CreatedAt     time.Time
-	ModifiedAt    time.Time
+	// Title 是文章标题。
+	Title string
+	// Slug 是文章 URL 标识。
+	Slug string
+	// Digest 是文章摘要。
+	Digest string
+	// Content 是文章正文。
+	Content string
+	// Status 是稳定生命周期状态值。
+	Status string
+	// TagIDs 是关联标签 ID。
+	TagIDs []int64
+	// Support 是点赞计数。
+	Support int64
+	// Comment 是评论计数。
+	Comment int64
+	// Visited 是访问计数。
+	Visited int64
+	// Version 是乐观锁版本。
+	Version uint64
+	// CreatedAt 是创建时间。
+	CreatedAt time.Time
+	// ModifiedAt 是最后修改时间。
+	ModifiedAt time.Time
 }
 
-// ArticleTypeResult is a protocol-neutral article-type result.
+// ArticleTypeResult 是协议无关的文章分类读取结果。
 type ArticleTypeResult struct {
-	ID         int64
-	Name       string
-	Image      *string
-	Meun       int32
-	Version    uint64
-	CreatedAt  time.Time
+	// ID 是分类 ID。
+	ID int64
+	// Name 是分类名称。
+	Name string
+	// Image 是可选分类图片。
+	Image *string
+	// Meun 是稳定的菜单排序字段名。
+	Meun int32
+	// Version 是乐观锁版本。
+	Version uint64
+	// CreatedAt 是创建时间。
+	CreatedAt time.Time
+	// ModifiedAt 是最后修改时间。
 	ModifiedAt time.Time
 }
 
-// TagResult is a protocol-neutral tag result.
+// TagResult 是协议无关的标签读取结果。
 type TagResult struct {
-	ID         int64
-	Name       string
-	Version    uint64
-	CreatedAt  time.Time
+	// ID 是标签 ID。
+	ID int64
+	// Name 是标签名称。
+	Name string
+	// Version 是乐观锁版本。
+	Version uint64
+	// CreatedAt 是创建时间。
+	CreatedAt time.Time
+	// ModifiedAt 是最后修改时间。
 	ModifiedAt time.Time
 }
 
-// ArticlePage is a protocol-neutral article page.
+// ArticlePage 是协议无关的文章分页结果。
 type ArticlePage struct {
-	Items      []ArticleResult
-	Number     int
-	Size       int
+	// Items 是当前页文章。
+	Items []ArticleResult
+	// Number 是当前页码。
+	Number int
+	// Size 是当前页大小。
+	Size int
+	// TotalItems 是符合条件的总条数。
 	TotalItems int64
+	// TotalPages 是符合条件的总页数。
 	TotalPages int
 }
 
-// ArticleTypePage is a protocol-neutral article-type page.
+// ArticleTypePage 是协议无关的文章分类分页结果。
 type ArticleTypePage struct {
-	Items      []ArticleTypeResult
-	Number     int
-	Size       int
+	// Items 是当前页分类。
+	Items []ArticleTypeResult
+	// Number 是当前页码。
+	Number int
+	// Size 是当前页大小。
+	Size int
+	// TotalItems 是符合条件的总条数。
 	TotalItems int64
+	// TotalPages 是符合条件的总页数。
 	TotalPages int
 }
 
-// TagPage is a protocol-neutral tag page.
+// TagPage 是协议无关的标签分页结果。
 type TagPage struct {
-	Items      []TagResult
-	Number     int
-	Size       int
+	// Items 是当前页标签。
+	Items []TagResult
+	// Number 是当前页码。
+	Number int
+	// Size 是当前页大小。
+	Size int
+	// TotalItems 是符合条件的总条数。
 	TotalItems int64
+	// TotalPages 是符合条件的总页数。
 	TotalPages int
 }

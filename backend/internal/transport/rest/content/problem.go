@@ -13,24 +13,24 @@ import (
 
 func writeApplicationProblem(ctx *gin.Context, err error) {
 	var failure *module.ApplicationError
-	if !errors.As(err, &failure) {
-		writeProblem(ctx, http.StatusInternalServerError, module.CodeInternal, "an internal error occurred", nil)
+	if !errors.As(err, &failure) || failure == nil {
+		writeProblem(ctx, http.StatusInternalServerError, module.CodeInternal, "服务器处理请求时发生内部错误", nil)
 		return
 	}
-	status, detail := http.StatusInternalServerError, "an internal error occurred"
+	status, detail := http.StatusInternalServerError, "服务器处理请求时发生内部错误"
 	switch failure.Code {
 	case module.CodeValidation:
-		status, detail = 400, "request values are invalid"
+		status, detail = http.StatusBadRequest, "请求参数不合法"
 	case module.CodePermissionDenied:
-		status, detail = 403, "the operation is forbidden"
+		status, detail = http.StatusForbidden, "没有执行该操作的权限"
 	case module.CodeNotFound:
-		status, detail = 404, "the requested resource was not found"
+		status, detail = http.StatusNotFound, "请求的资源不存在"
 	case module.CodeAlreadyExists, module.CodeFailedPrecondition:
-		status, detail = 409, "the operation conflicts with current state"
+		status, detail = http.StatusConflict, "操作与当前资源状态冲突"
 	case module.CodeStaleVersion:
-		status, detail = 412, "the supplied entity version is stale"
+		status, detail = http.StatusPreconditionFailed, "提供的实体版本已过期"
 	case module.CodeVersionRequired:
-		status, detail = 428, "a strong If-Match entity tag is required"
+		status, detail = http.StatusPreconditionRequired, "必须提供强 If-Match 实体标签"
 	}
 	writeProblem(ctx, status, failure.Code, detail, nil)
 }
@@ -39,7 +39,27 @@ func writeProblem(ctx *gin.Context, status int, code module.ErrorCode, detail st
 	if fields == nil {
 		fields = map[string][]string{}
 	}
-	problem := generated.Problem{Type: "https://scyg.blog/problems/" + string(code), Title: http.StatusText(status), Status: int32(status), Detail: detail, Instance: ctx.Request.URL.Path, RequestID: observability.RequestIDFromContext(ctx.Request.Context()), Errors: fields}
+	problem := generated.Problem{Type: "https://scyg.blog/problems/" + string(code), Title: problemTitle(status), Status: int32(status), Detail: detail, Instance: ctx.Request.URL.Path, RequestID: observability.RequestIDFromContext(ctx.Request.Context()), Errors: fields}
 	ctx.Header("Content-Type", "application/problem+json")
 	ctx.JSON(status, problem)
+}
+
+// problemTitle 返回 RFC 9457 响应使用的中文状态标题，避免向 HTTP 调用方暴露英文默认文案。
+func problemTitle(status int) string {
+	switch status {
+	case http.StatusBadRequest:
+		return "请求参数错误"
+	case http.StatusForbidden:
+		return "禁止访问"
+	case http.StatusNotFound:
+		return "资源不存在"
+	case http.StatusConflict:
+		return "资源状态冲突"
+	case http.StatusPreconditionFailed:
+		return "前置条件不满足"
+	case http.StatusPreconditionRequired:
+		return "缺少前置条件"
+	default:
+		return "服务器内部错误"
+	}
 }

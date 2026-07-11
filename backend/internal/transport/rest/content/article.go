@@ -8,7 +8,7 @@ import (
 	module "github.com/PengYuee/SCYG.Blog/backend/internal/modules/content"
 )
 
-// ListArticles implements the generated published article list operation.
+// ListArticles 实现生成的公开文章列表操作。
 func (handler *Handler) ListArticles(ctx context.Context, request generated.ListArticlesRequestObject) (generated.ListArticlesResponseObject, error) {
 	page, size := pageValues(request.Params.Page, request.Params.PageSize)
 	query := module.ListArticles{Page: page, PageSize: size, Sort: articleSort(request.Params.Sort)}
@@ -40,11 +40,11 @@ func (handler *Handler) ListArticles(ctx context.Context, request generated.List
 	return generated.ListArticles200JSONResponse{Items: items, Page: metadata}, nil
 }
 
-// CreateArticle implements the generated article creation operation.
+// CreateArticle 实现生成的文章创建操作。
 func (handler *Handler) CreateArticle(ctx context.Context, request generated.CreateArticleRequestObject) (generated.CreateArticleResponseObject, error) {
 	body := request.Body
 	if body.Status != generated.Draft {
-		return nil, invalidETag(fmt.Errorf("new articles must be drafts"))
+		return nil, invalidETag(fmt.Errorf("新建文章必须为草稿状态"))
 	}
 	tags := make([]int64, len(body.TagIds))
 	copy(tags, body.TagIds)
@@ -63,7 +63,7 @@ func (handler *Handler) CreateArticle(ctx context.Context, request generated.Cre
 	return generated.CreateArticle201JSONResponse{Body: dto, Headers: generated.CreateArticle201ResponseHeaders{ETag: etag, Location: fmt.Sprintf("/api/v1/articles/%d", result.ID)}}, nil
 }
 
-// GetArticle implements the generated published article detail operation.
+// GetArticle 实现生成的公开文章详情操作。
 func (handler *Handler) GetArticle(ctx context.Context, request generated.GetArticleRequestObject) (generated.GetArticleResponseObject, error) {
 	result, err := handler.queries.GetArticle(ctx, module.GetArticle{ID: request.ArticleID})
 	if err != nil {
@@ -80,8 +80,9 @@ func (handler *Handler) GetArticle(ctx context.Context, request generated.GetArt
 	return generated.GetArticle200JSONResponse{Body: dto, Headers: generated.GetArticle200ResponseHeaders{ETag: etag}}, nil
 }
 
-// PatchArticle implements partial article revision and lifecycle transitions.
+// PatchArticle 实现文章局部修订与生命周期迁移；If-Match 必须是强 ETag。
 func (handler *Handler) PatchArticle(ctx context.Context, request generated.PatchArticleRequestObject) (generated.PatchArticleResponseObject, error) {
+	// 先解析强 ETag，避免未携带有效并发版本的更新进入应用层。
 	version, err := parseEntityTag(request.Params.IfMatch)
 	if err != nil {
 		return nil, &module.ApplicationError{Code: module.CodeValidation, Kind: module.KindValidation, Cause: err}
@@ -112,7 +113,7 @@ func (handler *Handler) PatchArticle(ctx context.Context, request generated.Patc
 	return generated.PatchArticle200JSONResponse{Body: dto, Headers: generated.PatchArticle200ResponseHeaders{ETag: etag}}, nil
 }
 
-// DeleteArticle implements optimistic article deletion.
+// DeleteArticle 实现基于乐观锁版本的文章删除。
 func (handler *Handler) DeleteArticle(ctx context.Context, request generated.DeleteArticleRequestObject) (generated.DeleteArticleResponseObject, error) {
 	version, err := parseEntityTag(request.Params.IfMatch)
 	if err != nil {

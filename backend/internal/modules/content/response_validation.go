@@ -2,7 +2,7 @@ package content
 
 import "github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/internal/domain"
 
-// ValidateArticleResponseText applies authoritative domain text parsing to a read result.
+// ValidateArticleResponseText 对读取结果应用权威领域文本解析，阻止非法数据进入 HTTP 响应。
 func ValidateArticleResponseText(result ArticleResult) error {
 	if _, err := domain.NewTitle(result.Title); err != nil {
 		return err
@@ -17,7 +17,7 @@ func ValidateArticleResponseText(result ArticleResult) error {
 	return err
 }
 
-// ValidateArticleTypeResponseText applies authoritative taxonomy text parsing to a read result.
+// ValidateArticleTypeResponseText 对分类读取结果应用权威领域文本解析。
 func ValidateArticleTypeResponseText(result ArticleTypeResult) error {
 	if _, err := domain.NewName(result.Name); err != nil {
 		return err
@@ -25,7 +25,7 @@ func ValidateArticleTypeResponseText(result ArticleTypeResult) error {
 	return domain.ValidateImage(result.Image)
 }
 
-// ValidateTagResponseText applies authoritative taxonomy name parsing to a read result.
+// ValidateTagResponseText 对标签读取结果应用权威领域名称解析。
 func ValidateTagResponseText(result TagResult) error {
 	_, err := domain.NewName(result.Name)
 	return err

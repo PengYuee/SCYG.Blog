@@ -20,16 +20,17 @@ func entityTag(version uint64) (string, error) {
 
 func parseEntityTag(value string) (uint64, error) {
 	if strings.HasPrefix(value, "W/") || len(value) < 3 || value[0] != '"' || value[len(value)-1] != '"' {
-		return 0, fmt.Errorf("invalid strong entity tag")
+		return 0, fmt.Errorf("强实体标签格式不合法")
 	}
 	version, err := strconv.ParseUint(value[1:len(value)-1], 10, 64)
 	if err != nil || version == 0 {
-		return 0, fmt.Errorf("invalid strong entity tag")
+		return 0, fmt.Errorf("强实体标签格式不合法")
 	}
 	return version, nil
 }
 
 func articleDTO(item module.ArticleResult) (generated.Article, error) {
+	// 响应离开应用边界前必须重新校验，防止持久化异常数据突破 OpenAPI 契约。
 	version, err := generatedVersion(item.Version)
 	if err != nil || module.ValidateArticleResponseText(item) != nil || item.ID <= 0 || item.ArticleTypeID <= 0 || invalidTimes(item.CreatedAt, item.ModifiedAt) || item.Support < 0 || item.Comment < 0 || item.Visited < 0 {
 		return generated.Article{}, responseMappingError()
@@ -61,6 +62,7 @@ func articleDTO(item module.ArticleResult) (generated.Article, error) {
 }
 
 func articleTypeDTO(item module.ArticleTypeResult) (generated.ArticleType, error) {
+	// 分类文本和分页元数据同样必须满足对外响应契约。
 	version, err := generatedVersion(item.Version)
 	if err != nil || module.ValidateArticleTypeResponseText(item) != nil || item.ID <= 0 || invalidTimes(item.CreatedAt, item.ModifiedAt) || item.Meun < 0 {
 		return generated.ArticleType{}, responseMappingError()
@@ -104,7 +106,9 @@ func pageInfo(number, size int, totalItems int64, totalPages, itemCount int) (ge
 	expectedPages := int64(0)
 	if totalItems > 0 {
 		expectedPages = totalItems / int64(size)
-		if totalItems%int64(size) != 0 { expectedPages++ }
+		if totalItems%int64(size) != 0 {
+			expectedPages++
+		}
 	}
 	if int64(totalPages) != expectedPages {
 		return generated.PageInfo{}, responseMappingError()

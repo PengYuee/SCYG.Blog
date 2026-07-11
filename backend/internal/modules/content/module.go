@@ -1,4 +1,4 @@
-// Package content exposes protocol-neutral content commands, queries, and results.
+// Package content 提供协议无关的内容命令、查询和结果。
 package content
 
 import (
@@ -8,28 +8,33 @@ import (
 	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/internal/application"
 )
 
-// Clock supplies deterministic use-case time.
+// Clock 为用例提供确定性时间。
 type Clock = application.Clock
 
-// UnitOfWork owns transaction-scoped content repositories.
+// UnitOfWork 管理事务范围内的内容仓储，写操作必须通过它保持原子性。
 type UnitOfWork = application.UnitOfWork
 
-// ArticleReadModel serves published article projections.
+// ArticleReadModel 提供已发布文章投影。
 type ArticleReadModel = application.ArticleReadModel
 
-// TaxonomyReadModel serves nondeleted taxonomy projections.
+// TaxonomyReadModel 提供未删除分类和标签投影。
 type TaxonomyReadModel = application.TaxonomyReadModel
 
-// Dependencies contains the explicit protocol-neutral collaborators required by Module.
+// Dependencies 包含构造 Module 所需的显式协议无关协作者。
 type Dependencies struct {
-	Clock      Clock
+	// Clock 是用例使用的领域时钟。
+	Clock Clock
+	// Authorizer 是可选鉴权器，缺省时安全降级为 DenyAll。
 	Authorizer Authorizer
+	// UnitOfWork 是所有写操作的事务边界。
 	UnitOfWork UnitOfWork
-	Articles   ArticleReadModel
+	// Articles 提供公开文章读取投影。
+	Articles ArticleReadModel
+	// Taxonomies 提供分类与标签读取投影。
 	Taxonomies TaxonomyReadModel
 }
 
-// Module is the concrete protocol-neutral content facade.
+// Module 是具体的协议无关内容门面。
 type Module struct {
 	clock      Clock
 	authorizer Authorizer
@@ -38,19 +43,19 @@ type Module struct {
 	taxonomies TaxonomyReadModel
 }
 
-// NewModule safely composes all content use cases and defaults omitted authorization to DenyAll.
+// NewModule 安全组装全部内容用例；省略鉴权器时默认 DenyAll，其他依赖不得为 nil。
 func NewModule(dependencies Dependencies) (*Module, error) {
 	if nilLike(dependencies.Clock) {
-		return nil, errors.New("content clock is nil")
+		return nil, errors.New("内容时钟为空")
 	}
 	if nilLike(dependencies.UnitOfWork) {
-		return nil, errors.New("content unit of work is nil")
+		return nil, errors.New("内容工作单元为空")
 	}
 	if nilLike(dependencies.Articles) {
-		return nil, errors.New("content article read model is nil")
+		return nil, errors.New("内容文章读模型为空")
 	}
 	if nilLike(dependencies.Taxonomies) {
-		return nil, errors.New("content taxonomy read model is nil")
+		return nil, errors.New("内容分类读模型为空")
 	}
 	return &Module{clock: dependencies.Clock, authorizer: AuthorizerOrDeny(dependencies.Authorizer), unit: dependencies.UnitOfWork, articles: dependencies.Articles, taxonomies: dependencies.Taxonomies}, nil
 }

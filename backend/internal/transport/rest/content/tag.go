@@ -8,7 +8,7 @@ import (
 	module "github.com/PengYuee/SCYG.Blog/backend/internal/modules/content"
 )
 
-// ListTags implements the generated tag list operation.
+// ListTags 实现生成的标签列表操作。
 func (handler *Handler) ListTags(ctx context.Context, request generated.ListTagsRequestObject) (generated.ListTagsResponseObject, error) {
 	page, size := pageValues(request.Params.Page, request.Params.PageSize)
 	query := module.ListTags{Page: page, PageSize: size, Sort: tagSort(request.Params.Sort)}
@@ -34,7 +34,7 @@ func (handler *Handler) ListTags(ctx context.Context, request generated.ListTags
 	return generated.ListTags200JSONResponse{Items: items, Page: metadata}, nil
 }
 
-// CreateTag implements the generated tag creation operation.
+// CreateTag 实现生成的标签创建操作。
 func (handler *Handler) CreateTag(ctx context.Context, request generated.CreateTagRequestObject) (generated.CreateTagResponseObject, error) {
 	result, err := handler.commands.CreateTag(ctx, module.CreateTag{Name: request.Body.Name})
 	if err != nil {
@@ -51,7 +51,7 @@ func (handler *Handler) CreateTag(ctx context.Context, request generated.CreateT
 	return generated.CreateTag201JSONResponse{Body: dto, Headers: generated.CreateTag201ResponseHeaders{ETag: etag, Location: fmt.Sprintf("/api/v1/tags/%d", result.ID)}}, nil
 }
 
-// GetTag implements the generated tag detail operation.
+// GetTag 实现生成的标签详情操作。
 func (handler *Handler) GetTag(ctx context.Context, request generated.GetTagRequestObject) (generated.GetTagResponseObject, error) {
 	result, err := handler.queries.GetTag(ctx, module.GetTag{ID: request.TagID})
 	if err != nil {
@@ -68,14 +68,14 @@ func (handler *Handler) GetTag(ctx context.Context, request generated.GetTagRequ
 	return generated.GetTag200JSONResponse{Body: dto, Headers: generated.GetTag200ResponseHeaders{ETag: etag}}, nil
 }
 
-// PatchTag implements optimistic tag rename.
+// PatchTag 实现基于强 ETag 的标签重命名。
 func (handler *Handler) PatchTag(ctx context.Context, request generated.PatchTagRequestObject) (generated.PatchTagResponseObject, error) {
 	version, err := parseEntityTag(request.Params.IfMatch)
 	if err != nil {
 		return nil, invalidETag(err)
 	}
 	if request.Body.Name == nil {
-		return nil, invalidETag(fmt.Errorf("name is required"))
+		return nil, invalidETag(fmt.Errorf("必须提供标签名称"))
 	}
 	result, err := handler.commands.RenameTag(ctx, module.RenameTag{ID: request.TagID, Version: version, Name: *request.Body.Name})
 	if err != nil {
@@ -92,7 +92,7 @@ func (handler *Handler) PatchTag(ctx context.Context, request generated.PatchTag
 	return generated.PatchTag200JSONResponse{Body: dto, Headers: generated.PatchTag200ResponseHeaders{ETag: etag}}, nil
 }
 
-// DeleteTag implements optimistic tag deletion.
+// DeleteTag 实现基于乐观锁版本的标签删除。
 func (handler *Handler) DeleteTag(ctx context.Context, request generated.DeleteTagRequestObject) (generated.DeleteTagResponseObject, error) {
 	version, err := parseEntityTag(request.Params.IfMatch)
 	if err != nil {
