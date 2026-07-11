@@ -32,12 +32,12 @@ describe("T9 production route contract", () => {
     ["/article/42", "/articles/42"],
     ["/writeBlog", "/author/articles/new"],
     ["/writeBlog?id=42", "/author/articles/42/edit"],
-  ])("redirects exact legacy URL %s to %s", (legacy, expected) => {
-    // Given / When: 重定向契约同步解析，无需加载无关的懒视图。
-    const resolvedRoute = router.resolve(legacy)
+  ])("redirects exact legacy URL %s to %s", async (legacy, expected) => {
+    // Given / When: 重定向执行需要真实导航；全并发冷懒加载使用受限的局部预算。
+    await navigate(legacy)
     // Then: 跳转落到唯一规范地址。
-    expect(resolvedRoute.fullPath).toBe(expected)
-  })
+    expect(router.currentRoute.value.fullPath).toBe(expected)
+  }, 15_000)
 
   it("keeps an invalid legacy article id on a typed failure route", () => {
     // Given / When: 失败路由契约同步解析，避免加载无关的懒视图。
