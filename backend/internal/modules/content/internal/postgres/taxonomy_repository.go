@@ -34,7 +34,7 @@ func (repo *articleTypeRepository) Find(ctx context.Context, id domain.ArticleTy
 	return item, nil
 }
 func (repo *articleTypeRepository) Save(ctx context.Context, item *domain.ArticleType) error {
-	row := articleTypeModel{ID: item.ID().Int64(), Name: item.Name().String(), Version: int64(item.Version().Uint64()), CreationTime: item.CreatedAt().UTC(), LastModificationTime: nullableTime(item.ModifiedAt()), DeletionTime: nullableTime(item.DeletedAt()), IsDeleted: !item.DeletedAt().IsZero()}
+	row := articleTypeModel{ID: item.ID().Int64(), Name: item.Name().String(), Image: item.Image(), Meun: int16(item.Meun()), Version: int64(item.Version().Uint64()), CreationTime: item.CreatedAt().UTC(), LastModificationTime: nullableTime(item.ModifiedAt()), DeletionTime: nullableTime(item.DeletedAt()), IsDeleted: !item.DeletedAt().IsZero()}
 	if row.Version == 1 {
 		result := repo.db.WithContext(ctx).Select("Id", "Name", "Image", "Meun", "Version", "CreationTime", "LastModificationTime", "DeletionTime", "IsDeleted").Create(&row)
 		return translate(result.Error)
@@ -49,7 +49,7 @@ func (repo *articleTypeRepository) Save(ctx context.Context, item *domain.Articl
 		}
 	}
 	expected := row.Version - 1
-	result := repo.db.WithContext(ctx).Model(&articleTypeModel{}).Where(`"Id" = ? AND "Version" = ? AND "IsDeleted" = false`, row.ID, expected).Updates(map[string]any{"Name": row.Name, "LastModificationTime": row.LastModificationTime, "DeletionTime": row.DeletionTime, "IsDeleted": row.IsDeleted, "Version": gorm.Expr(`"Version" + 1`)})
+	result := repo.db.WithContext(ctx).Model(&articleTypeModel{}).Where(`"Id" = ? AND "Version" = ? AND "IsDeleted" = false`, row.ID, expected).Updates(map[string]any{"Name": row.Name, "Image": row.Image, "Meun": row.Meun, "LastModificationTime": row.LastModificationTime, "DeletionTime": row.DeletionTime, "IsDeleted": row.IsDeleted, "Version": gorm.Expr(`"Version" + 1`)})
 	if result.Error != nil {
 		return translate(result.Error)
 	}

@@ -27,7 +27,11 @@ func (handler *Handler) ListArticles(ctx context.Context, request generated.List
 	}
 	items := make([]generated.Article, len(result.Items))
 	for index, item := range result.Items {
-		items[index] = articleDTO(item)
+		mapped, mapErr := articleDTO(item)
+		if mapErr != nil {
+			return nil, mapErr
+		}
+		items[index] = mapped
 	}
 	return generated.ListArticles200JSONResponse{Items: items, Page: generated.PageInfo{Number: int32(result.Number), Size: int32(result.Size), TotalItems: result.TotalItems, TotalPages: int64(result.TotalPages)}}, nil
 }
@@ -44,7 +48,15 @@ func (handler *Handler) CreateArticle(ctx context.Context, request generated.Cre
 	if err != nil {
 		return nil, err
 	}
-	return generated.CreateArticle201JSONResponse{Body: articleDTO(result), Headers: generated.CreateArticle201ResponseHeaders{ETag: entityTag(result.Version), Location: fmt.Sprintf("/api/v1/articles/%d", result.ID)}}, nil
+	dto, err := articleDTO(result)
+	if err != nil {
+		return nil, err
+	}
+	etag, err := entityTag(result.Version)
+	if err != nil {
+		return nil, err
+	}
+	return generated.CreateArticle201JSONResponse{Body: dto, Headers: generated.CreateArticle201ResponseHeaders{ETag: etag, Location: fmt.Sprintf("/api/v1/articles/%d", result.ID)}}, nil
 }
 
 // GetArticle implements the generated published article detail operation.
@@ -53,7 +65,15 @@ func (handler *Handler) GetArticle(ctx context.Context, request generated.GetArt
 	if err != nil {
 		return nil, err
 	}
-	return generated.GetArticle200JSONResponse{Body: articleDTO(result), Headers: generated.GetArticle200ResponseHeaders{ETag: entityTag(result.Version)}}, nil
+	dto, err := articleDTO(result)
+	if err != nil {
+		return nil, err
+	}
+	etag, err := entityTag(result.Version)
+	if err != nil {
+		return nil, err
+	}
+	return generated.GetArticle200JSONResponse{Body: dto, Headers: generated.GetArticle200ResponseHeaders{ETag: etag}}, nil
 }
 
 // PatchArticle implements partial article revision and lifecycle transitions.
@@ -77,7 +97,15 @@ func (handler *Handler) PatchArticle(ctx context.Context, request generated.Patc
 	if err != nil {
 		return nil, err
 	}
-	return generated.PatchArticle200JSONResponse{Body: articleDTO(result), Headers: generated.PatchArticle200ResponseHeaders{ETag: entityTag(result.Version)}}, nil
+	dto, err := articleDTO(result)
+	if err != nil {
+		return nil, err
+	}
+	etag, err := entityTag(result.Version)
+	if err != nil {
+		return nil, err
+	}
+	return generated.PatchArticle200JSONResponse{Body: dto, Headers: generated.PatchArticle200ResponseHeaders{ETag: etag}}, nil
 }
 
 // DeleteArticle implements optimistic article deletion.

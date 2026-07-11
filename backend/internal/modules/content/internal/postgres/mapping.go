@@ -108,7 +108,7 @@ func articleTypeFromModel(row articleTypeModel) (*domain.ArticleType, error) {
 	if err != nil {
 		return nil, err
 	}
-	return domain.ReconstituteArticleType(domain.TaxonomyState[domain.ArticleTypeID]{ID: id, Name: name, Version: version, CreatedAt: row.CreationTime.UTC(), ModifiedAt: timeValue(row.LastModificationTime, row.CreationTime), DeletedAt: timeValue(row.DeletionTime, time.Time{})})
+	return domain.ReconstituteArticleType(domain.ArticleTypeState{TaxonomyState: domain.TaxonomyState[domain.ArticleTypeID]{ID: id, Name: name, Version: version, CreatedAt: row.CreationTime.UTC(), ModifiedAt: timeValue(row.LastModificationTime, row.CreationTime), DeletedAt: timeValue(row.DeletionTime, time.Time{})}, Image: row.Image, Meun: int32(row.Meun)})
 }
 func tagFromModel(row tagModel) (*domain.Tag, error) {
 	id, err := domain.NewTagID(row.ID)

@@ -49,12 +49,23 @@ type TaxonomyState[ID ArticleTypeID | TagID] struct {
 	DeletedAt  time.Time
 }
 
+// ArticleTypeState contains trusted persisted article-type state.
+type ArticleTypeState struct {
+	TaxonomyState[ArticleTypeID]
+	Image *string
+	Meun  int32
+}
+
 // ReconstituteArticleType restores a persisted article type through domain invariants.
-func ReconstituteArticleType(state TaxonomyState[ArticleTypeID]) (*ArticleType, error) {
+func ReconstituteArticleType(state ArticleTypeState) (*ArticleType, error) {
 	if !state.ID.valid() || !state.Name.valid() || !state.Version.valid() || state.CreatedAt.IsZero() || state.ModifiedAt.Before(state.CreatedAt) {
 		return nil, ErrInvalidValue
 	}
-	return &ArticleType{id: state.ID, name: state.Name, version: state.Version, createdAt: state.CreatedAt, modifiedAt: state.ModifiedAt, deletedAt: state.DeletedAt}, nil
+	image, err := parseImage(state.Image)
+	if err != nil || state.Meun < 0 {
+		return nil, ErrInvalidValue
+	}
+	return &ArticleType{id: state.ID, name: state.Name, image: image, meun: state.Meun, version: state.Version, createdAt: state.CreatedAt, modifiedAt: state.ModifiedAt, deletedAt: state.DeletedAt}, nil
 }
 
 // ReconstituteTag restores a persisted tag through domain invariants.

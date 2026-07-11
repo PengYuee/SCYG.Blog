@@ -21,18 +21,30 @@ func (handler *Handler) ListArticleTypes(ctx context.Context, request generated.
 	}
 	items := make([]generated.ArticleType, len(result.Items))
 	for index, item := range result.Items {
-		items[index] = articleTypeDTO(item)
+		mapped, mapErr := articleTypeDTO(item)
+		if mapErr != nil {
+			return nil, mapErr
+		}
+		items[index] = mapped
 	}
 	return generated.ListArticleTypes200JSONResponse{Items: items, Page: generated.PageInfo{Number: int32(result.Number), Size: int32(result.Size), TotalItems: result.TotalItems, TotalPages: int64(result.TotalPages)}}, nil
 }
 
 // CreateArticleType implements the generated article-type creation operation.
 func (handler *Handler) CreateArticleType(ctx context.Context, request generated.CreateArticleTypeRequestObject) (generated.CreateArticleTypeResponseObject, error) {
-	result, err := handler.commands.CreateArticleType(ctx, module.CreateArticleType{Name: request.Body.Name})
+	result, err := handler.commands.CreateArticleType(ctx, module.CreateArticleType{Name: request.Body.Name, Image: request.Body.Image, Meun: request.Body.Meun})
 	if err != nil {
 		return nil, err
 	}
-	return generated.CreateArticleType201JSONResponse{Body: articleTypeDTO(result), Headers: generated.CreateArticleType201ResponseHeaders{ETag: entityTag(result.Version), Location: fmt.Sprintf("/api/v1/article-types/%d", result.ID)}}, nil
+	dto, err := articleTypeDTO(result)
+	if err != nil {
+		return nil, err
+	}
+	etag, err := entityTag(result.Version)
+	if err != nil {
+		return nil, err
+	}
+	return generated.CreateArticleType201JSONResponse{Body: dto, Headers: generated.CreateArticleType201ResponseHeaders{ETag: etag, Location: fmt.Sprintf("/api/v1/article-types/%d", result.ID)}}, nil
 }
 
 // GetArticleType implements the generated article-type detail operation.
@@ -41,7 +53,15 @@ func (handler *Handler) GetArticleType(ctx context.Context, request generated.Ge
 	if err != nil {
 		return nil, err
 	}
-	return generated.GetArticleType200JSONResponse{Body: articleTypeDTO(result), Headers: generated.GetArticleType200ResponseHeaders{ETag: entityTag(result.Version)}}, nil
+	dto, err := articleTypeDTO(result)
+	if err != nil {
+		return nil, err
+	}
+	etag, err := entityTag(result.Version)
+	if err != nil {
+		return nil, err
+	}
+	return generated.GetArticleType200JSONResponse{Body: dto, Headers: generated.GetArticleType200ResponseHeaders{ETag: etag}}, nil
 }
 
 // PatchArticleType implements optimistic article-type rename.
@@ -50,14 +70,20 @@ func (handler *Handler) PatchArticleType(ctx context.Context, request generated.
 	if err != nil {
 		return nil, invalidETag(err)
 	}
-	if request.Body.Name == nil {
-		return nil, invalidETag(fmt.Errorf("name is required"))
-	}
-	result, err := handler.commands.RenameArticleType(ctx, module.RenameArticleType{ID: request.ArticleTypeID, Version: version, Name: *request.Body.Name})
+	image, _ := ctx.Value(articleTypeImageKey).(imagePatch)
+	result, err := handler.commands.PatchArticleType(ctx, module.PatchArticleType{ID: request.ArticleTypeID, Version: version, Name: request.Body.Name, Image: module.OptionalImage{Provided: image.provided, Value: image.value}, Meun: request.Body.Meun})
 	if err != nil {
 		return nil, err
 	}
-	return generated.PatchArticleType200JSONResponse{Body: articleTypeDTO(result), Headers: generated.PatchArticleType200ResponseHeaders{ETag: entityTag(result.Version)}}, nil
+	dto, err := articleTypeDTO(result)
+	if err != nil {
+		return nil, err
+	}
+	etag, err := entityTag(result.Version)
+	if err != nil {
+		return nil, err
+	}
+	return generated.PatchArticleType200JSONResponse{Body: dto, Headers: generated.PatchArticleType200ResponseHeaders{ETag: etag}}, nil
 }
 
 // DeleteArticleType implements optimistic article-type deletion.

@@ -87,6 +87,9 @@ type ArticleView struct {
 	Content       domain.Content
 	Status        domain.Status
 	TagIDs        []domain.TagID
+	Support       int64
+	Comment       int64
+	Visited       int64
 	Version       domain.Version
 	CreatedAt     time.Time
 	ModifiedAt    time.Time
@@ -105,6 +108,8 @@ type ArticlePage struct {
 type ArticleTypeView struct {
 	ID         domain.ArticleTypeID
 	Name       domain.Name
+	Image      *string
+	Meun       int32
 	Version    domain.Version
 	CreatedAt  time.Time
 	ModifiedAt time.Time

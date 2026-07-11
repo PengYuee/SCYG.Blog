@@ -75,3 +75,25 @@ func Test_Tag_name_rejects_blank_input(t *testing.T) {
 		t.Fatalf("expected invalid name, got %v", err)
 	}
 }
+
+func Test_ArticleType_Patch_preserves_optional_image_and_meun(t *testing.T) {
+	// Given
+	name, _ := domain.NewName("News")
+	image := "hero.png"
+	item, err := domain.NewArticleTypeWithDetails(mustTypeID(t, 1), name, &image, 7, fixedClock{time.Unix(1, 0)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	zero := int32(0)
+
+	// When
+	err = item.Patch(item.Version(), domain.ArticleTypePatch{ImageProvided: true, Meun: &zero}, fixedClock{time.Unix(2, 0)})
+
+	// Then
+	if err != nil {
+		t.Fatalf("Patch() error = %v", err)
+	}
+	if item.Image() != nil || item.Meun() != 0 || item.Version().Uint64() != 2 {
+		t.Fatalf("patched item image=%v meun=%d version=%d", item.Image(), item.Meun(), item.Version().Uint64())
+	}
+}

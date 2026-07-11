@@ -165,8 +165,27 @@ type DeleteArticle struct {
 	Version uint64
 }
 
-// CreateArticleType creates an article type.
-type CreateArticleType struct{ Name string }
+// CreateArticleType creates an article type with optional image and nonnegative menu order.
+type CreateArticleType struct {
+	Name  string
+	Image *string
+	Meun  int32
+}
+
+// OptionalImage distinguishes an omitted image from setting or clearing it.
+type OptionalImage struct {
+	Provided bool
+	Value    *string
+}
+
+// PatchArticleType partially updates a versioned article type.
+type PatchArticleType struct {
+	ID      int64
+	Version uint64
+	Name    *string
+	Image   OptionalImage
+	Meun    *int32
+}
 
 // RenameArticleType renames a versioned article type.
 type RenameArticleType struct {
@@ -242,6 +261,9 @@ type ArticleResult struct {
 	Content       string
 	Status        string
 	TagIDs        []int64
+	Support       int64
+	Comment       int64
+	Visited       int64
 	Version       uint64
 	CreatedAt     time.Time
 	ModifiedAt    time.Time
@@ -251,6 +273,8 @@ type ArticleResult struct {
 type ArticleTypeResult struct {
 	ID         int64
 	Name       string
+	Image      *string
+	Meun       int32
 	Version    uint64
 	CreatedAt  time.Time
 	ModifiedAt time.Time

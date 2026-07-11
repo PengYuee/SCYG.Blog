@@ -22,9 +22,55 @@ func (module *Module) CreateArticleType(ctx context.Context, command CreateArtic
 		if reserveErr != nil {
 			return reserveErr
 		}
-		item, createErr := domain.NewArticleType(id, name, module.clock)
+		item, createErr := domain.NewArticleTypeWithDetails(id, name, command.Image, command.Meun, module.clock)
 		if createErr != nil {
 			return createErr
+		}
+		if saveErr := transaction.ArticleTypes().Save(transactionContext, item); saveErr != nil {
+			return saveErr
+		}
+		result = articleTypeResult(item)
+		return nil
+	})
+	if err != nil {
+		return ArticleTypeResult{}, stable(err)
+	}
+	return result, nil
+}
+
+// PatchArticleType partially updates one article type in a transaction.
+func (module *Module) PatchArticleType(ctx context.Context, command PatchArticleType) (ArticleTypeResult, error) {
+	id, err := domain.NewArticleTypeID(command.ID)
+	if err != nil {
+		return ArticleTypeResult{}, validation(err)
+	}
+	version, err := domain.NewVersion(command.Version)
+	if err != nil {
+		return ArticleTypeResult{}, validation(err)
+	}
+	var name *domain.Name
+	if command.Name != nil {
+		parsed, parseErr := domain.NewName(*command.Name)
+		if parseErr != nil {
+			return ArticleTypeResult{}, validation(parseErr)
+		}
+		name = &parsed
+	}
+	if command.Name == nil && !command.Image.Provided && command.Meun == nil {
+		return ArticleTypeResult{}, validation(invalidCommand("patch"))
+	}
+	if err = module.authorizer.Authorize(ctx, ActionManageArticleType, Resource{Kind: "article_type", ID: command.ID}); err != nil {
+		return ArticleTypeResult{}, permission(err)
+	}
+	var result ArticleTypeResult
+	err = module.unit.Within(ctx, func(transactionContext context.Context, transaction application.Transaction) error {
+		item, findErr := transaction.ArticleTypes().Find(transactionContext, id)
+		if findErr != nil {
+			return findErr
+		}
+		patch := domain.ArticleTypePatch{Name: name, ImageProvided: command.Image.Provided, Image: command.Image.Value, Meun: command.Meun}
+		if patchErr := item.Patch(version, patch, module.clock); patchErr != nil {
+			return patchErr
 		}
 		if saveErr := transaction.ArticleTypes().Save(transactionContext, item); saveErr != nil {
 			return saveErr

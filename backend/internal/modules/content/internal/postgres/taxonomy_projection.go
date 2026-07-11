@@ -12,6 +12,8 @@ import (
 type taxonomyProjectionRow struct {
 	ID                   int64      `gorm:"column:Id"`
 	Name                 string     `gorm:"column:Name"`
+	Image                *string    `gorm:"column:Image"`
+	Meun                 int32      `gorm:"column:Meun"`
 	Version              int64      `gorm:"column:Version"`
 	CreationTime         time.Time  `gorm:"column:CreationTime"`
 	LastModificationTime *time.Time `gorm:"column:LastModificationTime"`
@@ -26,7 +28,7 @@ func (read *ReadModel) FindTag(ctx context.Context, id domain.TagID) (applicatio
 }
 
 func (read *ReadModel) ListArticleTypes(ctx context.Context, name string) ([]application.ArticleTypeView, error) {
-	query := read.db.WithContext(ctx).Table(`"ArticleType"`).Select(`"Id", "Name", "Version", "CreationTime", "LastModificationTime"`).Where(`"IsDeleted" = false`)
+	query := read.db.WithContext(ctx).Table(`"ArticleType"`).Select(`"Id", "Name", "Image", "Meun", "Version", "CreationTime", "LastModificationTime"`).Where(`"IsDeleted" = false`)
 	if value := strings.TrimSpace(name); value != "" {
 		query = query.Where(`"Name" ILIKE ?`, "%"+value+"%")
 	}
@@ -48,7 +50,7 @@ func (read *ReadModel) ListArticleTypes(ctx context.Context, name string) ([]app
 		if err != nil {
 			return nil, err
 		}
-		result = append(result, application.ArticleTypeView{ID: id, Name: parsedName, Version: version, CreatedAt: row.CreationTime.UTC(), ModifiedAt: timeValue(row.LastModificationTime, row.CreationTime)})
+		result = append(result, application.ArticleTypeView{ID: id, Name: parsedName, Image: row.Image, Meun: row.Meun, Version: version, CreatedAt: row.CreationTime.UTC(), ModifiedAt: timeValue(row.LastModificationTime, row.CreationTime)})
 	}
 	return result, nil
 }

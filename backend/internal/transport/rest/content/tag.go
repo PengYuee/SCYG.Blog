@@ -21,7 +21,11 @@ func (handler *Handler) ListTags(ctx context.Context, request generated.ListTags
 	}
 	items := make([]generated.Tag, len(result.Items))
 	for index, item := range result.Items {
-		items[index] = tagDTO(item)
+		mapped, mapErr := tagDTO(item)
+		if mapErr != nil {
+			return nil, mapErr
+		}
+		items[index] = mapped
 	}
 	return generated.ListTags200JSONResponse{Items: items, Page: generated.PageInfo{Number: int32(result.Number), Size: int32(result.Size), TotalItems: result.TotalItems, TotalPages: int64(result.TotalPages)}}, nil
 }
@@ -32,7 +36,15 @@ func (handler *Handler) CreateTag(ctx context.Context, request generated.CreateT
 	if err != nil {
 		return nil, err
 	}
-	return generated.CreateTag201JSONResponse{Body: tagDTO(result), Headers: generated.CreateTag201ResponseHeaders{ETag: entityTag(result.Version), Location: fmt.Sprintf("/api/v1/tags/%d", result.ID)}}, nil
+	dto, err := tagDTO(result)
+	if err != nil {
+		return nil, err
+	}
+	etag, err := entityTag(result.Version)
+	if err != nil {
+		return nil, err
+	}
+	return generated.CreateTag201JSONResponse{Body: dto, Headers: generated.CreateTag201ResponseHeaders{ETag: etag, Location: fmt.Sprintf("/api/v1/tags/%d", result.ID)}}, nil
 }
 
 // GetTag implements the generated tag detail operation.
@@ -41,7 +53,15 @@ func (handler *Handler) GetTag(ctx context.Context, request generated.GetTagRequ
 	if err != nil {
 		return nil, err
 	}
-	return generated.GetTag200JSONResponse{Body: tagDTO(result), Headers: generated.GetTag200ResponseHeaders{ETag: entityTag(result.Version)}}, nil
+	dto, err := tagDTO(result)
+	if err != nil {
+		return nil, err
+	}
+	etag, err := entityTag(result.Version)
+	if err != nil {
+		return nil, err
+	}
+	return generated.GetTag200JSONResponse{Body: dto, Headers: generated.GetTag200ResponseHeaders{ETag: etag}}, nil
 }
 
 // PatchTag implements optimistic tag rename.
@@ -57,7 +77,15 @@ func (handler *Handler) PatchTag(ctx context.Context, request generated.PatchTag
 	if err != nil {
 		return nil, err
 	}
-	return generated.PatchTag200JSONResponse{Body: tagDTO(result), Headers: generated.PatchTag200ResponseHeaders{ETag: entityTag(result.Version)}}, nil
+	dto, err := tagDTO(result)
+	if err != nil {
+		return nil, err
+	}
+	etag, err := entityTag(result.Version)
+	if err != nil {
+		return nil, err
+	}
+	return generated.PatchTag200JSONResponse{Body: dto, Headers: generated.PatchTag200ResponseHeaders{ETag: etag}}, nil
 }
 
 // DeleteTag implements optimistic tag deletion.

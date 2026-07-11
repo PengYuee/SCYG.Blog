@@ -15,13 +15,20 @@ import (
 	restcontent "github.com/PengYuee/SCYG.Blog/backend/internal/transport/rest/content"
 )
 
-type testService struct{ writeCalls int }
+type testService struct {
+	writeCalls     int
+	allowWrites    bool
+	articlePage    module.ArticlePage
+	articleType    module.ArticleTypeResult
+	lastTypeCreate module.CreateArticleType
+	lastTypePatch  module.PatchArticleType
+}
 
 func (*testService) GetArticle(context.Context, module.GetArticle) (module.ArticleResult, error) {
 	return module.ArticleResult{}, module.ErrNotFound
 }
-func (*testService) ListArticles(context.Context, module.ListArticles) (module.ArticlePage, error) {
-	return module.ArticlePage{}, nil
+func (service *testService) ListArticles(context.Context, module.ListArticles) (module.ArticlePage, error) {
+	return service.articlePage, nil
 }
 func (*testService) GetArticleType(context.Context, module.GetArticleType) (module.ArticleTypeResult, error) {
 	return module.ArticleTypeResult{}, module.ErrNotFound
@@ -48,11 +55,21 @@ func (service *testService) PatchArticle(context.Context, module.PatchArticle) (
 func (service *testService) DeleteArticle(context.Context, module.DeleteArticle) error {
 	return service.denied()
 }
-func (service *testService) CreateArticleType(context.Context, module.CreateArticleType) (module.ArticleTypeResult, error) {
-	return module.ArticleTypeResult{}, service.denied()
+func (service *testService) CreateArticleType(_ context.Context, command module.CreateArticleType) (module.ArticleTypeResult, error) {
+	service.writeCalls++
+	service.lastTypeCreate = command
+	if service.allowWrites {
+		return service.articleType, nil
+	}
+	return module.ArticleTypeResult{}, &module.ApplicationError{Code: module.CodePermissionDenied, Kind: module.KindPermission, Cause: module.ErrPermissionDenied}
 }
-func (service *testService) RenameArticleType(context.Context, module.RenameArticleType) (module.ArticleTypeResult, error) {
-	return module.ArticleTypeResult{}, service.denied()
+func (service *testService) PatchArticleType(_ context.Context, command module.PatchArticleType) (module.ArticleTypeResult, error) {
+	service.writeCalls++
+	service.lastTypePatch = command
+	if service.allowWrites {
+		return service.articleType, nil
+	}
+	return module.ArticleTypeResult{}, &module.ApplicationError{Code: module.CodePermissionDenied, Kind: module.KindPermission, Cause: module.ErrPermissionDenied}
 }
 func (service *testService) DeleteArticleType(context.Context, module.DeleteArticleType) error {
 	return service.denied()
@@ -123,10 +140,31 @@ func Test_ContentREST_default_DenyAll_returns_403_without_persistence(t *testing
 	}
 }
 
+func Test_ContentREST_NewHandler_rejects_typed_nil_services(t *testing.T) {
+	// Given
+	var typedNil *testService
+	nonNil := &testService{}
+
+	// When
+	_, queryErr := restcontent.NewHandler(typedNil, nonNil)
+	_, commandErr := restcontent.NewHandler(nonNil, typedNil)
+
+	// Then
+	if queryErr == nil || commandErr == nil {
+		t.Fatalf("typed nil errors = (%v, %v), want both non-nil", queryErr, commandErr)
+	}
+}
+
 func testRouter(t *testing.T) (*gin.Engine, *testService) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	service := &testService{}
+	return routerForService(t, service), service
+}
+
+func routerForService(t *testing.T, service *testService) *gin.Engine {
+	t.Helper()
+	gin.SetMode(gin.TestMode)
 	handler, err := restcontent.NewHandler(service, service)
 	if err != nil {
 		t.Fatalf("NewHandler: %v", err)
@@ -135,5 +173,5 @@ func testRouter(t *testing.T) (*gin.Engine, *testService) {
 	if err = handler.Register(router); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
-	return router, service
+	return router
 }

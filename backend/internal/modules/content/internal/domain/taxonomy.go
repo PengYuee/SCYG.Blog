@@ -1,11 +1,16 @@
 package domain
 
-import "time"
+import (
+	"math"
+	"time"
+)
 
 // ArticleType classifies articles and owns naming, deletion, and version rules.
 type ArticleType struct {
 	id         ArticleTypeID
 	name       Name
+	image      *string
+	meun       int32
 	version    Version
 	createdAt  time.Time
 	modifiedAt time.Time
@@ -14,28 +19,65 @@ type ArticleType struct {
 
 // NewArticleType creates a validated version-one article type.
 func NewArticleType(id ArticleTypeID, name Name, clock Clock) (*ArticleType, error) {
+	return NewArticleTypeWithDetails(id, name, nil, 0, clock)
+}
+
+// NewArticleTypeWithDetails creates a validated article type with presentation metadata.
+func NewArticleTypeWithDetails(id ArticleTypeID, name Name, image *string, meun int32, clock Clock) (*ArticleType, error) {
 	if !id.valid() {
 		return nil, invalid("article_type_id")
 	}
 	if !name.valid() {
 		return nil, invalid("name")
 	}
+	imageValue, err := parseImage(image)
+	if err != nil || meun < 0 || meun > math.MaxInt16 {
+		return nil, invalid("article_type_details")
+	}
 	now, err := clockTime(clock, time.Time{})
 	if err != nil {
 		return nil, err
 	}
-	return &ArticleType{id: id, name: name, version: initialVersion(), createdAt: now, modifiedAt: now}, nil
+	return &ArticleType{id: id, name: name, image: imageValue, meun: meun, version: initialVersion(), createdAt: now, modifiedAt: now}, nil
 }
 
-// Rename atomically changes the name when the entity is active and version matches.
-func (item *ArticleType) Rename(expected Version, name Name, clock Clock) error {
+// ArticleTypePatch contains explicitly provided mutable article-type values.
+type ArticleTypePatch struct {
+	Name          *Name
+	ImageProvided bool
+	Image         *string
+	Meun          *int32
+}
+
+// Patch atomically updates any provided article-type values.
+func (item *ArticleType) Patch(expected Version, patch ArticleTypePatch, clock Clock) error {
 	if err := taxonomyCurrent(item.version, expected, item.deletedAt); err != nil {
 		return err
 	}
-	if !name.valid() {
-		return invalid("name")
+	if patch.Name == nil && !patch.ImageProvided && patch.Meun == nil {
+		return ErrNoChange
 	}
-	if item.name == name {
+	name, image, meun := item.name, copyString(item.image), item.meun
+	if patch.Name != nil {
+		if !patch.Name.valid() {
+			return invalid("name")
+		}
+		name = *patch.Name
+	}
+	if patch.ImageProvided {
+		parsed, err := parseImage(patch.Image)
+		if err != nil {
+			return err
+		}
+		image = parsed
+	}
+	if patch.Meun != nil {
+		if *patch.Meun < 0 || *patch.Meun > math.MaxInt16 {
+			return invalid("meun")
+		}
+		meun = *patch.Meun
+	}
+	if item.name == name && equalString(item.image, image) && item.meun == meun {
 		return ErrNoChange
 	}
 	next, err := item.version.next()
@@ -46,8 +88,13 @@ func (item *ArticleType) Rename(expected Version, name Name, clock Clock) error 
 	if err != nil {
 		return err
 	}
-	item.name, item.modifiedAt, item.version = name, now, next
+	item.name, item.image, item.meun, item.modifiedAt, item.version = name, image, meun, now, next
 	return nil
+}
+
+// Rename atomically changes the name when the entity is active and version matches.
+func (item *ArticleType) Rename(expected Version, name Name, clock Clock) error {
+	return item.Patch(expected, ArticleTypePatch{Name: &name}, clock)
 }
 
 // Delete atomically soft-deletes the active article type.
@@ -68,6 +115,8 @@ func (item *ArticleType) Delete(expected Version, clock Clock) error {
 }
 func (item *ArticleType) ID() ArticleTypeID     { return item.id }
 func (item *ArticleType) Name() Name            { return item.name }
+func (item *ArticleType) Image() *string        { return copyString(item.image) }
+func (item *ArticleType) Meun() int32           { return item.meun }
 func (item *ArticleType) Version() Version      { return item.version }
 func (item *ArticleType) CreatedAt() time.Time  { return item.createdAt }
 func (item *ArticleType) ModifiedAt() time.Time { return item.modifiedAt }
@@ -172,3 +221,27 @@ func NewTagArticle(articleID ArticleID, tagID TagID) (TagArticle, error) {
 }
 func (link TagArticle) ArticleID() ArticleID { return link.articleID }
 func (link TagArticle) TagID() TagID         { return link.tagID }
+
+func parseImage(image *string) (*string, error) {
+	if image == nil {
+		return nil, nil
+	}
+	if len([]rune(*image)) > 512 {
+		return nil, invalid("image")
+	}
+	value := *image
+	return &value, nil
+}
+func copyString(value *string) *string {
+	if value == nil {
+		return nil
+	}
+	copied := *value
+	return &copied
+}
+func equalString(left, right *string) bool {
+	if left == nil || right == nil {
+		return left == nil && right == nil
+	}
+	return *left == *right
+}

@@ -2,8 +2,13 @@
 package content
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
+	"reflect"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 
@@ -28,7 +33,7 @@ type CommandService interface {
 	PatchArticle(context.Context, module.PatchArticle) (module.ArticleResult, error)
 	DeleteArticle(context.Context, module.DeleteArticle) error
 	CreateArticleType(context.Context, module.CreateArticleType) (module.ArticleTypeResult, error)
-	RenameArticleType(context.Context, module.RenameArticleType) (module.ArticleTypeResult, error)
+	PatchArticleType(context.Context, module.PatchArticleType) (module.ArticleTypeResult, error)
 	DeleteArticleType(context.Context, module.DeleteArticleType) error
 	CreateTag(context.Context, module.CreateTag) (module.TagResult, error)
 	RenameTag(context.Context, module.RenameTag) (module.TagResult, error)
@@ -43,7 +48,7 @@ type Handler struct {
 
 // NewHandler constructs the strict generated transport adapter.
 func NewHandler(queries QueryService, commands CommandService) (*Handler, error) {
-	if queries == nil || commands == nil {
+	if nilService(queries) || nilService(commands) {
 		return nil, errors.New("content REST service is nil")
 	}
 	return &Handler{queries: queries, commands: commands}, nil
@@ -55,10 +60,55 @@ func (handler *Handler) Register(router gin.IRouter) error {
 	if err != nil {
 		return err
 	}
-	router.Use(validation)
+	router.Use(captureArticleTypeImagePatch(), validation)
 	strict := generated.NewStrictHandlerWithOptions(handler, nil, generated.StrictGinServerOptions{RequestErrorHandlerFunc: handler.requestError, HandlerErrorFunc: handler.applicationError, ResponseErrorHandlerFunc: handler.applicationError})
 	generated.RegisterHandlers(router, strict)
 	return nil
+}
+
+const articleTypeImageKey = "content.article_type.image"
+
+type imagePatch struct {
+	provided bool
+	value    *string
+}
+
+func captureArticleTypeImagePatch() gin.HandlerFunc {
+	return func(ctx *gin.Context) {
+		if ctx.Request.Method == "PATCH" && strings.HasPrefix(ctx.Request.URL.Path, "/api/v1/article-types/") && ctx.Request.Body != nil {
+			body, err := io.ReadAll(ctx.Request.Body)
+			if err == nil {
+				ctx.Request.Body = io.NopCloser(bytes.NewReader(body))
+				var object map[string]json.RawMessage
+				if json.Unmarshal(body, &object) == nil {
+					if raw, exists := object["image"]; exists {
+						patch := imagePatch{provided: true}
+						if string(raw) != "null" {
+							var value string
+							if json.Unmarshal(raw, &value) == nil {
+								patch.value = &value
+							}
+						}
+						ctx.Set(articleTypeImageKey, patch)
+					}
+				}
+			}
+		}
+		ctx.Next()
+	}
+}
+
+func nilService(service any) bool {
+	if service == nil {
+		return true
+	}
+	value := reflect.ValueOf(service)
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return value.IsNil()
+	default:
+		return false
+	}
 }
 
 // ContractFailure maps schema failures to RFC 9457 responses.

@@ -21,17 +21,17 @@ func articleViewResult(view application.ArticleView) ArticleResult {
 	for index, id := range view.TagIDs {
 		tagIDs[index] = id.Int64()
 	}
-	return ArticleResult{ID: view.ID.Int64(), ArticleTypeID: view.ArticleTypeID.Int64(), Title: view.Title.String(), Slug: view.Slug.String(), Digest: view.Digest.String(), Content: view.Content.String(), Status: string(view.Status), TagIDs: tagIDs, Version: view.Version.Uint64(), CreatedAt: view.CreatedAt, ModifiedAt: view.ModifiedAt}
+	return ArticleResult{ID: view.ID.Int64(), ArticleTypeID: view.ArticleTypeID.Int64(), Title: view.Title.String(), Slug: view.Slug.String(), Digest: view.Digest.String(), Content: view.Content.String(), Status: string(view.Status), TagIDs: tagIDs, Support: view.Support, Comment: view.Comment, Visited: view.Visited, Version: view.Version.Uint64(), CreatedAt: view.CreatedAt, ModifiedAt: view.ModifiedAt}
 }
 
 func articleTypeResult(item *domain.ArticleType) ArticleTypeResult {
-	return ArticleTypeResult{ID: item.ID().Int64(), Name: item.Name().String(), Version: item.Version().Uint64(), CreatedAt: item.CreatedAt(), ModifiedAt: item.ModifiedAt()}
+	return ArticleTypeResult{ID: item.ID().Int64(), Name: item.Name().String(), Image: item.Image(), Meun: item.Meun(), Version: item.Version().Uint64(), CreatedAt: item.CreatedAt(), ModifiedAt: item.ModifiedAt()}
 }
 func tagResult(item *domain.Tag) TagResult {
 	return TagResult{ID: item.ID().Int64(), Name: item.Name().String(), Version: item.Version().Uint64(), CreatedAt: item.CreatedAt(), ModifiedAt: item.ModifiedAt()}
 }
 func articleTypeViewResult(view application.ArticleTypeView) ArticleTypeResult {
-	return ArticleTypeResult{ID: view.ID.Int64(), Name: view.Name.String(), Version: view.Version.Uint64(), CreatedAt: view.CreatedAt, ModifiedAt: view.ModifiedAt}
+	return ArticleTypeResult{ID: view.ID.Int64(), Name: view.Name.String(), Image: view.Image, Meun: view.Meun, Version: view.Version.Uint64(), CreatedAt: view.CreatedAt, ModifiedAt: view.ModifiedAt}
 }
 func tagViewResult(view application.TagView) TagResult {
 	return TagResult{ID: view.ID.Int64(), Name: view.Name.String(), Version: view.Version.Uint64(), CreatedAt: view.CreatedAt, ModifiedAt: view.ModifiedAt}
