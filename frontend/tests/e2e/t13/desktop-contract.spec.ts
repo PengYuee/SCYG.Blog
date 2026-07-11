@@ -16,7 +16,8 @@ test("三个 Edge 桌面视口满足布局、性能与无障碍契约", async ({
 
   // When: 首页进入确定性 ready 状态。
   const startedAt = Date.now()
-  await gotoReady(page, "/", "[data-testid='article-grid']")
+  const latestGrid = page.getByRole("heading", { name: "最新文章", level: 2 }).locator("xpath=ancestor::section").getByTestId("article-grid")
+  await gotoReady(page, "/", latestGrid)
   const readyElapsedMs = Date.now() - startedAt
 
   // Then: T6 几何、横向边界、中文排版和宽松导航预算全部稳定。
@@ -41,7 +42,8 @@ test("保存 Hero、滚动导航、悬停与焦点的稳定视觉状态", async 
   const health = observePageHealth(page)
   await page.emulateMedia({ reducedMotion: "reduce" })
   await installReadFixtures(page)
-  await gotoReady(page, "/", "[data-testid='article-grid']")
+  const latestGrid = page.getByRole("heading", { name: "最新文章", level: 2 }).locator("xpath=ancestor::section").getByTestId("article-grid")
+  await gotoReady(page, "/", latestGrid)
   await settleVisualState(page)
 
   // When/Then: 分别捕获 Hero 静止态、滚动导航、卡片悬停和搜索焦点。
@@ -49,7 +51,8 @@ test("保存 Hero、滚动导航、悬停与焦点的稳定视觉状态", async 
   await page.locator("#blog-content").scrollIntoViewIfNeeded()
   await expect(page.locator("header[data-state]")).toHaveAttribute("data-state", "scrolled")
   await page.screenshot({ path: evidencePath(testInfo, "nav-scrolled.png"), fullPage: false, animations: "disabled" })
-  const firstArticle = page.locator("[data-testid='article-grid'] a").first()
+  // 最新文章区域包含唯一网格；其中首个链接是明确的悬停目标。
+  const firstArticle = page.getByRole("heading", { name: "最新文章", level: 2 }).locator("xpath=ancestor::section").getByTestId("article-grid").getByRole("link").first()
   await firstArticle.hover()
   await page.screenshot({ path: evidencePath(testInfo, "article-hover.png"), fullPage: false, animations: "disabled" })
   await page.getByLabel("搜索文章").focus()
