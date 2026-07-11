@@ -14,7 +14,7 @@ import (
 	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/observability"
 )
 
-var secretSentinel = "task3-" + "secret-sentinel"
+const secretSentinel = "task3-" + "secret-sentinel"
 
 func Test_Logger_production_serializes_error_and_correlation_fields_without_secret(t *testing.T) {
 	// Given

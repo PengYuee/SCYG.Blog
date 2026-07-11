@@ -2,11 +2,15 @@ package architecture
 
 import (
 	"go/ast"
+	"go/token"
 	"path"
 	"strings"
 )
 
 func checkDeclarations(file sourceFile) []Violation {
+	if file.relative == "internal/generated/openapi/openapi.gen.go" {
+		return nil
+	}
 	violations := make([]Violation, 0)
 	for _, declaration := range file.parsed.Decls {
 		switch typed := declaration.(type) {
@@ -23,10 +27,10 @@ func checkDeclarations(file sourceFile) []Violation {
 
 func checkGeneralDeclaration(file sourceFile, declaration *ast.GenDecl) []Violation {
 	violations := make([]Violation, 0)
-	if declaration.Tok.String() == "var" && strings.HasPrefix(file.relative, "internal/modules/") {
+	if declaration.Tok == token.VAR && !isAllowedPackageVariable(declaration) {
 		violations = append(violations, Violation{Code: "ARCH_MUTABLE_GLOBAL", Path: file.relative, Detail: "module package variables are mutable singletons; use const or constructor-owned state"})
 	}
-	if declaration.Tok.String() != "type" {
+	if declaration.Tok != token.TYPE {
 		return violations
 	}
 	for _, spec := range declaration.Specs {
@@ -34,15 +38,78 @@ func checkGeneralDeclaration(file sourceFile, declaration *ast.GenDecl) []Violat
 		if !ok {
 			continue
 		}
-		_, isInterface := typeSpec.Type.(*ast.InterfaceType)
-		if isInterface && typeSpec.Name.Name == "ContentAPI" {
+		interfaceType, isInterface := typeSpec.Type.(*ast.InterfaceType)
+		layer, _ := moduleLayer(file.relative)
+		if isInterface && layer == "root" && interfaceType.Methods.NumFields() >= 2 {
 			violations = append(violations, Violation{Code: "ARCH_UNIVERSAL_API", Path: file.relative, Detail: "universal API interface " + typeSpec.Name.Name + " is forbidden; transports own narrow interfaces"})
 		}
-		if isInterface && typeSpec.TypeParams != nil && (strings.Contains(typeSpec.Name.Name, "Repository") || strings.Contains(typeSpec.Name.Name, "Service")) {
+		if isInterface && (typeSpec.TypeParams != nil || hasUniversalCRUD(interfaceType)) {
 			violations = append(violations, Violation{Code: "ARCH_GENERIC_ABSTRACTION", Path: file.relative, Detail: "generic repository/service interface " + typeSpec.Name.Name + " is forbidden"})
 		}
 	}
 	return violations
+}
+
+func isAllowedPackageVariable(declaration *ast.GenDecl) bool {
+	if declaration.Doc != nil && hasEmbedDirective(declaration.Doc) {
+		return true
+	}
+	for _, spec := range declaration.Specs {
+		valueSpec, ok := spec.(*ast.ValueSpec)
+		if !ok || len(valueSpec.Names) != 1 || len(valueSpec.Values) != 1 {
+			return false
+		}
+		if valueSpec.Names[0].Name == "_" {
+			continue
+		}
+		if valueSpec.Doc != nil && hasEmbedDirective(valueSpec.Doc) {
+			continue
+		}
+		if !isStaticSentinel(valueSpec.Values[0]) {
+			return false
+		}
+	}
+	return true
+}
+
+func isStaticSentinel(expression ast.Expr) bool {
+	call, ok := expression.(*ast.CallExpr)
+	if !ok || len(call.Args) != 1 {
+		return false
+	}
+	selector, ok := call.Fun.(*ast.SelectorExpr)
+	if !ok || selector.Sel.Name != "New" {
+		return false
+	}
+	packageName, ok := selector.X.(*ast.Ident)
+	if !ok || packageName.Name != "errors" {
+		return false
+	}
+	_, literal := call.Args[0].(*ast.BasicLit)
+	return literal
+}
+
+func hasEmbedDirective(comments *ast.CommentGroup) bool {
+	for _, comment := range comments.List {
+		if strings.HasPrefix(comment.Text, "//go:embed ") {
+			return true
+		}
+	}
+	return false
+}
+
+func hasUniversalCRUD(interfaceType *ast.InterfaceType) bool {
+	operations := make(map[string]bool)
+	for _, method := range interfaceType.Methods.List {
+		for _, name := range method.Names {
+			operation := strings.ToLower(name.Name)
+			switch operation {
+			case "create", "save", "get", "find", "list", "update", "delete":
+				operations[operation] = true
+			}
+		}
+	}
+	return len(operations) >= 3
 }
 
 func checkPath(file sourceFile) []Violation {
@@ -81,14 +148,17 @@ func isForbiddenFuturePath(filePath string) bool {
 func checkModuleShape(files []sourceFile) []Violation {
 	modules := make(map[string]map[string]bool)
 	for _, file := range files {
-		_, module := moduleLayer(file.relative)
-		if module == "" {
+		parts := strings.Split(file.relative, "/")
+		if len(parts) < 4 || parts[0] != "internal" || parts[1] != "modules" {
 			continue
 		}
+		module := parts[2]
 		if modules[module] == nil {
 			modules[module] = make(map[string]bool)
 		}
-		modules[module][path.Base(file.relative)] = true
+		if len(parts) == 4 {
+			modules[module][path.Base(file.relative)] = true
+		}
 	}
 	violations := make([]Violation, 0)
 	for module, names := range modules {

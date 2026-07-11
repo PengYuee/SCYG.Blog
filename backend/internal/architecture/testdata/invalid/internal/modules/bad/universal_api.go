@@ -1,4 +1,7 @@
 package bad
 
 // ContentAPI demonstrates a forbidden universal protocol interface.
-type ContentAPI interface{ Everything() }
+type ContentAPI interface {
+	CreateArticle(Query) error
+	ListArticles(Query) error
+}

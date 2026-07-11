@@ -56,19 +56,18 @@ type (
 	}
 )
 
-var keys = []string{
-	"app.env", "app.log_level", "http.host", "http.port", "http.read_header_timeout", "http.read_timeout",
-	"http.write_timeout", "http.idle_timeout", "http.shutdown_timeout", "http.trusted_proxies",
-	"http.cors_allowed_origins", "database.dsn", "database.max_open_conns", "database.max_idle_conns",
-	"database.conn_max_lifetime", "docs.enabled", "telemetry.otlp_endpoint",
-}
-
 // Load constructs one local Viper instance, parses all sources, and returns a validated value.
 func Load(options Options) (Config, error) {
 	instance := viper.New()
 	setDefaults(instance)
 	instance.SetEnvPrefix("SCYG")
 	instance.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	keys := [...]string{
+		"app.env", "app.log_level", "http.host", "http.port", "http.read_header_timeout", "http.read_timeout",
+		"http.write_timeout", "http.idle_timeout", "http.shutdown_timeout", "http.trusted_proxies",
+		"http.cors_allowed_origins", "database.dsn", "database.max_open_conns", "database.max_idle_conns",
+		"database.conn_max_lifetime", "docs.enabled", "telemetry.otlp_endpoint",
+	}
 	for _, key := range keys {
 		if err := instance.BindEnv(key); err != nil {
 			return Config{}, fmt.Errorf("bind environment %s: %w", key, err)

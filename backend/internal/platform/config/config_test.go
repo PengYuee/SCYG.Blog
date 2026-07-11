@@ -12,7 +12,7 @@ import (
 	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/config"
 )
 
-var secretSentinel = "task3-" + "secret-sentinel"
+const secretSentinel = "task3-" + "secret-sentinel"
 
 func Test_Config_defaults_file_environment_precedence(t *testing.T) {
 	// Given

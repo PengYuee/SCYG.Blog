@@ -4,10 +4,15 @@ package application
 import (
 	"context"
 
-	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/catalog/internal/domain"
+	"example.com/architecture-valid/internal/modules/catalog/internal/domain"
 )
 
 // ArticleReader is a consumer-owned persistence port.
 type ArticleReader interface {
 	Find(context.Context, int64) (domain.Article, error)
+}
+
+// ArticleRepository is a concrete business port, not a generic CRUD abstraction.
+type ArticleRepository interface {
+	FindPublished(context.Context, int64) (domain.Article, error)
 }

@@ -15,3 +15,9 @@ type ErrorCode string
 
 // ApplicationError is a protocol-neutral typed failure.
 type ApplicationError struct{ Code ErrorCode }
+
+// Authorizer is a legal single-purpose module-root port.
+type Authorizer interface{ Authorize(Action) error }
+
+// Action identifies one protocol-neutral authorization decision.
+type Action string

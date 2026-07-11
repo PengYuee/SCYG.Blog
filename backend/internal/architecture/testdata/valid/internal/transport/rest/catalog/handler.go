@@ -2,7 +2,7 @@
 package catalog
 
 import (
-	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/catalog"
+	"example.com/architecture-valid/internal/modules/catalog"
 )
 
 // ArticleFinder is the narrow interface consumed by this REST adapter.

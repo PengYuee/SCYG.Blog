@@ -3,7 +3,6 @@ package database
 import (
 	"context"
 	"errors"
-	"fmt"
 
 	"gorm.io/gorm"
 )
@@ -59,4 +58,4 @@ func (w *UnitOfWork) WithinTransaction(ctx context.Context, fn func(context.Cont
 type transactionKey struct{}
 
 // ErrNestedTransaction identifies an explicitly rejected nested transaction.
-var ErrNestedTransaction = fmt.Errorf("nested transactions are not supported")
+var ErrNestedTransaction = errors.New("nested transactions are not supported")

@@ -2,6 +2,7 @@ package architecture
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -23,6 +24,35 @@ func Test_Architecture_AcceptsValidGraph(t *testing.T) {
 	}
 }
 
+func Test_Architecture_CompilesValidGraph(t *testing.T) {
+	// Given
+	command := exec.Command("go", "test", "./...")
+	command.Dir = filepath.Join("testdata", "valid")
+	command.Env = append(os.Environ(), "GOWORK=off")
+
+	// When
+	output, err := command.CombinedOutput()
+	// Then
+	if err != nil {
+		t.Fatalf("compile valid graph: %v: %s", err, output)
+	}
+}
+
+func Test_Architecture_RejectsInvalidCompileGraph(t *testing.T) {
+	// Given
+	command := exec.Command("go", "test", "./...")
+	command.Dir = filepath.Join("testdata", "invalid_compile")
+	command.Env = append(os.Environ(), "GOWORK=off")
+
+	// When
+	output, err := command.CombinedOutput()
+
+	// Then
+	if err == nil || !strings.Contains(string(output), "MissingType") {
+		t.Fatalf("expected compiler to reject MissingType; err=%v output=%s", err, output)
+	}
+}
+
 func Test_Architecture_RejectsForbiddenImports(t *testing.T) {
 	// Given
 	cases := []struct {
@@ -38,6 +68,13 @@ func Test_Architecture_RejectsForbiddenImports(t *testing.T) {
 		{code: "ARCH_FORBIDDEN_PACKAGE", path: "utils/grab.go"},
 		{code: "ARCH_MUTABLE_GLOBAL", path: "mutable_global.go"},
 		{code: "ARCH_GENERIC_ABSTRACTION", path: "generic_repository.go"},
+		{code: "ARCH_GENERIC_ABSTRACTION", path: "generic_store.go"},
+		{code: "ARCH_GENERIC_ABSTRACTION", path: "generic_alias.go"},
+		{code: "ARCH_GENERIC_ABSTRACTION", path: "crud_repository.go"},
+		{code: "ARCH_UNIVERSAL_API", path: "all_protocols.go"},
+		{code: "ARCH_UNIVERSAL_API", path: "embedded_universal.go"},
+		{code: "ARCH_MUTABLE_GLOBAL", path: "platform_singleton.go"},
+		{code: "ARCH_MODULE_SHAPE", path: "nestedshape"},
 		{code: "ARCH_FORBIDDEN_FUTURE", path: "identity/placeholder.go"},
 	}
 
@@ -53,6 +90,18 @@ func Test_Architecture_RejectsForbiddenImports(t *testing.T) {
 				t.Errorf("expected %s with path %s; got %v", testCase.code, testCase.path, violations)
 			}
 		})
+	}
+}
+
+func Test_Architecture_AcceptsCommentAndRawStringHeavyFiles(t *testing.T) {
+	// Given and When
+	violations, err := Scan(filepath.Join("testdata", "loc_legal"))
+	// Then
+	if err != nil {
+		t.Fatalf("scan legal LOC fixtures: %v", err)
+	}
+	if len(violations) != 0 {
+		t.Fatalf("comments or raw string data counted as code: %v", violations)
 	}
 }
 

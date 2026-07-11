@@ -2,16 +2,15 @@
 package architecture
 
 import (
-	"bufio"
 	"fmt"
 	"go/ast"
 	"go/parser"
+	"go/scanner"
 	"go/token"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 )
 
 const modulePath = "github.com/PengYuee/SCYG.Blog/backend"
@@ -33,6 +32,7 @@ func (violation Violation) Error() string {
 
 type sourceFile struct {
 	parsed   *ast.File
+	fileSet  *token.FileSet
 	absolute string
 	relative string
 }
@@ -76,7 +76,7 @@ func loadSources(root string) ([]sourceFile, error) {
 		if filepath.Ext(path) != ".go" {
 			return nil
 		}
-		parsed, err := parser.ParseFile(fileSet, path, nil, parser.SkipObjectResolution)
+		parsed, err := parser.ParseFile(fileSet, path, nil, parser.SkipObjectResolution|parser.ParseComments)
 		if err != nil {
 			return fmt.Errorf("parse %s: %w", path, err)
 		}
@@ -84,7 +84,7 @@ func loadSources(root string) ([]sourceFile, error) {
 		if err != nil {
 			return fmt.Errorf("make %s relative: %w", path, err)
 		}
-		files = append(files, sourceFile{absolute: path, relative: filepath.ToSlash(relative), parsed: parsed})
+		files = append(files, sourceFile{absolute: path, relative: filepath.ToSlash(relative), parsed: parsed, fileSet: fileSet})
 		return nil
 	})
 	return files, err
@@ -94,28 +94,24 @@ func checkSize(file sourceFile) []Violation {
 	if file.relative == "internal/generated/openapi/openapi.gen.go" {
 		return nil
 	}
-	handle, err := os.Open(file.absolute)
+	lines := make(map[int]struct{})
+	source, err := os.ReadFile(file.absolute)
 	if err != nil {
 		return []Violation{{Code: "ARCH_FILE_READ", Path: file.relative, Detail: err.Error()}}
 	}
-	count := 0
-	scanner := bufio.NewScanner(handle)
-	for scanner.Scan() {
-		trimmed := strings.TrimSpace(scanner.Text())
-		if trimmed != "" && !strings.HasPrefix(trimmed, "//") {
-			count++
+	var lexer scanner.Scanner
+	lexer.Init(file.fileSet.File(file.parsed.Pos()), source, nil, 0)
+	for {
+		position, current, _ := lexer.Scan()
+		if current == token.EOF {
+			break
+		}
+		if current != token.SEMICOLON {
+			lines[file.fileSet.Position(position).Line] = struct{}{}
 		}
 	}
-	scanErr := scanner.Err()
-	closeErr := handle.Close()
-	if scanErr != nil {
-		return []Violation{{Code: "ARCH_FILE_READ", Path: file.relative, Detail: scanErr.Error()}}
-	}
-	if closeErr != nil {
-		return []Violation{{Code: "ARCH_FILE_READ", Path: file.relative, Detail: closeErr.Error()}}
-	}
-	if count > 250 {
-		return []Violation{{Code: "ARCH_FILE_SIZE", Path: file.relative, Detail: fmt.Sprintf("handwritten file has %d pure LOC; maximum is 250", count)}}
+	if len(lines) > 250 {
+		return []Violation{{Code: "ARCH_FILE_SIZE", Path: file.relative, Detail: fmt.Sprintf("handwritten file has %d pure LOC; maximum is 250", len(lines))}}
 	}
 	return nil
 }
