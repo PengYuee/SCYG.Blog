@@ -24,7 +24,7 @@ const (
 func requestID() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		requestID := ctx.GetHeader("X-Request-ID")
-		if requestID == "" {
+		if !validRequestID(requestID) {
 			raw := make([]byte, 16)
 			if _, err := rand.Read(raw); err != nil {
 				ctx.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})
@@ -39,15 +39,50 @@ func requestID() gin.HandlerFunc {
 	}
 }
 
+func validRequestID(value string) bool {
+	if len(value) == 0 || len(value) > 128 {
+		return false
+	}
+	for _, character := range value {
+		valid := character >= 'a' && character <= 'z' || character >= 'A' && character <= 'Z' || character >= '0' && character <= '9' || character == '-' || character == '.' || character == '_' || character == '~'
+		if !valid {
+			return false
+		}
+	}
+	return true
+}
+
 func recovery(logger *slog.Logger) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
+		original := ctx.Writer
+		transaction := newTransactionWriter(original)
+		ctx.Writer = transaction
 		defer func() {
-			if recover() == nil {
-				return
+			ctx.Writer = original
+			if recovered := recover(); recovered != nil {
+				attrs := append(observability.ContextAttrs(ctx.Request.Context()), slog.String(methodKey, ctx.Request.Method), slog.String(pathKey, ctx.Request.URL.Path))
+				logger.LogAttrs(ctx.Request.Context(), slog.LevelError, "http.panic_recovered", attrs...)
+				ctx.Abort()
+				if transaction.reset() {
+					ctx.Writer = transaction
+					ctx.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})
+					if err := transaction.commit(); err != nil {
+						logger.LogAttrs(ctx.Request.Context(), slog.LevelError, "http.response_commit_failed", observability.Error(err))
+					}
+					ctx.Writer = original
+					return
+				}
+				if closed, closeErr := transaction.closeHijacked(); closed {
+					if closeErr != nil {
+						logger.LogAttrs(ctx.Request.Context(), slog.LevelError, "http.hijacked_close_failed", observability.Error(closeErr))
+					}
+					return
+				}
+				panic(http.ErrAbortHandler)
 			}
-			attrs := append(observability.ContextAttrs(ctx.Request.Context()), slog.String(methodKey, ctx.Request.Method), slog.String(pathKey, ctx.Request.URL.Path))
-			logger.LogAttrs(ctx.Request.Context(), slog.LevelError, "http.panic_recovered", attrs...)
-			ctx.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "internal_error"})
+			if err := transaction.commit(); err != nil {
+				logger.LogAttrs(ctx.Request.Context(), slog.LevelError, "http.response_commit_failed", observability.Error(err))
+			}
 		}()
 		ctx.Next()
 	}

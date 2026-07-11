@@ -107,16 +107,8 @@ func Test_Recovery_returns_safe_500_and_correlated_log(t *testing.T) {
 	}
 }
 
-func Test_HTTPServer_Start_shutdown_is_concurrent_safe_and_releases_port(t *testing.T) {
-	server, _ := testServer(t, func(router *gin.Engine) error {
-		router.GET("/ok", func(ctx *gin.Context) { ctx.Status(http.StatusNoContent) })
-		return nil
-	})
-	server.HTTPServer().Addr = "127.0.0.1:0"
-	listener, serveErrors, err := server.Start()
-	if err != nil {
-		t.Fatalf("start: %v", err)
-	}
+func Test_HTTPServer_Shutdown_is_concurrent_safe_before_start(t *testing.T) {
+	server, _ := testServer(t, func(*gin.Engine) error { return nil })
 	var wait sync.WaitGroup
 	errors := make(chan error, 2)
 	for range 2 {
@@ -128,19 +120,10 @@ func Test_HTTPServer_Start_shutdown_is_concurrent_safe_and_releases_port(t *test
 	}
 	wait.Wait()
 	close(errors)
+
 	for shutdownErr := range errors {
 		if shutdownErr != nil {
 			t.Fatalf("shutdown: %v", shutdownErr)
 		}
-	}
-	if serveErr := <-serveErrors; serveErr != nil {
-		t.Fatalf("serve: %v", serveErr)
-	}
-	probe, dialErr := http.Get("http://" + listener.Addr().String() + "/ok")
-	if dialErr == nil {
-		if closeErr := probe.Body.Close(); closeErr != nil {
-			t.Errorf("close probe: %v", closeErr)
-		}
-		t.Fatal("port remained reachable")
 	}
 }

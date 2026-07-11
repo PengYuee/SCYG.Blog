@@ -59,12 +59,11 @@ func New(options Options) (*Server, error) {
 	if options.Mount == nil {
 		return nil, fmt.Errorf("http server mount hook must not be nil")
 	}
-	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
 	if err := engine.SetTrustedProxies(options.HTTP.TrustedProxies()); err != nil {
 		return nil, fmt.Errorf("set trusted proxies: %w", err)
 	}
-	engine.Use(requestID(), recovery(options.Logger), accessLog(options.Logger), securityHeaders(), cors(options.HTTP.CORSAllowedOrigins()), requestLimit(MaxRequestBodyBytes))
+	engine.Use(requestID(), securityHeaders(), recovery(options.Logger), accessLog(options.Logger), cors(options.HTTP.CORSAllowedOrigins()), requestLimit(MaxRequestBodyBytes))
 	if err := options.Mount(engine); err != nil {
 		return nil, fmt.Errorf("mount routes: %w", err)
 	}
@@ -80,8 +79,14 @@ func New(options Options) (*Server, error) {
 // Handler exposes the fully configured handler for tests and embedding.
 func (server *Server) Handler() http.Handler { return server.httpServer.Handler }
 
-// HTTPServer exposes immutable-at-runtime net/http configuration for inspection.
-func (server *Server) HTTPServer() *http.Server { return server.httpServer }
+// Configuration returns an immutable value snapshot without exposing server ownership.
+func (server *Server) Configuration() ConfigSnapshot {
+	return ConfigSnapshot{
+		address: server.httpServer.Addr, readHeaderTimeout: server.httpServer.ReadHeaderTimeout,
+		readTimeout: server.httpServer.ReadTimeout, writeTimeout: server.httpServer.WriteTimeout,
+		idleTimeout: server.httpServer.IdleTimeout, maxHeaderBytes: server.httpServer.MaxHeaderBytes,
+	}
+}
 
 // Start binds synchronously so address failures are observable before return.
 func (server *Server) Start() (net.Listener, <-chan error, error) {

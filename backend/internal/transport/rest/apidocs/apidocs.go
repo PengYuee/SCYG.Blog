@@ -11,7 +11,7 @@ import (
 
 const docsHTML = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SCYG Blog API Reference</title></head>
-<body><div id="app"></div><script id="api-reference" data-url="/openapi.yaml" data-configuration='{&quot;telemetry&quot;:false}' src="/docs/assets/scalar.js"></script></body></html>`
+<body><div id="app"></div><script id="api-reference" data-url="/openapi.yaml" data-configuration='{&quot;telemetry&quot;:false,&quot;withDefaultFonts&quot;:false,&quot;agent&quot;:{&quot;disabled&quot;:true}}' src="/docs/assets/scalar.js"></script></body></html>`
 
 //go:generate go run ../../../docsync
 
