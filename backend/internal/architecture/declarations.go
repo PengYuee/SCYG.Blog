@@ -27,7 +27,7 @@ func checkDeclarations(file sourceFile) []Violation {
 
 func checkGeneralDeclaration(file sourceFile, declaration *ast.GenDecl) []Violation {
 	violations := make([]Violation, 0)
-	if declaration.Tok == token.VAR && !isAllowedPackageVariable(declaration) {
+	if declaration.Tok == token.VAR && !isAllowedPackageVariable(file, declaration) {
 		violations = append(violations, Violation{Code: "ARCH_MUTABLE_GLOBAL", Path: file.relative, Detail: "module package variables are mutable singletons; use const or constructor-owned state"})
 	}
 	if declaration.Tok != token.TYPE {
@@ -50,29 +50,30 @@ func checkGeneralDeclaration(file sourceFile, declaration *ast.GenDecl) []Violat
 	return violations
 }
 
-func isAllowedPackageVariable(declaration *ast.GenDecl) bool {
-	if declaration.Doc != nil && hasEmbedDirective(declaration.Doc) {
-		return true
-	}
+func isAllowedPackageVariable(file sourceFile, declaration *ast.GenDecl) bool {
 	for _, spec := range declaration.Specs {
 		valueSpec, ok := spec.(*ast.ValueSpec)
-		if !ok || len(valueSpec.Names) != 1 || len(valueSpec.Values) != 1 {
+		if !ok || len(valueSpec.Names) != 1 {
 			return false
 		}
 		if valueSpec.Names[0].Name == "_" {
 			continue
 		}
-		if valueSpec.Doc != nil && hasEmbedDirective(valueSpec.Doc) {
+		comments := valueSpec.Doc
+		if len(declaration.Specs) == 1 && comments == nil {
+			comments = declaration.Doc
+		}
+		if isValidEmbed(file, valueSpec, comments) {
 			continue
 		}
-		if !isStaticSentinel(valueSpec.Values[0]) {
+		if len(valueSpec.Values) != 1 || !isStaticSentinel(file, valueSpec.Values[0]) {
 			return false
 		}
 	}
 	return true
 }
 
-func isStaticSentinel(expression ast.Expr) bool {
+func isStaticSentinel(file sourceFile, expression ast.Expr) bool {
 	call, ok := expression.(*ast.CallExpr)
 	if !ok || len(call.Args) != 1 {
 		return false
@@ -82,20 +83,60 @@ func isStaticSentinel(expression ast.Expr) bool {
 		return false
 	}
 	packageName, ok := selector.X.(*ast.Ident)
-	if !ok || packageName.Name != "errors" {
+	if !ok || importedPath(file, packageName.Name) != "errors" {
 		return false
 	}
-	_, literal := call.Args[0].(*ast.BasicLit)
-	return literal
+	literal, ok := call.Args[0].(*ast.BasicLit)
+	return ok && literal.Kind == token.STRING
 }
 
-func hasEmbedDirective(comments *ast.CommentGroup) bool {
+func isValidEmbed(file sourceFile, spec *ast.ValueSpec, comments *ast.CommentGroup) bool {
+	if comments == nil || len(spec.Values) != 0 || !hasExactEmbedDirective(comments) {
+		return false
+	}
+	if importedPath(file, "embed") != "embed" && importedPath(file, "_") != "embed" {
+		return false
+	}
+	return isEmbedType(file, spec.Type)
+}
+
+func hasExactEmbedDirective(comments *ast.CommentGroup) bool {
+	found := false
 	for _, comment := range comments.List {
-		if strings.HasPrefix(comment.Text, "//go:embed ") {
-			return true
+		if strings.HasPrefix(comment.Text, "//go:embed ") && len(strings.TrimSpace(strings.TrimPrefix(comment.Text, "//go:embed "))) > 0 {
+			found = true
 		}
 	}
-	return false
+	return found
+}
+
+func isEmbedType(file sourceFile, expression ast.Expr) bool {
+	switch typed := expression.(type) {
+	case *ast.Ident:
+		return typed.Name == "string"
+	case *ast.ArrayType:
+		element, ok := typed.Elt.(*ast.Ident)
+		return typed.Len == nil && ok && element.Name == "byte"
+	case *ast.SelectorExpr:
+		packageName, ok := typed.X.(*ast.Ident)
+		return ok && typed.Sel.Name == "FS" && importedPath(file, packageName.Name) == "embed"
+	default:
+		return false
+	}
+}
+
+func importedPath(file sourceFile, localName string) string {
+	for _, spec := range file.parsed.Imports {
+		pathValue := strings.Trim(spec.Path.Value, `"`)
+		name := path.Base(pathValue)
+		if spec.Name != nil {
+			name = spec.Name.Name
+		}
+		if name == localName && name != "." {
+			return pathValue
+		}
+	}
+	return ""
 }
 
 func hasUniversalCRUD(interfaceType *ast.InterfaceType) bool {
