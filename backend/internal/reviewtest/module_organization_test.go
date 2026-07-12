@@ -6,11 +6,31 @@ import (
 	"testing"
 )
 
+const agentGenericTokenContract = "Generic token set: `common` / `shared` / `utils` / `utility` / `helpers` / `models` / `usecases` / `results`."
+
+// documentsCompleteGenericTokenSet 判断简版指南是否保留完整且顺序稳定的八词集合。
+func documentsCompleteGenericTokenSet(document string) bool {
+	return strings.Contains(document, agentGenericTokenContract)
+}
+
 func Test_ModuleExtensionGuide_documents_binding_file_organization(t *testing.T) {
 	// Given：读取开发者实际遵循的详细指南与简版强制规则。
 	root := repositoryRoot(t)
 	guide := readFile(t, filepath.Join(root, "backend", "docs", "guides", "module-extension.md"))
 	agentGuide := readFile(t, filepath.Join(root, "backend", "AGENTS.md"))
+	genericTokens := []string{"common", "shared", "utils", "utility", "helpers", "models", "usecases", "results"}
+
+	// Then：完整集合必须原子出现，删除任一 token 后都不得继续满足合同。
+	if !documentsCompleteGenericTokenSet(agentGuide) {
+		t.Errorf("Backend Agent Guide 缺少完整 generic token 集合 %q", agentGenericTokenContract)
+	}
+	for _, token := range genericTokens {
+		incompleteContract := strings.Replace(agentGenericTokenContract, "`"+token+"`", "", 1)
+		adversarialGuide := strings.Replace(agentGuide, agentGenericTokenContract, incompleteContract, 1)
+		if documentsCompleteGenericTokenSet(adversarialGuide) {
+			t.Errorf("删除 generic token %q 后仍错误满足完整集合合同", token)
+		}
+	}
 	guideRequirements := []string{
 		"强制机械底线",
 		"推荐职责命名",
@@ -42,6 +62,7 @@ func Test_ModuleExtensionGuide_documents_binding_file_organization(t *testing.T)
 		"`<subject>_model.go`",
 		"`*_record.go`",
 		"Scanner does not enumerate responsibility suffixes",
+		"Tests use the same generic token set",
 		"禁止任何 Go 子 package",
 		"禁止实体 Go 子包",
 	}
