@@ -1,4 +1,3 @@
-// Package content 提供协议无关的内容命令、查询和结果。
 package content
 
 import (
