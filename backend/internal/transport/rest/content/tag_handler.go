@@ -103,10 +103,3 @@ func (handler *Handler) DeleteTag(ctx context.Context, request generated.DeleteT
 	}
 	return generated.DeleteTag204Response{}, nil
 }
-
-func tagSort(value *generated.ListTagsParamsSort) string {
-	if value == nil {
-		return "title"
-	}
-	return string(*value)
-}

@@ -124,14 +124,3 @@ func (handler *Handler) DeleteArticle(ctx context.Context, request generated.Del
 	}
 	return generated.DeleteArticle204Response{}, nil
 }
-
-func statusName(status generated.ArticleStatus) string {
-	switch status {
-	case generated.Published:
-		return "published"
-	case generated.Archived:
-		return "archived"
-	default:
-		return "draft"
-	}
-}

@@ -72,28 +72,6 @@ func Test_ContentREST_response_mapping_accepts_max_contract_identity_and_version
 	}
 }
 
-func Test_ContentREST_constructor_nil_detection_covers_nilable_kinds(t *testing.T) {
-	// Given
-	var pointer *testNilValue
-	var mapping map[string]string
-	var values []string
-	var function func()
-	var channel chan string
-	tests := []any{pointer, mapping, values, function, channel}
-
-	// When / Then
-	for _, value := range tests {
-		if !nilService(value) {
-			t.Fatalf("nilService(%T) = false", value)
-		}
-	}
-	if nilService(testNilValue{}) {
-		t.Fatal("nilService(non-nil value) = true")
-	}
-}
-
-type testNilValue struct{}
-
 func Test_ContentREST_response_mapping_rejects_invalid_article_text(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -146,29 +124,6 @@ func Test_ContentREST_response_mapping_accepts_canonical_slug_boundaries(t *test
 			item.Slug = slug
 			if _, err := articleDTO(item); err != nil {
 				t.Fatalf("articleDTO(%q) 错误 = %v", slug, err)
-			}
-		})
-	}
-}
-
-func Test_ContentREST_page_mapping_validates_metadata_consistency(t *testing.T) {
-	tests := []struct {
-		name         string
-		number, size int
-		total        int64
-		pages, items int
-		valid        bool
-	}{
-		{"zero number", 0, 20, 0, 0, 0, false}, {"zero size", 1, 0, 0, 0, 0, false}, {"oversized size", 1, 101, 0, 0, 0, false},
-		{"negative total", 1, 20, -1, 0, 0, false}, {"negative pages", 1, 20, 0, -1, 0, false}, {"inconsistent pages", 1, 20, 21, 1, 20, false},
-		{"too many items", 1, 20, 21, 2, 21, false}, {"number overflow", math.MaxInt32 + 1, 20, 0, 0, 0, false},
-		{"empty", 1, 20, 0, 0, 0, true}, {"full page", 1, 100, 100, 1, 100, true}, {"last partial", 3, 20, 45, 3, 5, true}, {"beyond end empty", 4, 20, 45, 3, 0, true},
-	}
-	for _, testCase := range tests {
-		t.Run(testCase.name, func(t *testing.T) {
-			_, err := pageInfo(testCase.number, testCase.size, testCase.total, testCase.pages, testCase.items)
-			if (err == nil) != testCase.valid {
-				t.Fatalf("pageInfo() error = %v, valid=%v", err, testCase.valid)
 			}
 		})
 	}

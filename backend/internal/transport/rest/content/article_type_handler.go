@@ -101,13 +101,3 @@ func (handler *Handler) DeleteArticleType(ctx context.Context, request generated
 	}
 	return generated.DeleteArticleType204Response{}, nil
 }
-
-func taxonomySort(value *generated.ListArticleTypesParamsSort) string {
-	if value == nil {
-		return "title"
-	}
-	return string(*value)
-}
-func invalidETag(err error) error {
-	return &module.ApplicationError{Code: module.CodeValidation, Kind: module.KindValidation, Cause: err}
-}
