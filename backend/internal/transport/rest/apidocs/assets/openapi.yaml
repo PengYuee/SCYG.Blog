@@ -2,20 +2,25 @@ openapi: 3.0.3
 info:
   title: SCYG Blog Content API
   version: 1.0.0
-  description: REST contracts for public content reads and authorizer-gated content writes.
+  description: "SCYG 博客内容 API，提供公开读取和受授权保护的写入。"
 servers:
   - url: /
 tags:
   - name: Articles
+    description: "文章读取与维护。"
   - name: ArticleTypes
+    description: "文章类型查询与维护。"
   - name: Tags
+    description: "标签查询与维护。"
+  - name: ArticleImages
+    description: "文章正文图片上传、取消与媒体读取。"
 paths:
   /api/v1/articles:
     get:
       operationId: listArticles
       tags: [Articles]
-      summary: List published articles
-      description: Returns only Published (2), nondeleted articles.
+      summary: "查询已发布文章"
+      description: "分页返回状态为 `2`（已发布）且未删除的文章，可按文章类型、标签和关键词筛选。"
       parameters:
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PageSize'
@@ -25,7 +30,7 @@ paths:
         - $ref: '#/components/parameters/SearchFilter'
       responses:
         '200':
-          description: Published articles
+          description: "请求成功，返回当前资源或分页响应。"
           content:
             application/json:
               schema:
@@ -37,16 +42,19 @@ paths:
     post:
       operationId: createArticle
       tags: [Articles]
-      summary: Create an article
+      summary: "创建文章"
+      description: "创建文章并返回资源、规范地址和强实体标签。"
       requestBody:
+        description: "创建文章所需的 JSON 数据。"
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/ArticleCreate'
+            example: {title: 示例文章, slug: sample-article, digest: 示例摘要, content: 示例正文, article_type_id: 1, tag_ids: [1], status: 1}
       responses:
         '201':
-          description: Article created
+          description: "创建成功，返回当前资源、`Location` 和 `ETag`。"
           headers:
             Location:
               $ref: '#/components/headers/Location'
@@ -72,11 +80,11 @@ paths:
     get:
       operationId: getArticle
       tags: [Articles]
-      summary: Get a published article
-      description: Returns the article only when it is Published (2) and nondeleted.
+      summary: "获取已发布文章"
+      description: "仅在文章状态为 `2`（已发布）且未删除时返回。"
       responses:
         '200':
-          description: Published article
+          description: "请求成功，返回当前资源或分页响应。"
           headers:
             ETag:
               $ref: '#/components/headers/ETag'
@@ -91,18 +99,21 @@ paths:
     patch:
       operationId: patchArticle
       tags: [Articles]
-      summary: Patch an article
+      summary: "更新文章"
+      description: "更新请求中提供的字段，`If-Match` 必须与当前版本一致。"
       parameters:
         - $ref: '#/components/parameters/IfMatch'
       requestBody:
+        description: "更新文章所需的 JSON 数据。"
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/ArticlePatch'
+            example: {title: 更新后的标题}
       responses:
         '200':
-          description: Article updated
+          description: "请求成功，返回当前资源或分页响应。"
           headers:
             ETag:
               $ref: '#/components/headers/ETag'
@@ -127,12 +138,13 @@ paths:
     delete:
       operationId: deleteArticle
       tags: [Articles]
-      summary: Delete an article
+      summary: "删除文章"
+      description: "删除文章，`If-Match` 必须与当前版本一致。"
       parameters:
         - $ref: '#/components/parameters/IfMatch'
       responses:
         '204':
-          description: Article deleted
+          description: "删除成功，不返回响应体。"
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
@@ -147,7 +159,8 @@ paths:
     get:
       operationId: listArticleTypes
       tags: [ArticleTypes]
-      summary: List nondeleted article types
+      summary: "查询文章类型"
+      description: "分页返回未删除的文章类型，可按关键词筛选。"
       parameters:
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PageSize'
@@ -155,7 +168,7 @@ paths:
         - $ref: '#/components/parameters/SearchFilter'
       responses:
         '200':
-          description: Article types
+          description: "请求成功，返回当前资源或分页响应。"
           content:
             application/json:
               schema:
@@ -167,16 +180,19 @@ paths:
     post:
       operationId: createArticleType
       tags: [ArticleTypes]
-      summary: Create an article type
+      summary: "创建文章类型"
+      description: "创建文章类型并返回资源、规范地址和强实体标签。"
       requestBody:
+        description: "创建文章类型所需的 JSON 数据。"
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/ArticleTypeCreate'
+            example: {name: 技术, image: null, meun: 0}
       responses:
         '201':
-          description: Article type created
+          description: "创建成功，返回当前资源、`Location` 和 `ETag`。"
           headers:
             Location:
               $ref: '#/components/headers/Location'
@@ -200,10 +216,11 @@ paths:
     get:
       operationId: getArticleType
       tags: [ArticleTypes]
-      summary: Get a nondeleted article type
+      summary: "获取文章类型"
+      description: "按正整数标识返回未删除的文章类型。"
       responses:
         '200':
-          description: Article type
+          description: "请求成功，返回当前资源或分页响应。"
           headers:
             ETag:
               $ref: '#/components/headers/ETag'
@@ -218,18 +235,21 @@ paths:
     patch:
       operationId: patchArticleType
       tags: [ArticleTypes]
-      summary: Patch an article type
+      summary: "更新文章类型"
+      description: "更新请求中提供的字段，`If-Match` 必须与当前版本一致。"
       parameters:
         - $ref: '#/components/parameters/IfMatch'
       requestBody:
+        description: "更新文章类型所需的 JSON 数据。"
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/ArticleTypePatch'
+            example: {name: 后端}
       responses:
         '200':
-          description: Article type updated
+          description: "请求成功，返回当前资源或分页响应。"
           headers:
             ETag:
               $ref: '#/components/headers/ETag'
@@ -254,12 +274,13 @@ paths:
     delete:
       operationId: deleteArticleType
       tags: [ArticleTypes]
-      summary: Delete an unreferenced article type
+      summary: "删除文章类型"
+      description: "删除未被引用的文章类型，`If-Match` 必须与当前版本一致。"
       parameters:
         - $ref: '#/components/parameters/IfMatch'
       responses:
         '204':
-          description: Article type deleted
+          description: "删除成功，不返回响应体。"
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
@@ -276,7 +297,8 @@ paths:
     get:
       operationId: listTags
       tags: [Tags]
-      summary: List nondeleted tags
+      summary: "查询标签"
+      description: "分页返回未删除的标签，可按关键词筛选。"
       parameters:
         - $ref: '#/components/parameters/Page'
         - $ref: '#/components/parameters/PageSize'
@@ -284,7 +306,7 @@ paths:
         - $ref: '#/components/parameters/SearchFilter'
       responses:
         '200':
-          description: Tags
+          description: "请求成功，返回当前资源或分页响应。"
           content:
             application/json:
               schema:
@@ -296,16 +318,19 @@ paths:
     post:
       operationId: createTag
       tags: [Tags]
-      summary: Create a tag
+      summary: "创建标签"
+      description: "创建标签并返回资源、规范地址和强实体标签。"
       requestBody:
+        description: "创建标签所需的 JSON 数据。"
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/TagCreate'
+            example: {name: Go}
       responses:
         '201':
-          description: Tag created
+          description: "创建成功，返回当前资源、`Location` 和 `ETag`。"
           headers:
             Location:
               $ref: '#/components/headers/Location'
@@ -329,10 +354,11 @@ paths:
     get:
       operationId: getTag
       tags: [Tags]
-      summary: Get a nondeleted tag
+      summary: "获取标签"
+      description: "按正整数标识返回未删除的标签。"
       responses:
         '200':
-          description: Tag
+          description: "请求成功，返回当前资源或分页响应。"
           headers:
             ETag:
               $ref: '#/components/headers/ETag'
@@ -347,18 +373,21 @@ paths:
     patch:
       operationId: patchTag
       tags: [Tags]
-      summary: Patch a tag
+      summary: "更新标签"
+      description: "更新请求中提供的字段，`If-Match` 必须与当前版本一致。"
       parameters:
         - $ref: '#/components/parameters/IfMatch'
       requestBody:
+        description: "更新标签所需的 JSON 数据。"
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/TagPatch'
+            example: {name: Golang}
       responses:
         '200':
-          description: Tag updated
+          description: "请求成功，返回当前资源或分页响应。"
           headers:
             ETag:
               $ref: '#/components/headers/ETag'
@@ -383,12 +412,13 @@ paths:
     delete:
       operationId: deleteTag
       tags: [Tags]
-      summary: Delete an unreferenced tag
+      summary: "删除标签"
+      description: "删除未被引用的标签，`If-Match` 必须与当前版本一致。"
       parameters:
         - $ref: '#/components/parameters/IfMatch'
       responses:
         '204':
-          description: Tag deleted
+          description: "删除成功，不返回响应体。"
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
@@ -401,36 +431,148 @@ paths:
           $ref: '#/components/responses/PreconditionRequired'
         '500':
           $ref: '#/components/responses/InternalError'
+  /api/v1/article-images:
+    post:
+      operationId: createArticleImage
+      tags: [ArticleImages]
+      summary: "上传正文图片"
+      description: "上传单个 JPEG 或 PNG 正文图片，创建有效期内待提交的图片资源。请求只能包含名为 `file` 的必填文件；重复或未知 part 由处理器拒绝。"
+      requestBody:
+        description: "只包含一个必填二进制 `file` 的 multipart 表单，文件上限为 5 MiB。"
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [file]
+              properties:
+                file:
+                  description: "JPEG 或 PNG 图片二进制，最大 5 MiB；媒体类型和图像内容由服务端校验。"
+                  type: string
+                  format: binary
+                  maxLength: 5242880
+      responses:
+        '201':
+          description: "上传成功，返回待提交图片及其规范资源地址。"
+          headers:
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArticleImage'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /api/v1/article-images/{image_id}:
+    parameters:
+      - $ref: '#/components/parameters/ArticleImageID'
+    delete:
+      operationId: deleteArticleImage
+      tags: [ArticleImages]
+      summary: "取消正文图片"
+      description: "按图片标识取消当前作者尚未提交的正文图片；已提交或当前状态不允许取消时返回冲突。"
+      responses:
+        '204':
+          description: "取消成功，不返回响应体。"
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /media/article-images/{storage_key}:
+    parameters:
+      - $ref: '#/components/parameters/ArticleImageStorageKey'
+    get:
+      operationId: getArticleImageMedia
+      tags: [ArticleImages]
+      summary: "读取正文图片媒体"
+      description: "按受控存储键读取 JPEG 或 PNG 二进制；实体标签未变化时返回 304。"
+      responses:
+        '200':
+          description: "读取成功，返回原始图片二进制。"
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            image/jpeg:
+              schema:
+                description: "JPEG 图片二进制。"
+                type: string
+                format: binary
+            image/png:
+              schema:
+                description: "PNG 图片二进制。"
+                type: string
+                format: binary
+        '304':
+          description: "实体标签未变化，不返回响应体。"
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
 components:
   parameters:
+    ArticleImageID:
+      description: "32 位小写十六进制正文图片标识。"
+      name: image_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ArticleImageID'
+    ArticleImageStorageKey:
+      description: "32 位小写十六进制正文图片键及 `.jpg` 或 `.png` 扩展名。"
+      name: storage_key
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/ArticleImageStorageKey'
     ArticleID:
+      description: "文章正整数标识。"
       name: article_id
       in: path
       required: true
       schema:
         $ref: '#/components/schemas/PositiveID'
     ArticleTypeID:
+      description: "文章类型正整数标识。"
       name: article_type_id
       in: path
       required: true
       schema:
         $ref: '#/components/schemas/PositiveID'
     TagID:
+      description: "标签正整数标识。"
       name: tag_id
       in: path
       required: true
       schema:
         $ref: '#/components/schemas/PositiveID'
     IfMatch:
+      description: "强实体标签，内容为当前正整数版本，必须原样提交，例如 `\"1\"`。"
       name: If-Match
       in: header
       required: true
-      description: Strong entity tag containing the current positive Version.
       schema:
         type: string
         pattern: '^"[1-9][0-9]*"$'
         example: '"1"'
     Page:
+      description: "从 `1` 开始的页码，默认 `1`。"
       name: page
       in: query
       schema:
@@ -439,6 +581,7 @@ components:
         default: 1
         minimum: 1
     PageSize:
+      description: "每页数量，默认 `20`，范围 `1` 至 `100`。"
       name: page_size
       in: query
       schema:
@@ -448,151 +591,244 @@ components:
         minimum: 1
         maximum: 100
     Sort:
+      description: "排序：`created_at` 创建时间升序，`-created_at` 降序，`updated_at` 更新时间升序，`-updated_at` 降序，`title` 标题升序，`-title` 降序。"
       name: sort
       in: query
       schema:
+        description: "`created_at` 创建时间升序，`-created_at` 创建时间降序，`updated_at` 更新时间升序，`-updated_at` 更新时间降序，`title` 标题升序，`-title` 标题降序。"
         type: string
         default: -created_at
         enum: [created_at, -created_at, updated_at, -updated_at, title, -title]
+        example: -created_at
     ArticleTypeFilter:
+      description: "按文章类型标识筛选文章，例如 `1`。"
       name: article_type_id
       in: query
       schema:
         $ref: '#/components/schemas/PositiveID'
     TagFilter:
+      description: "按标签标识筛选文章，例如 `1`。"
       name: tag_id
       in: query
       schema:
         $ref: '#/components/schemas/PositiveID'
     SearchFilter:
+      description: "按关键词筛选可搜索文本，例如 `Go`。"
       name: q
       in: query
       schema:
         type: string
         minLength: 1
         maxLength: 200
+        example: Go
   headers:
     ETag:
-      description: Strong entity tag containing a positive Version.
+      description: "强实体标签，内容为当前正整数版本，例如 `\"1\"`。"
       required: true
       schema:
         type: string
         pattern: '^"[1-9][0-9]*"$'
         example: '"1"'
     Location:
-      description: Canonical resource URI.
+      description: "新资源规范 URI，例如 `/api/v1/articles/1`。"
       required: true
       schema:
         type: string
         format: uri-reference
   responses:
     BadRequest:
-      description: Request validation failed
+      description: "HTTP `400`，请求参数或请求体校验失败。"
       content:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/Problem'
     Forbidden:
-      description: Write authorization denied
+      description: "HTTP `403`，写操作授权被拒绝。"
       content:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/Problem'
     NotFound:
-      description: Resource not found or not publicly visible
+      description: "HTTP `404`，资源不存在或不可公开访问。"
       content:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/Problem'
     Conflict:
-      description: Unique or business precondition conflict
+      description: "HTTP `409`，唯一性或业务前置条件冲突。"
       content:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/Problem'
     PreconditionFailed:
-      description: If-Match is stale
+      description: "HTTP `412`，`If-Match` 已过期，与当前版本不一致。"
       content:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/Problem'
     PreconditionRequired:
-      description: If-Match is missing
+      description: "HTTP `428`，缺少 `If-Match` 请求头。"
       content:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/Problem'
     InternalError:
-      description: Unhandled internal failure
+      description: "HTTP `500`，服务发生未处理错误。"
       content:
         application/problem+json:
           schema:
             $ref: '#/components/schemas/Problem'
   schemas:
+    ArticleImageID:
+      description: "正文图片标识，固定为 32 位小写十六进制字符串。"
+      type: string
+      minLength: 32
+      maxLength: 32
+      pattern: '^[0-9a-f]{32}$'
+      example: 0123456789abcdef0123456789abcdef
+    ArticleImageStorageKey:
+      description: "受控存储键，由 32 位小写十六进制字符串和 `.jpg` 或 `.png` 扩展名组成。"
+      type: string
+      minLength: 36
+      maxLength: 36
+      pattern: '^[0-9a-f]{32}\.(?:jpg|png)$'
+      example: 0123456789abcdef0123456789abcdef.jpg
+    ArticleImageMediaType:
+      description: "正文图片媒体类型：`jpeg` 表示 JPEG，`png` 表示 PNG。"
+      type: string
+      enum: [jpeg, png]
+      x-enum-varnames: [JPEG, PNG]
+    ArticleImageStatus:
+      description: "正文图片生命周期状态：`pending` 表示等待文章提交。"
+      type: string
+      enum: [pending]
+      x-enum-varnames: [Pending]
+    ArticleImage:
+      description: "新上传的待提交正文图片资源。"
+      type: object
+      additionalProperties: false
+      required: [id, storageKey, url, mediaType, byteSize, width, height, status, expiresAt]
+      properties:
+        id:
+          $ref: '#/components/schemas/ArticleImageID'
+        storageKey:
+          description: "服务端生成的受控存储键。"
+          allOf:
+            - $ref: '#/components/schemas/ArticleImageStorageKey'
+        url:
+          description: "正文可引用的站内图片地址。"
+          type: string
+          format: uri-reference
+          pattern: '^/media/article-images/[0-9a-f]{32}\.(?:jpg|png)$'
+          example: /media/article-images/0123456789abcdef0123456789abcdef.jpg
+        mediaType:
+          $ref: '#/components/schemas/ArticleImageMediaType'
+        byteSize:
+          description: "服务端重编码后图片字节数，最大 5 MiB。"
+          type: integer
+          format: int64
+          minimum: 1
+          maximum: 5242880
+        width:
+          description: "图片像素宽度，范围 `1` 至 `8192`。"
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 8192
+        height:
+          description: "图片像素高度，范围 `1` 至 `8192`。"
+          type: integer
+          format: int32
+          minimum: 1
+          maximum: 8192
+        status:
+          $ref: '#/components/schemas/ArticleImageStatus'
+        expiresAt:
+          description: "待提交图片的 UTC 过期时间。"
+          type: string
+          format: date-time
     PositiveID:
+      description: "资源正整数标识，示例 `1`。"
+      example: 1
       type: integer
       format: int64
       minimum: 1
     Version:
+      description: "资源当前正整数版本，用于并发控制，示例 `1`。"
+      example: 1
       type: integer
       format: int64
       minimum: 1
     ArticleStatus:
+      description: "文章状态：`1` 草稿，`2` 已发布，`3` 已归档。"
+      example: 2
       type: integer
       format: int32
-      description: Draft=1, Published=2, Archived=3.
       enum: [1, 2, 3]
       x-enum-varnames: [Draft, Published, Archived]
     PageInfo:
+      description: "分页页码、每页数量和总量信息。"
       type: object
       additionalProperties: false
       required: [number, size, total_items, total_pages]
       properties:
         number:
+          description: "从 `1` 开始的当前页码。"
           type: integer
           format: int32
           minimum: 1
         size:
+          description: "每页数量，范围 `1` 至 `100`。"
           type: integer
           format: int32
           minimum: 1
           maximum: 100
         total_items:
+          description: "符合条件的资源总数，可为 `0`。"
           type: integer
           format: int64
           minimum: 0
         total_pages:
+          description: "总页数，无结果时为 `0`。"
           type: integer
           format: int64
           minimum: 0
     Problem:
+      description: "错误响应信封，描述请求失败原因。"
+      example: {type: /problems/validation, title: 请求无效, status: 400, detail: 参数校验失败, instance: /api/v1/articles, request_id: req-1, errors: {title: [标题不能为空]}}
       type: object
       additionalProperties: false
       required: [type, title, status, detail, instance, request_id, errors]
       properties:
         type:
+          description: "问题类型 URI。"
           type: string
           format: uri-reference
         title:
+          description: "标题。"
           type: string
           minLength: 1
         status:
+          description: "文章状态或问题的 HTTP 状态码。"
           type: integer
           format: int32
           minimum: 400
           maximum: 599
         detail:
+          description: "具体错误说明。"
           type: string
           minLength: 1
         instance:
+          description: "发生错误的请求 URI。"
           type: string
           format: uri-reference
         request_id:
+          description: "请求追踪标识。"
           type: string
           minLength: 1
         errors:
+          description: "字段校验错误明细，非校验错误时为空。"
           type: object
-          description: Field-specific validation details; empty for non-validation problems.
           additionalProperties:
             type: array
             minItems: 1
@@ -600,6 +836,7 @@ components:
               type: string
               minLength: 1
     Article:
+      description: "文章资源，包含所属类型、标签关系、状态、计数、版本和 UTC 时间。"
       type: object
       additionalProperties: false
       required: [id, title, slug, digest, content, article_type_id, tag_ids, status, support, comment, visited, version, created_at, updated_at]
@@ -607,24 +844,29 @@ components:
         id:
           $ref: '#/components/schemas/PositiveID'
         title:
+          description: "标题。"
           type: string
           minLength: 1
           maxLength: 120
         slug:
+          description: "规范短标识，例如 `hello-world`。"
           type: string
           minLength: 1
           maxLength: 160
           pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$'
         digest:
+          description: "文章摘要。"
           type: string
           minLength: 1
           maxLength: 500
         content:
+          description: "文章正文。"
           type: string
           minLength: 1
         article_type_id:
           $ref: '#/components/schemas/PositiveID'
         tag_ids:
+          description: "关联标签正整数标识数组，值不重复。"
           type: array
           uniqueItems: true
           items:
@@ -632,52 +874,61 @@ components:
         status:
           $ref: '#/components/schemas/ArticleStatus'
         support:
+          description: "获赞次数，非负。"
           type: integer
           format: int64
           minimum: 0
         comment:
+          description: "评论次数，非负。"
           type: integer
           format: int64
           minimum: 0
         visited:
+          description: "访问次数，非负。"
           type: integer
           format: int64
           minimum: 0
         version:
           $ref: '#/components/schemas/Version'
         created_at:
+          description: "UTC 创建时间，例如 `2026-01-01T00:00:00Z`。"
           type: string
           format: date-time
-          description: UTC timestamp.
         updated_at:
+          description: "UTC 更新时间，从未更新时为 `null`。"
           type: string
           format: date-time
           nullable: true
-          description: UTC timestamp when present.
     ArticleCreate:
+      description: "创建文章的完整输入。"
       type: object
       additionalProperties: false
       required: [title, slug, digest, content, article_type_id, tag_ids, status]
       properties:
         title:
+          description: "标题。"
           type: string
           minLength: 1
           maxLength: 120
         slug:
+          description: "规范短标识，例如 `hello-world`。"
           type: string
           minLength: 1
           maxLength: 160
           pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$'
         digest:
+          description: "文章摘要。"
           type: string
           minLength: 1
           maxLength: 500
         content:
+          description: "文章正文。"
           type: string
           minLength: 1
         article_type_id:
           $ref: '#/components/schemas/PositiveID'
         tag_ids:
+          description: "关联标签正整数标识数组，值不重复。"
           type: array
           uniqueItems: true
           items:
@@ -685,29 +936,35 @@ components:
         status:
           $ref: '#/components/schemas/ArticleStatus'
     ArticlePatch:
+      description: "文章局部更新输入，至少提供一个字段，其他字段保持不变。"
       type: object
       additionalProperties: false
       minProperties: 1
       properties:
         title:
+          description: "标题。"
           type: string
           minLength: 1
           maxLength: 120
         slug:
+          description: "规范短标识，例如 `hello-world`。"
           type: string
           minLength: 1
           maxLength: 160
           pattern: '^[a-z0-9]+(?:-[a-z0-9]+)*$'
         digest:
+          description: "文章摘要。"
           type: string
           minLength: 1
           maxLength: 500
         content:
+          description: "文章正文。"
           type: string
           minLength: 1
         article_type_id:
           $ref: '#/components/schemas/PositiveID'
         tag_ids:
+          description: "关联标签正整数标识数组，值不重复。"
           type: array
           uniqueItems: true
           items:
@@ -715,6 +972,7 @@ components:
         status:
           $ref: '#/components/schemas/ArticleStatus'
     ArticleType:
+      description: "文章类型资源，包含可空图片、非负菜单排序值、版本和 UTC 时间。"
       type: object
       additionalProperties: false
       required: [id, name, image, meun, version, created_at, updated_at]
@@ -722,63 +980,75 @@ components:
         id:
           $ref: '#/components/schemas/PositiveID'
         name:
+          description: "资源名称。"
           type: string
           minLength: 1
           maxLength: 60
         image:
+          description: "图片地址，未设置时为 `null`，例如 `https://example.com/type.png`。"
           type: string
           maxLength: 512
           nullable: true
         meun:
+          description: "非负菜单排序值，不约定排序方向。"
           type: integer
           format: int32
           minimum: 0
         version:
           $ref: '#/components/schemas/Version'
         created_at:
+          description: "UTC 创建时间，例如 `2026-01-01T00:00:00Z`。"
           type: string
           format: date-time
-          description: UTC timestamp.
         updated_at:
+          description: "UTC 更新时间，从未更新时为 `null`。"
           type: string
           format: date-time
           nullable: true
-          description: UTC timestamp when present.
     ArticleTypeCreate:
+      description: "创建文章类型的输入。"
       type: object
       additionalProperties: false
       required: [name, meun]
       properties:
         name:
+          description: "资源名称。"
           type: string
           minLength: 1
           maxLength: 60
         image:
+          description: "图片地址，未设置时为 `null`，例如 `https://example.com/type.png`。"
           type: string
           maxLength: 512
           nullable: true
         meun:
+          description: "非负菜单排序值，不约定排序方向。"
           type: integer
           format: int32
           minimum: 0
     ArticleTypePatch:
+      description: "文章类型局部更新输入，至少提供一个字段。"
       type: object
       additionalProperties: false
       minProperties: 1
       properties:
         name:
+          description: "资源名称。"
           type: string
           minLength: 1
           maxLength: 60
         image:
+          description: "图片地址，未设置时为 `null`，例如 `https://example.com/type.png`。"
           type: string
           maxLength: 512
           nullable: true
         meun:
+          description: "非负菜单排序值，不约定排序方向。"
           type: integer
           format: int32
           minimum: 0
     Tag:
+      description: "标签资源，包含版本和 UTC 时间。"
       type: object
       additionalProperties: false
       required: [id, name, version, created_at, updated_at]
@@ -786,66 +1056,77 @@ components:
         id:
           $ref: '#/components/schemas/PositiveID'
         name:
+          description: "资源名称。"
           type: string
           minLength: 1
           maxLength: 60
         version:
           $ref: '#/components/schemas/Version'
         created_at:
+          description: "UTC 创建时间，例如 `2026-01-01T00:00:00Z`。"
           type: string
           format: date-time
-          description: UTC timestamp.
         updated_at:
+          description: "UTC 更新时间，从未更新时为 `null`。"
           type: string
           format: date-time
           nullable: true
-          description: UTC timestamp when present.
     TagCreate:
+      description: "创建标签的输入。"
       type: object
       additionalProperties: false
       required: [name]
       properties:
         name:
+          description: "资源名称。"
           type: string
           minLength: 1
           maxLength: 60
     TagPatch:
+      description: "标签局部更新输入。"
       type: object
       additionalProperties: false
       minProperties: 1
       properties:
         name:
+          description: "资源名称。"
           type: string
           minLength: 1
           maxLength: 60
     ArticleList:
+      description: "文章分页响应信封。"
       type: object
       additionalProperties: false
       required: [items, page]
       properties:
         items:
+          description: "当前页资源数组。"
           type: array
           items:
             $ref: '#/components/schemas/Article'
         page:
           $ref: '#/components/schemas/PageInfo'
     ArticleTypeList:
+      description: "文章类型分页响应信封。"
       type: object
       additionalProperties: false
       required: [items, page]
       properties:
         items:
+          description: "当前页资源数组。"
           type: array
           items:
             $ref: '#/components/schemas/ArticleType'
         page:
           $ref: '#/components/schemas/PageInfo'
     TagList:
+      description: "标签分页响应信封。"
       type: object
       additionalProperties: false
       required: [items, page]
       properties:
         items:
+          description: "当前页资源数组。"
           type: array
           items:
             $ref: '#/components/schemas/Tag'
