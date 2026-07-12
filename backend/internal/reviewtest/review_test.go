@@ -1,6 +1,7 @@
 package reviewtest_test
 
 import (
+	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -10,6 +11,15 @@ import (
 	"strings"
 	"testing"
 )
+
+var lateBindingADRRequirements = []string{
+	"**取代：** supersedes ADR-002",
+	"**后补理由：**",
+	"**哈希：** SHA-256",
+	"**许可证：** MIT",
+	"**回退：**",
+	"**非改写理由：**",
+}
 
 // repositoryRoot 返回包含 backend 的仓库根目录。
 func repositoryRoot(t *testing.T) string {
@@ -60,6 +70,46 @@ func Test_PlanCompliance_reads_explicit_artifacts_without_product_commit(t *test
 			t.Fatalf("产品交付文件缺失 %s：%v", relative, err)
 		}
 	}
+}
+
+func Test_PlanCompliance_accepts_late_binding_ADR_without_history_rewrite(t *testing.T) {
+	// Given
+	adr := readFile(t, filepath.Join(repositoryRoot(t), "backend", "docs", "architecture", "adr-010-scalar-asset-pin.md"))
+
+	// When
+	err := validateLateBindingADR(adr)
+
+	// Then
+	if err != nil {
+		t.Fatalf("后补 ADR 应作为共享历史的显式纠偏记录：%v", err)
+	}
+}
+
+func Test_PlanCompliance_rejects_late_binding_ADR_when_required_governance_is_missing(t *testing.T) {
+	// Given
+	adr := readFile(t, filepath.Join(repositoryRoot(t), "backend", "docs", "architecture", "adr-010-scalar-asset-pin.md"))
+
+	for _, requirement := range lateBindingADRRequirements {
+		t.Run("缺少_"+requirement, func(t *testing.T) {
+			// When
+			err := validateLateBindingADR(strings.Replace(adr, requirement, "", 1))
+
+			// Then
+			if err == nil {
+				t.Fatalf("缺少治理字段 %q 时不应通过审计", requirement)
+			}
+		})
+	}
+}
+
+// validateLateBindingADR 校验后补绑定变更 ADR 的取代、可验证性与不改写共享历史理由。
+func validateLateBindingADR(adr string) error {
+	for _, requirement := range lateBindingADRRequirements {
+		if !strings.Contains(adr, requirement) {
+			return fmt.Errorf("后补 ADR 缺少治理字段 %q", requirement)
+		}
+	}
+	return nil
 }
 
 func Test_ReviewE2E_AST_proves_nine_real_scenarios(t *testing.T) {

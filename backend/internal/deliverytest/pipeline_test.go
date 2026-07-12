@@ -44,12 +44,33 @@ func Test_Taskfile_qa_messages_use_literal_command_blocks(t *testing.T) {
 	for _, command := range []string{
 		"cmd: |\n          echo 'F1 plan compliance: PASS'",
 		"cmd: |\n          echo 'F2 quality: PASS'",
+		"cmd: |\n          echo 'foundation QA: PASS'",
+		"cmd: |\n          echo 'F3 real system: PASS'",
 		"cmd: |\n          echo 'F4 scope: PASS'",
 	} {
 		if !strings.Contains(taskfile, command) {
 			t.Fatalf("带冒号的 QA 消息必须使用 YAML 字面量命令块：%q", command)
 		}
 	}
+	if err := validateTaskfileCommandNodes(&document); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// validateTaskfileCommandNodes 拒绝包含冒号但未被 YAML 显式引用的命令标量。
+func validateTaskfileCommandNodes(node *yaml.Node) error {
+	for index, child := range node.Content {
+		if node.Kind == yaml.MappingNode && child.Value == "cmd" && index+1 < len(node.Content) {
+			command := node.Content[index+1]
+			if strings.Contains(command.Value, ":") && command.Style == 0 {
+				return fmt.Errorf("包含冒号的 cmd 必须使用 YAML 显式引用：%q", command.Value)
+			}
+		}
+		if err := validateTaskfileCommandNodes(child); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func Test_GitHubActions_is_backend_scoped_and_uses_immutable_actions(t *testing.T) {

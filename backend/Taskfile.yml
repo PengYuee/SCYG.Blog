@@ -179,9 +179,11 @@ tasks:
     desc: Start Compose and wait for PostgreSQL and API healthchecks
     cmds:
       - docker compose up --detach --wait --wait-timeout 120
-      - cmd: powershell.exe -NoProfile -Command "Invoke-WebRequest -UseBasicParsing http://127.0.0.1:${SCYG_API_PORT:-8080}/live | Out-Null; Invoke-WebRequest -UseBasicParsing http://127.0.0.1:${SCYG_API_PORT:-8080}/ready | Out-Null"
+      - cmd: >-
+          powershell.exe -NoProfile -Command "Invoke-WebRequest -UseBasicParsing http://127.0.0.1:${SCYG_API_PORT:-8080}/live | Out-Null; Invoke-WebRequest -UseBasicParsing http://127.0.0.1:${SCYG_API_PORT:-8080}/ready | Out-Null"
         platforms: [windows]
-      - cmd: sh -c 'curl --fail --silent --show-error http://127.0.0.1:${SCYG_API_PORT:-8080}/live >/dev/null && curl --fail --silent --show-error http://127.0.0.1:${SCYG_API_PORT:-8080}/ready >/dev/null'
+      - cmd: >-
+          sh -c 'curl --fail --silent --show-error http://127.0.0.1:${SCYG_API_PORT:-8080}/live >/dev/null && curl --fail --silent --show-error http://127.0.0.1:${SCYG_API_PORT:-8080}/ready >/dev/null'
         platforms: [linux, darwin]
 
   compose:down:
@@ -255,5 +257,7 @@ tasks:
     cmds:
       - task: qa:database
       - task: qa:container
-      - echo 'foundation QA: PASS'
-      - echo 'F3 real system: PASS'
+      - cmd: |
+          echo 'foundation QA: PASS'
+      - cmd: |
+          echo 'F3 real system: PASS'
