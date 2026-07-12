@@ -27,8 +27,8 @@ Go 1.25.0 modular-monolith foundation. This directory is the repository's only G
 - Add comments for exported identifiers, signatures, fields, and non-obvious logic.
 
 ## Module file organization
-- Business module production stems use an 实体前缀 and 固定职责后缀 and must fully match `<subject>_<role>` or a documented `<subject>_<role>_<subrole>` final suffix; arbitrary token matches, generic subjects, trailing garbage and unknown subroles are forbidden. Semantic exceptions are layer-specific; `api.go` and `module.go` remain required root anchors.
-- Required roles include `command`, `query`, `result`, `usecase`, `port`, `view`, `model`, `repository`, `read_model`, `mapper`, `validation`, and `error`; use accurate semantic shared names instead of generic buckets.
-- PostgreSQL rows are 数据库数据模型 and use `*_model.go`; `*_record.go`, `models.go`, `usecases.go`, `results.go`, `helpers.go`, `utils.go`, and `common.go` are forbidden.
+- Mandatory naming floor: production stems use 小写 snake_case and are non-empty, with no leading, trailing, or consecutive underscores. The generic token set `common`, `shared`, `utils`, `utility`, `helpers`, `models`, `usecases`, and `results` is forbidden anywhere in a stem.
+- `api.go` and `module.go` are module-root-only anchors. PostgreSQL rows are 数据库数据模型 and must use `<subject>_model.go`; `*_record.go` is forbidden.
 - Module Go packages are limited to root, `internal/domain`, `internal/application`, `internal/postgres`, and `postgres`; these locations 禁止任何 Go 子 package，因此也禁止实体 Go 子包, unless a separate architecture decision changes the contract.
-- Tests follow behavior and responsibility and need not map one-to-one to production files. These naming rules do not relax the existing 250 pure LOC limit.
+- Recommended naming follows "layer by directory, subject by prefix, responsibility by name". Prefer `<subject>_<role>.go` or `<subject>_<role>_<subrole>.go` when useful, but these are examples rather than a role whitelist. Scanner does not enumerate responsibility suffixes, so a clear new responsibility needs no Scanner change.
+- Tests use a business subject and observable behavior in their names. The generic tokens `helpers`, `utils`, and `common` remain forbidden, and tests need not map one-to-one to production files. These naming rules do not relax the existing 250 pure LOC limit.
