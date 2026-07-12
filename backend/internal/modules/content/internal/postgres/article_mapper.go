@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/internal/application"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/internal/domain"
 )
 
@@ -31,20 +32,6 @@ func articleStatusFromDB(status int16) (domain.Status, error) {
 		return "", fmt.Errorf("map article status %d: %w", status, domain.ErrInvalidValue)
 	}
 }
-func nullableTime(value time.Time) *time.Time {
-	if value.IsZero() {
-		return nil
-	}
-	copied := value.UTC()
-	return &copied
-}
-func timeValue(value *time.Time, fallback time.Time) time.Time {
-	if value == nil {
-		return fallback
-	}
-	return value.UTC()
-}
-
 func articleToModel(article *domain.Article) (articleModel, error) {
 	status, err := articleStatusToDB(article.Status())
 	if err != nil {
@@ -95,33 +82,38 @@ func articleFromModel(row articleModel, tags []tagArticleModel) (*domain.Article
 	}
 	return domain.ReconstituteArticle(domain.ArticleState{ID: id, ArticleTypeID: typeID, Title: title, Slug: slug, Digest: digest, Content: body, Status: status, TagIDs: tagIDs, Version: version, CreatedAt: row.CreationTime.UTC(), ModifiedAt: timeValue(row.LastModificationTime, row.CreationTime), DeletedAt: timeValue(row.DeletionTime, time.Time{})})
 }
-func articleTypeFromModel(row articleTypeModel) (*domain.ArticleType, error) {
-	id, err := domain.NewArticleTypeID(row.ID)
+func projectionView(row articleProjectionRow, tags []domain.TagID) (application.ArticleView, error) {
+	id, err := domain.NewArticleID(row.ID)
 	if err != nil {
-		return nil, err
+		return application.ArticleView{}, err
 	}
-	name, err := domain.NewName(row.Name)
+	typeID, err := domain.NewArticleTypeID(row.ArticleTypeID)
 	if err != nil {
-		return nil, err
+		return application.ArticleView{}, err
+	}
+	title, err := domain.NewTitle(row.Title)
+	if err != nil {
+		return application.ArticleView{}, err
+	}
+	slug, err := domain.NewSlug(row.Slug)
+	if err != nil {
+		return application.ArticleView{}, err
+	}
+	digest, err := domain.NewDigest(row.Digest)
+	if err != nil {
+		return application.ArticleView{}, err
+	}
+	contentValue, err := domain.NewContent(row.Content)
+	if err != nil {
+		return application.ArticleView{}, err
+	}
+	status, err := articleStatusFromDB(row.Status)
+	if err != nil {
+		return application.ArticleView{}, err
 	}
 	version, err := domain.NewVersion(uint64(row.Version))
 	if err != nil {
-		return nil, err
+		return application.ArticleView{}, err
 	}
-	return domain.ReconstituteArticleType(domain.ArticleTypeState{TaxonomyState: domain.TaxonomyState[domain.ArticleTypeID]{ID: id, Name: name, Version: version, CreatedAt: row.CreationTime.UTC(), ModifiedAt: timeValue(row.LastModificationTime, row.CreationTime), DeletedAt: timeValue(row.DeletionTime, time.Time{})}, Image: row.Image, Meun: int32(row.Meun)})
-}
-func tagFromModel(row tagModel) (*domain.Tag, error) {
-	id, err := domain.NewTagID(row.ID)
-	if err != nil {
-		return nil, err
-	}
-	name, err := domain.NewName(row.Name)
-	if err != nil {
-		return nil, err
-	}
-	version, err := domain.NewVersion(uint64(row.Version))
-	if err != nil {
-		return nil, err
-	}
-	return domain.ReconstituteTag(domain.TaxonomyState[domain.TagID]{ID: id, Name: name, Version: version, CreatedAt: row.CreationTime.UTC(), ModifiedAt: timeValue(row.LastModificationTime, row.CreationTime), DeletedAt: timeValue(row.DeletionTime, time.Time{})})
+	return application.ArticleView{ID: id, ArticleTypeID: typeID, Title: title, Slug: slug, Digest: digest, Content: contentValue, Status: status, TagIDs: append([]domain.TagID(nil), tags...), Support: row.Support, Comment: row.Comment, Visited: row.Visited, Version: version, CreatedAt: row.CreationTime.UTC(), ModifiedAt: timeValue(row.LastModificationTime, row.CreationTime)}, nil
 }

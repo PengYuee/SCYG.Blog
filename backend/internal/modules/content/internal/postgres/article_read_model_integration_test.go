@@ -10,7 +10,6 @@ import (
 
 	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/internal/application"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/internal/domain"
-	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/database"
 	"gorm.io/gorm"
 )
 
@@ -76,54 +75,4 @@ func Test_Repository_projections_filter_sort_page_hide_nonpublic_and_bound_queri
 	if _, err = fixture.read.ListPublished(context.Background(), application.ArticleFilter{Sort: `title; DROP TABLE "Article"`}); err == nil {
 		t.Fatal("unsafe sort accepted")
 	}
-}
-
-func Test_Repository_TagArticle_composite_key_rejects_duplicate(t *testing.T) {
-	fixture := openRepositoryFixture(t)
-	articleID, typeID, tagID := ids(t, 1, 1, 1)
-	seedTaxonomy(t, fixture, typeID, tagID)
-	article := newArticle(t, fixture, articleID, typeID, []domain.TagID{tagID}, "Link", "link")
-	if err := fixture.uow.Within(context.Background(), func(ctx context.Context, tx application.Transaction) error { return tx.Articles().Save(ctx, article) }); err != nil {
-		t.Fatal(err)
-	}
-	err := fixture.db.GORM().Create(&tagArticleModel{ArticleID: articleID.Int64(), TagID: tagID.Int64()}).Error
-	if !database.IsUnique(database.TranslateError(err)) {
-		t.Fatalf("expected composite unique error, got %v", err)
-	}
-}
-
-func Test_Repository_stale_delete_is_rejected(t *testing.T) {
-	fixture := openRepositoryFixture(t)
-	articleID, typeID, tagID := ids(t, 1, 1, 1)
-	seedTaxonomy(t, fixture, typeID, tagID)
-	article := newArticle(t, fixture, articleID, typeID, []domain.TagID{tagID}, "Delete", "delete")
-	if err := fixture.uow.Within(context.Background(), func(ctx context.Context, tx application.Transaction) error { return tx.Articles().Save(ctx, article) }); err != nil {
-		t.Fatal(err)
-	}
-	loaded, err := fixture.uowFindArticle(articleID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = loaded.Delete(loaded.Version(), fixedClock{now: fixture.clock.now.Add(time.Minute)}); err != nil {
-		t.Fatal(err)
-	}
-	if err = fixture.db.GORM().Model(&articleModel{}).Where(`"Id"=?`, articleID.Int64()).Update("Version", gorm.Expr(`"Version"+1`)).Error; err != nil {
-		t.Fatal(err)
-	}
-	err = fixture.uow.Within(context.Background(), func(ctx context.Context, tx application.Transaction) error { return tx.Articles().Save(ctx, loaded) })
-	if err == nil {
-		t.Fatal("stale delete succeeded")
-	}
-	var deleted bool
-	fixture.db.GORM().Table(`"Article"`).Select(`"IsDeleted"`).Where(`"Id"=?`, articleID.Int64()).Scan(&deleted)
-	if deleted {
-		t.Fatal("stale delete changed row")
-	}
-}
-func (fixture repositoryFixture) uowFindArticle(id domain.ArticleID) (article *domain.Article, err error) {
-	err = fixture.uow.Within(context.Background(), func(ctx context.Context, tx application.Transaction) error {
-		article, err = tx.Articles().Find(ctx, id)
-		return err
-	})
-	return article, err
 }

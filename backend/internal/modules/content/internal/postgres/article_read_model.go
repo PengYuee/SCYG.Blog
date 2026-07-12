@@ -5,32 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/internal/application"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/internal/domain"
 	"gorm.io/gorm"
 )
-
-type articleProjectionRow struct {
-	ID                   int64      `gorm:"column:Id"`
-	ArticleTypeID        int64      `gorm:"column:ArticleTypeId"`
-	Title                string     `gorm:"column:Title"`
-	Slug                 string     `gorm:"column:Slug"`
-	Digest               string     `gorm:"column:Digest"`
-	Content              string     `gorm:"column:Content"`
-	Support              int64      `gorm:"column:Support"`
-	Comment              int64      `gorm:"column:Comment"`
-	Visited              int64      `gorm:"column:Visited"`
-	Status               int16      `gorm:"column:Status"`
-	Version              int64      `gorm:"column:Version"`
-	CreationTime         time.Time  `gorm:"column:CreationTime"`
-	LastModificationTime *time.Time `gorm:"column:LastModificationTime"`
-}
-type projectionTagRow struct {
-	ArticleID int64 `gorm:"column:ArticleId"`
-	TagID     int64 `gorm:"column:TagId"`
-}
 
 // ReadModel executes dedicated projection queries on a root read handle.
 type ReadModel struct{ db *gorm.DB }
@@ -159,41 +138,6 @@ func (read *ReadModel) tags(ctx context.Context, ids []int64) (map[int64][]domai
 		result[row.ArticleID] = append(result[row.ArticleID], id)
 	}
 	return result, nil
-}
-func projectionView(row articleProjectionRow, tags []domain.TagID) (application.ArticleView, error) {
-	id, err := domain.NewArticleID(row.ID)
-	if err != nil {
-		return application.ArticleView{}, err
-	}
-	typeID, err := domain.NewArticleTypeID(row.ArticleTypeID)
-	if err != nil {
-		return application.ArticleView{}, err
-	}
-	title, err := domain.NewTitle(row.Title)
-	if err != nil {
-		return application.ArticleView{}, err
-	}
-	slug, err := domain.NewSlug(row.Slug)
-	if err != nil {
-		return application.ArticleView{}, err
-	}
-	digest, err := domain.NewDigest(row.Digest)
-	if err != nil {
-		return application.ArticleView{}, err
-	}
-	contentValue, err := domain.NewContent(row.Content)
-	if err != nil {
-		return application.ArticleView{}, err
-	}
-	status, err := articleStatusFromDB(row.Status)
-	if err != nil {
-		return application.ArticleView{}, err
-	}
-	version, err := domain.NewVersion(uint64(row.Version))
-	if err != nil {
-		return application.ArticleView{}, err
-	}
-	return application.ArticleView{ID: id, ArticleTypeID: typeID, Title: title, Slug: slug, Digest: digest, Content: contentValue, Status: status, TagIDs: append([]domain.TagID(nil), tags...), Support: row.Support, Comment: row.Comment, Visited: row.Visited, Version: version, CreatedAt: row.CreationTime.UTC(), ModifiedAt: timeValue(row.LastModificationTime, row.CreationTime)}, nil
 }
 
 var _ application.ArticleReadModel = (*ReadModel)(nil)
