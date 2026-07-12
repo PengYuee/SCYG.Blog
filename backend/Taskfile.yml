@@ -226,22 +226,9 @@ tasks:
     cmds:
       - task: qa:static
   qa:plan:
-    env:
-      PLAN_PATH: '{{.PLAN_PATH}}'
-      EVIDENCE_ROOT: '{{.EVIDENCE_ROOT}}'
     desc: Audit plan, evidence, history-facing handoff surfaces and final targets
     cmds:
-      - cmd: >-
-          powershell.exe -NoProfile -Command
-          "$$env:PLAN_PATH = (Resolve-Path -LiteralPath '{{.PLAN_PATH}}').Path; $$env:EVIDENCE_ROOT = (Resolve-Path -LiteralPath '{{.EVIDENCE_ROOT}}').Path; go test -timeout 30s ./internal/reviewtest -run 'Test_PlanCompliance_' -count=1"
-        platforms: [windows]
-      - cmd: >-
-          PLAN_PATH="$(realpath '{{.PLAN_PATH}}')" EVIDENCE_ROOT="$(realpath '{{.EVIDENCE_ROOT}}')" go test -timeout 30s ./internal/reviewtest -run 'Test_PlanCompliance_' -count=1
-        platforms: [linux, darwin]
-      - git log --format=%s --all
-      - git ls-tree -r --name-only HEAD
-      - cmd: |
-          echo 'F1 plan compliance: PASS'
+      - powershell -NoProfile -ExecutionPolicy Bypass -File scripts/qa-plan.ps1
 
   qa:quality:
     desc: Run bounded static gates and encoded manual review assertions

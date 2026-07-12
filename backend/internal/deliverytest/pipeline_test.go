@@ -2,6 +2,8 @@ package deliverytest_test
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -54,6 +56,25 @@ func Test_Taskfile_qa_messages_use_literal_command_blocks(t *testing.T) {
 	}
 	if err := validateTaskfileCommandNodes(&document); err != nil {
 		t.Fatal(err)
+	}
+}
+func Test_Taskfile_qa_plan_delegates_to_isolated_PowerShell_runner(t *testing.T) {
+	// Given
+	taskfile := readDeliveryFile(t, "Taskfile.yml")
+	runnerPath := filepath.Join(backendRoot(t), "scripts", "qa-plan.ps1")
+
+	// When
+	_, err := os.Stat(runnerPath)
+
+	// Then
+	if err != nil {
+		t.Fatalf("qa:plan PowerShell 脚本缺失：%v", err)
+	}
+	if strings.Contains(taskfile, "$env:") || strings.Contains(taskfile, "$$env:") {
+		t.Fatal("Taskfile 的 qa:plan 不得内联 PowerShell 环境变量")
+	}
+	if !strings.Contains(taskfile, "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/qa-plan.ps1") {
+		t.Fatal("qa:plan 必须仅调用独立 PowerShell 脚本")
 	}
 }
 

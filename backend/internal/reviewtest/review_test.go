@@ -102,17 +102,26 @@ func Test_PlanCompliance_reads_explicit_artifacts_without_product_commit(t *test
 	}
 }
 
-func Test_PlanCompliance_preserves_PowerShell_environment_variables_in_Task_template(t *testing.T) {
+func Test_PlanCompliance_uses_isolated_PowerShell_runner(t *testing.T) {
 	// Given
-	taskfile := readFile(t, filepath.Join(repositoryRoot(t), "backend", "Taskfile.yml"))
+	backendPath := filepath.Join(repositoryRoot(t), "backend")
+	taskfile := readFile(t, filepath.Join(backendPath, "Taskfile.yml"))
+	runnerPath := filepath.Join(backendPath, "scripts", "qa-plan.ps1")
 
 	// When
-	planPathEscaped := strings.Contains(taskfile, "$$env:PLAN_PATH")
-	evidenceRootEscaped := strings.Contains(taskfile, "$$env:EVIDENCE_ROOT")
+	runner := readFile(t, runnerPath)
 
 	// Then
-	if !planPathEscaped || !evidenceRootEscaped {
-		t.Fatal("qa:plan 必须转义 PowerShell 环境变量，避免 Task 提前展开为 :PLAN_PATH")
+	if strings.Contains(taskfile, "$env:") || strings.Contains(taskfile, "$$env:") {
+		t.Fatal("qa:plan Taskfile 不得内联 PowerShell 环境变量")
+	}
+	if !strings.Contains(taskfile, "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/qa-plan.ps1") {
+		t.Fatal("qa:plan 必须委托独立 PowerShell 脚本")
+	}
+	for _, required := range []string{"$PSScriptRoot", "$env:PLAN_PATH", "$env:EVIDENCE_ROOT", "go test -timeout 30s ./internal/reviewtest"} {
+		if !strings.Contains(runner, required) {
+			t.Fatalf("qa:plan 脚本缺少必要行为 %q", required)
+		}
 	}
 }
 
