@@ -12,7 +12,7 @@ import (
 )
 
 // CurrentVersion 是当前嵌入迁移要求的唯一就绪版本。
-const CurrentVersion uint = 1
+const CurrentVersion uint = 2
 
 // Runner applies the embedded versioned schema and owns its migration resources.
 type Runner struct {

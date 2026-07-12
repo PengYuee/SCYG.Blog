@@ -39,6 +39,7 @@ func qaDatabaseDSN(t *testing.T) string {
 	}
 	return cfg.DatabaseDSN().Value()
 }
+
 func open(t *testing.T) *db.Database {
 	t.Helper()
 	dsn := qaDatabaseDSN(t)
@@ -59,7 +60,7 @@ func open(t *testing.T) *db.Database {
 
 func resetDatabase(t *testing.T, database *db.Database) {
 	t.Helper()
-	const resetSQL = `DROP TABLE IF EXISTS "RecoveryProof", "Broken", "TagArticle", "Article", "Tag", "ArticleType", schema_migrations CASCADE`
+	const resetSQL = `DROP TABLE IF EXISTS "RecoveryProof", "Broken", article_image_references, article_images, "TagArticle", "Article", "Tag", "ArticleType", schema_migrations CASCADE`
 	if err := database.GORM().Exec(resetSQL).Error; err != nil {
 		t.Fatalf("reset isolated test database: %v", err)
 	}
@@ -193,7 +194,9 @@ func Test_InvalidMigration_dirty_force_recovery(t *testing.T) {
 	up(t, d)
 	v1u, _ := os.ReadFile("../../../migrations/000001_initial.up.sql")
 	v1d, _ := os.ReadFile("../../../migrations/000001_initial.down.sql")
-	bad := fstest.MapFS{"000001_initial.up.sql": {Data: v1u}, "000001_initial.down.sql": {Data: v1d}, "000002_bad.up.sql": {Data: []byte(`CREATE TABLE "Broken"("Id" bigint); INVALID SQL;`)}, "000002_bad.down.sql": {Data: []byte(`DROP TABLE "Broken";`)}}
+	v2u, _ := os.ReadFile("../../../migrations/000002_article_images.up.sql")
+	v2d, _ := os.ReadFile("../../../migrations/000002_article_images.down.sql")
+	bad := fstest.MapFS{"000001_initial.up.sql": {Data: v1u}, "000001_initial.down.sql": {Data: v1d}, "000002_article_images.up.sql": {Data: v2u}, "000002_article_images.down.sql": {Data: v2d}, "000003_bad.up.sql": {Data: []byte(`CREATE TABLE "Broken"("Id" bigint); INVALID SQL;`)}, "000003_bad.down.sql": {Data: []byte(`DROP TABLE "Broken";`)}}
 	badPool, e := sql.Open("pgx", qaDatabaseDSN(t))
 	if e != nil {
 		t.Fatal(e)
@@ -211,7 +214,7 @@ func Test_InvalidMigration_dirty_force_recovery(t *testing.T) {
 		t.Fatal("expected failure")
 	}
 	version, dirty, e := r.Version()
-	if e != nil || version != 2 || !dirty {
+	if e != nil || version != 3 || !dirty {
 		t.Fatalf("%d %v %v", version, dirty, e)
 	}
 	var n int64
@@ -219,10 +222,10 @@ func Test_InvalidMigration_dirty_force_recovery(t *testing.T) {
 	if n != 0 {
 		t.Fatal("schema not rolled back")
 	}
-	if e = r.Force(1); e != nil {
+	if e = r.Force(2); e != nil {
 		t.Fatal(e)
 	}
-	good := fstest.MapFS{"000001_initial.up.sql": {Data: v1u}, "000001_initial.down.sql": {Data: v1d}, "000002_good.up.sql": {Data: []byte(`CREATE TABLE "RecoveryProof" ("Id" bigint PRIMARY KEY);`)}, "000002_good.down.sql": {Data: []byte(`DROP TABLE "RecoveryProof";`)}}
+	good := fstest.MapFS{"000001_initial.up.sql": {Data: v1u}, "000001_initial.down.sql": {Data: v1d}, "000002_article_images.up.sql": {Data: v2u}, "000002_article_images.down.sql": {Data: v2d}, "000003_good.up.sql": {Data: []byte(`CREATE TABLE "RecoveryProof" ("Id" bigint PRIMARY KEY);`)}, "000003_good.down.sql": {Data: []byte(`DROP TABLE "RecoveryProof";`)}}
 	if e = r.Close(); e != nil {
 		t.Fatal(e)
 	}

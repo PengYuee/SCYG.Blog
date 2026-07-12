@@ -6,6 +6,7 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.2.1
 	github.com/prometheus/client_golang v1.23.2
 	github.com/spf13/viper v1.20.1
+	github.com/yuin/goldmark v1.7.13
 	go.opentelemetry.io/otel/trace v1.44.0
 )
 
