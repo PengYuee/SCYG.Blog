@@ -72,7 +72,7 @@ func TestSignalChildProcess(t *testing.T) {
 	if err := os.WriteFile(marker+".ready", []byte(h.baseURL), 0o600); err != nil {
 		t.Fatalf("写入子进程就绪标记失败：%v", err)
 	}
-	signalCtx, stop := signalContext(context.Background())
+	signalCtx, stop := signalContext(context.Background(), marker)
 	defer stop()
 	if err := h.app.Run(signalCtx); err != nil {
 		t.Fatalf("SIGTERM 关闭应用失败：%v", err)
@@ -101,7 +101,7 @@ func assertSignalSubprocessShutdown(t *testing.T) {
 	}
 	ready := waitMarker(t, ctx, marker+".ready")
 	baseURL := strings.TrimSpace(string(ready))
-	if err := command.Process.Signal(terminationSignal()); err != nil {
+	if err := requestGracefulStop(command.Process, marker); err != nil {
 		t.Fatalf("发送终止信号失败：%v", err)
 	}
 	if err := command.Wait(); err != nil {

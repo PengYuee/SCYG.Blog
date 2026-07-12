@@ -55,9 +55,9 @@ func Test_E2E_public_reads_hide_drafts(t *testing.T) {
 	h := newHarness(t, allowAll{})
 	defer h.close()
 	articleType, tag := createContent(t, h)
-	draft := createArticle(t, h, articleType, tag, "draft", "draft")
-	published := createArticle(t, h, articleType, tag, "published", "published")
-	publish := h.request(http.MethodPatch, published.Header.Get("Location"), "{\"status\":\"published\"}", map[string]string{"If-Match": published.Header.Get("ETag")})
+	draft := createArticle(t, h, articleType, tag, "draft", articleStatusDraft)
+	published := createArticle(t, h, articleType, tag, "published", articleStatusDraft)
+	publish := h.request(http.MethodPatch, published.Header.Get("Location"), "{\"status\":2}", map[string]string{"If-Match": published.Header.Get("ETag")})
 	if publish.StatusCode != http.StatusOK {
 		t.Fatalf("发布文章失败：%d", publish.StatusCode)
 	}
@@ -78,7 +78,7 @@ func Test_E2E_allow_all_performs_real_crud(t *testing.T) {
 	h := newHarness(t, allowAll{})
 	defer h.close()
 	articleType, tag := createContent(t, h)
-	article := createArticle(t, h, articleType, tag, "crud", "draft")
+	article := createArticle(t, h, articleType, tag, "crud", articleStatusDraft)
 	for _, location := range []string{articleType.Header.Get("Location"), tag.Header.Get("Location"), article.Header.Get("Location")} {
 		if got := h.request(http.MethodGet, location, "", nil); got.StatusCode != http.StatusOK && location != article.Header.Get("Location") {
 			t.Fatalf("读取已创建资源失败：%s status=%d", location, got.StatusCode)
@@ -117,10 +117,23 @@ func Test_E2E_stale_etag_is_rejected(t *testing.T) {
 	defer h.close()
 	_, tag := createContent(t, h)
 	location := tag.Header.Get("Location")
+	oldETag := tag.Header.Get("ETag")
+	success := h.request(http.MethodPatch, location, `{"name":"fresh"}`, map[string]string{"If-Match": oldETag})
+	if success.StatusCode != http.StatusOK {
+		t.Fatalf("建立 stale 前置更新失败：%d", success.StatusCode)
+	}
+	replayETag, sequenceErr := staleReplayETag(oldETag, success.Header.Get("ETag"))
+	if sequenceErr != nil {
+		t.Fatalf("构造 stale ETag 序列失败：%v", sequenceErr)
+	}
 	before := snapshotTag(t, h.ctx, h.dsn, locationID(t, tag))
-	response := h.request(http.MethodPatch, location, "{\"name\":\"stale\"}", map[string]string{"If-Match": "\"0\""})
+	response := h.request(http.MethodPatch, location, `{"name":"stale"}`, map[string]string{"If-Match": replayETag})
 	if response.StatusCode != http.StatusPreconditionFailed {
-		t.Fatalf("过期 ETag 未返回412：%d", response.StatusCode)
+		failureBody, readErr := io.ReadAll(response.Body)
+		if readErr != nil {
+			t.Fatalf("读取 stale 失败响应失败：%v", readErr)
+		}
+		t.Fatalf("过期 ETag 未返回412：status=%d body=%s", response.StatusCode, failureBody)
 	}
 	after := snapshotTag(t, h.ctx, h.dsn, locationID(t, tag))
 	if !reflect.DeepEqual(before, after) {
@@ -170,12 +183,33 @@ func createContent(t *testing.T, h *harness) (*http.Response, *http.Response) {
 	return typeResponse, tagResponse
 }
 
-func createArticle(t *testing.T, h *harness, articleType, tag *http.Response, suffix, status string) *http.Response {
+type articleStatus int
+
+const (
+	articleStatusDraft     articleStatus = 1
+	articleStatusPublished articleStatus = 2
+)
+
+func articleCreatePayload(suffix string, articleTypeID, tagID int64, status articleStatus) string {
+	return fmt.Sprintf("{\"title\":\"e2e-%s\",\"slug\":\"e2e-%s\",\"digest\":\"digest\",\"content\":\"content\",\"article_type_id\":%d,\"tag_ids\":[%d],\"status\":%d}", suffix, suffix, articleTypeID, tagID, status)
+}
+
+func staleReplayETag(created, updated string) (string, error) {
+	if created == "" || updated == "" || created == updated {
+		return "", fmt.Errorf("ETag 前置序列无效")
+	}
+	return created, nil
+}
+func createArticle(t *testing.T, h *harness, articleType, tag *http.Response, suffix string, status articleStatus) *http.Response {
 	t.Helper()
-	body := fmt.Sprintf("{\"title\":\"e2e-%s\",\"slug\":\"e2e-%s\",\"digest\":\"digest\",\"content\":\"content\",\"article_type_id\":%d,\"tag_ids\":[%d],\"status\":\"%s\"}", suffix, suffix, locationID(t, articleType), locationID(t, tag), status)
+	body := articleCreatePayload(suffix, locationID(t, articleType), locationID(t, tag), status)
 	response := h.request(http.MethodPost, "/api/v1/articles", body, nil)
 	if response.StatusCode != http.StatusCreated {
-		t.Fatalf("创建 Article 失败：%d", response.StatusCode)
+		failureBody, readErr := io.ReadAll(response.Body)
+		if readErr != nil {
+			t.Fatalf("读取 Article 失败响应失败：%v", readErr)
+		}
+		t.Fatalf("创建 Article 失败：status=%d body=%s", response.StatusCode, failureBody)
 	}
 	return response
 }

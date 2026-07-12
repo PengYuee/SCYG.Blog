@@ -85,6 +85,20 @@ func Test_ErrorMapping_extracts_existing_application_error_from_database_wrapper
 	}
 }
 
+func Test_ErrorMapping_extracts_domain_version_conflict_from_database_wrapper(t *testing.T) {
+	expected, expectedErr := domain.NewVersion(1)
+	actual, actualErr := domain.NewVersion(2)
+	if expectedErr != nil || actualErr != nil {
+		t.Fatalf("构造版本夹具失败：%v %v", expectedErr, actualErr)
+	}
+	wrapped := database.TranslateError(&domain.VersionConflict{Expected: expected, Actual: actual})
+	err := translate(wrapped)
+	assertPublicError(t, err, content.CodeStaleVersion, domain.ErrStaleVersion)
+	var applicationError *content.ApplicationError
+	if !errors.As(err, &applicationError) || applicationError.ExpectedVersion != 1 || applicationError.ActualVersion != 2 {
+		t.Fatalf("stale 版本映射错误：%v", err)
+	}
+}
 func assertPublicError(t *testing.T, err error, wantCode content.ErrorCode, wantSentinel error) {
 	t.Helper()
 	var applicationError *content.ApplicationError

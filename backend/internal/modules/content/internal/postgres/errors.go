@@ -33,6 +33,10 @@ func translate(err error) error {
 	if errors.As(err, &applicationError) {
 		return applicationError
 	}
+	var versionConflict *domain.VersionConflict
+	if errors.As(err, &versionConflict) {
+		return stale(versionConflict.Expected.Uint64(), versionConflict.Actual.Uint64())
+	}
 	translated := database.TranslateError(err)
 	switch {
 	case database.IsUnique(translated):
