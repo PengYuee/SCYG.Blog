@@ -1,9 +1,10 @@
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils"
 import { defineComponent, h } from "vue"
+import { runtimeConfigKey } from "@/config/runtime-provider"
 import { createMemoryHistory, createRouter, type Router } from "vue-router"
 import { describe, expect, it, vi } from "vitest"
 import ArticleDetailView from "@/views/public/ArticleDetailView.vue"
-import { HttpRequestError } from "@/request/http"
+import { http, HttpRequestError } from "@/request/http"
 import { sanitizeMarkdown } from "@/security/sanitize-markdown"
 import type { Taxonomy, TaxonomyState } from "@/stores/taxonomy"
 import type { ArticleDetail } from "@/types/article"
@@ -77,13 +78,13 @@ const MdCatalogStub = defineComponent({
 /** 挂载带真实内存路由和 T7 子组件 seam 的详情页。 */
 const mountDetail = async (
   loader: { readonly detail: (id: number) => Promise<ArticleDetail> },
-  taxonomy: Taxonomy,
+  taxonomy?: Taxonomy,
   id = "101",
 ): Promise<VueWrapper> => {
   const router = await createDetailRouter(id)
   return mount(ArticleDetailView, {
-    props: { articleLoader: loader, taxonomy },
-    global: { plugins: [router], stubs: { MdPreview: MdPreviewStub, MdCatalog: MdCatalogStub } },
+    props: { articleLoader: loader, ...(taxonomy === undefined ? {} : { taxonomy }) },
+    global: { plugins: [router], provide: { [runtimeConfigKey]: { serverUrl: "http://localhost:5000" } }, stubs: { MdPreview: MdPreviewStub, MdCatalog: MdCatalogStub } },
   })
 }
 
@@ -131,6 +132,20 @@ describe("T10 article detail", () => {
     expect(loader.detail).toHaveBeenCalledWith(101)
   })
 
+  it("normalizes a relative category image against injected runtime config", async () => {
+    // Given: 生产 taxonomy 接口返回相对图片，运行时配置指向独立后端。
+    vi.spyOn(http, "get").mockImplementation(async (url: string) => {
+      if (url.includes("ArticleType")) return { data: { items: [{ id: 7, name: "前端", image: "/media/frontend.jpg", meun: 1, version: 1, created_at: "2026-07-11T00:00:00Z", updated_at: null }], page: { number: 1, size: 20, total_items: 1, total_pages: 1 } } }
+      return { data: { items: [], page: { number: 1, size: 20, total_items: 0, total_pages: 0 } } }
+    })
+
+    // When: 详情页使用生产 taxonomy 适配器加载分类。
+    const wrapper = await mountDetail({ detail: async () => articleFixture() })
+    await flushPromises()
+
+    // Then: 相对图片与 API 请求共享运行时后端地址。
+    expect(wrapper.get('[data-testid="category-image"]').attributes("src")).toBe("http://localhost:5000/media/frontend.jpg")
+  })
   it("keeps ready content safe while taxonomy is absent", async () => {
     // Given: taxonomy 永远停留在加载竞态，文章请求可独立完成。
     const taxonomy: Taxonomy = {

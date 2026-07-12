@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { ExclamationTriangleIcon, InformationCircleIcon } from "@heroicons/vue/24/outline"
 import { computed, onMounted, ref } from "vue"
 import ArticleSection from "@/components/article/ArticleSection.vue"
@@ -7,6 +7,7 @@ import type { ObserverFactory } from "@/components/public/BlogHeader.vue"
 import ProfileCard from "@/components/public/ProfileCard.vue"
 import RecommendedArticles from "@/components/public/RecommendedArticles.vue"
 import TagCloud from "@/components/public/TagCloud.vue"
+import { useRuntimeConfig } from "@/config/runtime-provider"
 import BlogLayout from "@/layouts/BlogLayout.vue"
 import { parseArticleList } from "@/request/api/article"
 import { parseArticleTypes } from "@/request/api/article-type"
@@ -26,6 +27,8 @@ type Props = {
 }
 
 const props = defineProps<Props>()
+/** 应用启动时解析并提供的唯一 API 地址。 */
+const runtimeConfig = useRuntimeConfig()
 /** 未注入时使用现有只读 API 边界创建生产文章流。 */
 const articleFeed = props.articleFeed ?? createArticleFeed({
   /** 获取并解析一页真实文章。 */
@@ -39,7 +42,7 @@ const taxonomy = props.taxonomy ?? createTaxonomy({
   /** 获取并解析有序分类。 */
   async listArticleTypes() {
     const response = await http.get("/ArticleType/GetArticleTypeDic")
-    return parseArticleTypes(response.data, window.location.origin)
+    return parseArticleTypes(response.data, runtimeConfig.serverUrl)
   },
   /** 获取并解析标签。 */
   async listTags() {

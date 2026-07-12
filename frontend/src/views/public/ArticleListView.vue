@@ -4,6 +4,7 @@ import { computed, ref, shallowRef, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import ArticleSection from "@/components/article/ArticleSection.vue"
 import TagCloud from "@/components/public/TagCloud.vue"
+import { useRuntimeConfig } from "@/config/runtime-provider"
 import BlogLayout from "@/layouts/BlogLayout.vue"
 import { createArticleApi } from "@/request/api/article"
 import { createArticleTypeApi } from "@/request/api/article-type"
@@ -16,9 +17,11 @@ import { searchLoadedArticles } from "@/utils/search"
 
 const route = useRoute()
 const router = useRouter()
+/** 应用启动时解析并提供的唯一 API 地址。 */
+const runtimeConfig = useRuntimeConfig()
 /** 公共 API 适配器共享浏览器同源地址以解析分类图片。 */
-const articleApi = createArticleApi(http, window.location.origin)
-const articleTypeApi = createArticleTypeApi(http, window.location.origin)
+const articleApi = createArticleApi(http, runtimeConfig.serverUrl)
+const articleTypeApi = createArticleTypeApi(http, runtimeConfig.serverUrl)
 const tagApi = createTagApi(http)
 /** T4 文章流保持显式九篇分页，不注册滚动监听。 */
 const feed = createArticleFeed(articleApi, 9)

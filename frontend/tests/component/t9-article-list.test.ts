@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises"
 import { flushPromises, mount } from "@vue/test-utils"
 import { createMemoryHistory, createRouter } from "vue-router"
 import { describe, expect, it, vi } from "vitest"
+import { runtimeConfigKey } from "@/config/runtime-provider"
 
 /** 可提升的生产适配器假实现与请求记录。 */
 const { get } = vi.hoisted(() => {
@@ -32,7 +33,7 @@ describe("T9 article list behavior", () => {
     // Given: 带全部三种筛选的直接深链。
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: "/articles", component: ArticleListView }, { path: "/articles/:id", component: { template: "<p>detail</p>" } }] })
     await router.push("/articles?q=Vue&categoryId=2&tagId=9")
-    const wrapper = mount(ArticleListView, { global: { plugins: [router], stubs: { BlogLayout: { template: "<main><slot /></main>" } } } })
+    const wrapper = mount(ArticleListView, { global: { plugins: [router], provide: { [runtimeConfigKey]: { serverUrl: "http://localhost:5000" } }, stubs: { BlogLayout: { template: "<main><slot /></main>" } } } })
     await flushPromises()
 
     // When: 首屏完成后尚未发生自动翻页。

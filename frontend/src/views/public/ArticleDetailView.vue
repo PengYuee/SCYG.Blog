@@ -4,6 +4,7 @@ import { computed, ref, watch } from "vue"
 import { useRoute } from "vue-router"
 import MarkdownRenderer from "@/components/article/MarkdownRenderer.vue"
 import BlogFooter from "@/components/public/BlogFooter.vue"
+import { useRuntimeConfig } from "@/config/runtime-provider"
 import BlogHeader from "@/components/public/BlogHeader.vue"
 import { createArticleApi } from "@/request/api/article"
 import { createArticleTypeApi } from "@/request/api/article-type"
@@ -38,8 +39,9 @@ const articleDateFormatter = new Intl.DateTimeFormat("zh-CN", { year: "numeric",
 /** 格式化已由 T3 解析的文章日期。 */
 const formatArticleDate = (value: string): string => articleDateFormatter.format(new Date(value))
 
-/** 将相对 API 根地址解析为 T3 图片归一化所需的绝对服务地址。 */
-const serverUrl = new URL(import.meta.env.VITE_API_BASE_URL ?? "/api", window.location.origin).href
+/** 应用启动时解析并提供的唯一 API 地址。 */
+const runtimeConfig = useRuntimeConfig()
+const serverUrl = runtimeConfig.serverUrl
 /** 生产文章详情适配器。 */
 const productionArticleLoader = createArticleApi(http, serverUrl)
 /** 生产 taxonomy 状态机，分类图片在 T3 边界完成安全 URL 归一化。 */
