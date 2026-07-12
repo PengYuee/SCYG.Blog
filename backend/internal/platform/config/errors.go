@@ -12,7 +12,7 @@ type FileError struct {
 
 // Error returns contextual file information without configuration values.
 func (e *FileError) Error() string {
-	return fmt.Sprintf("read configuration file %q: %v", e.Path, e.Err)
+	return fmt.Sprintf("读取配置文件失败 %q：%v", e.Path, e.Err)
 }
 
 // Unwrap exposes the underlying filesystem or parse error.
@@ -28,5 +28,5 @@ type ValidationError struct {
 
 // Error returns a value-free validation description to prevent secret disclosure.
 func (e *ValidationError) Error() string {
-	return fmt.Sprintf("configuration field %s: %s", e.Field, e.Rule)
+	return fmt.Sprintf("配置字段 %s：%s", e.Field, e.Rule)
 }

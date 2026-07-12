@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -22,10 +23,9 @@ import (
 
 	"github.com/PengYuee/SCYG.Blog/backend/internal/bootstrap"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content"
+	qaconfig "github.com/PengYuee/SCYG.Blog/backend/internal/qa/config"
 	"github.com/PengYuee/SCYG.Blog/backend/migrations"
 )
-
-const e2eTimeout = 120 * time.Second
 
 // allowAll 只编译进 e2e 测试二进制，生产构件不会包含该授权器。
 type allowAll struct{}
@@ -55,13 +55,13 @@ func newHarness(t *testing.T, authorizer content.Authorizer) *harness {
 // newHarnessWithObserver 为信号叙事注入 App-owned 生命周期观察器。
 func newHarnessWithObserver(t *testing.T, authorizer content.Authorizer, observer bootstrap.LifecycleObserver) *harness {
 	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), e2eTimeout)
-	adminDSN := os.Getenv("SCYG_POSTGRES_ADMIN_DSN")
-	if adminDSN == "" {
-		cancel()
-		t.Fatal("缺少 E2E 所需 SCYG_POSTGRES_ADMIN_DSN")
+	qaConfig, err := qaconfig.LoadLocal()
+	if err != nil {
+		t.Fatalf("加载 E2E QA 配置失败：%v", err)
 	}
-	name, dsn := createDatabase(t, ctx, adminDSN)
+	ctx, cancel := context.WithTimeout(context.Background(), qaConfig.CommandTimeout())
+	adminDSN := qaConfig.AdminDSN().Value()
+	name, dsn := createDatabase(t, ctx, qaConfig)
 	h := &harness{t: t, ctx: ctx, cancel: cancel, adminDSN: adminDSN, dsn: dsn, name: name, client: &http.Client{Timeout: 5 * time.Second}, observer: observer}
 	h.migrateUp()
 	h.start(authorizer)
@@ -79,10 +79,12 @@ func (h *harness) start(authorizer content.Authorizer) {
 	if err = listener.Close(); err != nil {
 		h.t.Fatalf("释放 E2E 预留端口失败：%v", err)
 	}
-	for key, value := range map[string]string{"SCYG_DATABASE_DSN": h.dsn, "SCYG_HTTP_HOST": "127.0.0.1", "SCYG_HTTP_PORT": fmt.Sprint(port), "SCYG_APP_ENV": "test", "SCYG_DOCS_ENABLED": "true"} {
-		h.t.Setenv(key, value)
+	configFile := filepath.Join(h.t.TempDir(), "runtime.yaml")
+	runtimeConfig := fmt.Sprintf("app:\n  env: test\nhttp:\n  host: 127.0.0.1\n  port: %d\ndatabase:\n  dsn: %s\ndocs:\n  enabled: true\n", port, h.dsn)
+	if err = os.WriteFile(configFile, []byte(runtimeConfig), 0o600); err != nil {
+		h.t.Fatalf("写入 E2E 运行配置失败：%v", err)
 	}
-	h.app, err = bootstrap.New(h.ctx, bootstrap.Options{LogWriter: io.Discard, Authorizer: authorizer, LifecycleObserver: h.observer}, bootstrap.DefaultDependencies())
+	h.app, err = bootstrap.New(h.ctx, bootstrap.Options{ConfigFile: configFile, LogWriter: io.Discard, Authorizer: authorizer, LifecycleObserver: h.observer}, bootstrap.DefaultDependencies())
 	if err != nil {
 		h.t.Fatalf("构造 E2E 应用失败：%v", err)
 	}
@@ -152,13 +154,14 @@ func (h *harness) close() {
 	dropDatabase(h.t, h.adminDSN, h.name)
 }
 
-func createDatabase(t *testing.T, ctx context.Context, adminDSN string) (string, string) {
+func createDatabase(t *testing.T, ctx context.Context, qaConfig qaconfig.Config) (string, string) {
 	t.Helper()
 	random := make([]byte, 8)
 	if _, err := rand.Read(random); err != nil {
 		t.Fatalf("生成 E2E 数据库名失败：%v", err)
 	}
-	name := "scyg_t13_" + hex.EncodeToString(random)
+	name := qaConfig.DatabasePrefix() + hex.EncodeToString(random)
+	adminDSN := qaConfig.AdminDSN().Value()
 	admin, err := sql.Open("pgx", adminDSN)
 	if err != nil {
 		t.Fatalf("打开 E2E 管理连接失败：%v", err)

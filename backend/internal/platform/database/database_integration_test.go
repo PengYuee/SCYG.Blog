@@ -16,6 +16,7 @@ import (
 	"gorm.io/gorm"
 
 	db "github.com/PengYuee/SCYG.Blog/backend/internal/platform/database"
+	qaconfig "github.com/PengYuee/SCYG.Blog/backend/internal/qa/config"
 	"github.com/PengYuee/SCYG.Blog/backend/migrations"
 )
 
@@ -28,12 +29,20 @@ type tag struct {
 }
 
 func (tag) TableName() string { return "Tag" }
+
+// qaDatabaseDSN 从本地 YAML 读取普通集成测试数据库连接。
+func qaDatabaseDSN(t *testing.T) string {
+	t.Helper()
+	cfg, err := qaconfig.LoadLocal()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return cfg.DatabaseDSN().Value()
+}
 func open(t *testing.T) *db.Database {
 	t.Helper()
-	dsn := os.Getenv("SCYG_TEST_DATABASE_DSN")
-	if dsn == "" {
-		t.Fatal("SCYG_TEST_DATABASE_DSN is required")
-	}
+	dsn := qaDatabaseDSN(t)
+
 	value, err := db.New(context.Background(), db.Options{DSN: dsn, Logger: slog.Default(), MaxOpenConns: 5, MaxIdleConns: 2, ConnMaxLifetime: time.Minute})
 	if err != nil {
 		t.Fatal(err)
@@ -58,7 +67,7 @@ func resetDatabase(t *testing.T, database *db.Database) {
 
 func mr(t *testing.T, d *db.Database) *migrations.Runner {
 	t.Helper()
-	pool, e := sql.Open("pgx", os.Getenv("SCYG_TEST_DATABASE_DSN"))
+	pool, e := sql.Open("pgx", qaDatabaseDSN(t))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -185,7 +194,7 @@ func Test_InvalidMigration_dirty_force_recovery(t *testing.T) {
 	v1u, _ := os.ReadFile("../../../migrations/000001_initial.up.sql")
 	v1d, _ := os.ReadFile("../../../migrations/000001_initial.down.sql")
 	bad := fstest.MapFS{"000001_initial.up.sql": {Data: v1u}, "000001_initial.down.sql": {Data: v1d}, "000002_bad.up.sql": {Data: []byte(`CREATE TABLE "Broken"("Id" bigint); INVALID SQL;`)}, "000002_bad.down.sql": {Data: []byte(`DROP TABLE "Broken";`)}}
-	badPool, e := sql.Open("pgx", os.Getenv("SCYG_TEST_DATABASE_DSN"))
+	badPool, e := sql.Open("pgx", qaDatabaseDSN(t))
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -217,7 +226,7 @@ func Test_InvalidMigration_dirty_force_recovery(t *testing.T) {
 	if e = r.Close(); e != nil {
 		t.Fatal(e)
 	}
-	goodPool, e := sql.Open("pgx", os.Getenv("SCYG_TEST_DATABASE_DSN"))
+	goodPool, e := sql.Open("pgx", qaDatabaseDSN(t))
 	if e != nil {
 		t.Fatal(e)
 	}

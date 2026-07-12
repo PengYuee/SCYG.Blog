@@ -12,6 +12,7 @@ import (
 	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/internal/application"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/internal/domain"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/database"
+	qaconfig "github.com/PengYuee/SCYG.Blog/backend/internal/qa/config"
 )
 
 type fixedClock struct{ now time.Time }
@@ -27,10 +28,11 @@ type repositoryFixture struct {
 
 func openRepositoryFixture(t *testing.T) repositoryFixture {
 	t.Helper()
-	dsn := os.Getenv("SCYG_TEST_DATABASE_DSN")
-	if dsn == "" {
-		t.Fatal("SCYG_TEST_DATABASE_DSN is required")
+	qaConfig, err := qaconfig.LoadLocal()
+	if err != nil {
+		t.Fatal(err)
 	}
+	dsn := qaConfig.DatabaseDSN().Value()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	db, err := database.New(ctx, database.Options{DSN: dsn, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), MaxOpenConns: 5, MaxIdleConns: 2, ConnMaxLifetime: time.Minute})

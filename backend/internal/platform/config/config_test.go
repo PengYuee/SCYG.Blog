@@ -153,3 +153,50 @@ func Test_Config_public_values_expose_no_mutable_fields(t *testing.T) {
 		}
 	}
 }
+
+func Test_Config_file_loads_all_runtime_keys(t *testing.T) {
+	// Given
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	yaml := "app:\n  env: test\n  log_level: debug\nhttp:\n  host: 127.0.0.1\n  port: 9091\n  read_header_timeout: 2s\n  read_timeout: 3s\n  write_timeout: 4s\n  idle_timeout: 5s\n  shutdown_timeout: 6s\n  trusted_proxies: [127.0.0.1]\n  cors_allowed_origins: [http://localhost:5173]\ndatabase:\n  dsn: postgres://postgres:secret@localhost:5432/blog\n  max_open_conns: 12\n  max_idle_conns: 4\n  conn_max_lifetime: 20m\ndocs:\n  enabled: false\ntelemetry:\n  otlp_endpoint: http://localhost:4318\nqa:\n  postgres_admin_dsn: postgres://postgres:qa-secret@localhost:5432/postgres\n  database_prefix: scyg_qa_\n  command_timeout: 30s\n"
+	if err := os.WriteFile(path, []byte(yaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// When
+	cfg, err := config.Load(config.Options{File: path})
+
+	// Then
+	if err != nil || cfg.App().Environment() != config.EnvironmentTest || cfg.HTTP().Port() != 9091 || cfg.Database().MaxOpenConns() != 12 || cfg.Docs().Enabled() || cfg.Telemetry().OTLPEndpoint() != "http://localhost:4318" {
+		t.Fatalf("cfg=%s err=%v", cfg, err)
+	}
+}
+
+func Test_Config_missing_explicit_local_file_returns_Chinese_error(t *testing.T) {
+	// Given
+	path := filepath.Join(t.TempDir(), "config.local.yaml")
+
+	// When
+	_, err := config.Load(config.Options{File: path})
+
+	// Then
+	if err == nil || !strings.Contains(err.Error(), "读取配置文件失败") {
+		t.Fatalf("err=%v", err)
+	}
+}
+
+func Test_Config_rejects_placeholder_database_password(t *testing.T) {
+	// Given
+	path := filepath.Join(t.TempDir(), "config.local.yaml")
+	yaml := "database:\n  dsn: postgres://postgres:请填写密码@47.108.49.168:5432/blog\n"
+	if err := os.WriteFile(path, []byte(yaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// When
+	_, err := config.Load(config.Options{File: path})
+
+	// Then
+	if err == nil || !strings.Contains(err.Error(), "请先填写") {
+		t.Fatalf("err=%v", err)
+	}
+}

@@ -22,4 +22,4 @@ COPY --from=build --chown=65532:65532 /out/healthcheck /healthcheck
 USER 65532:65532
 EXPOSE 8080
 HEALTHCHECK --interval=10s --timeout=5s --start-period=10s --retries=5 CMD ["/healthcheck"]
-ENTRYPOINT ["/api"]
+ENTRYPOINT ["/api", "-config="]

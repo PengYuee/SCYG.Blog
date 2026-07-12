@@ -6,6 +6,8 @@ import (
 	"errors"
 	"log/slog"
 	"net"
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -54,6 +56,16 @@ type fakeServer struct {
 func (fake *fakeServer) Start() (net.Listener, <-chan error, error) { return nil, nil, fake.startErr }
 func (fake *fakeServer) Shutdown(context.Context) error             { fake.closes++; return nil }
 
+// withConfig 为 bootstrap 单元测试提供显式文件，避免依赖入口默认路径。
+func withConfig(t *testing.T, options bootstrap.Options) bootstrap.Options {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("database:\n  dsn: postgres://postgres:postgres@localhost:5432/scyg?sslmode=disable\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	options.ConfigFile = path
+	return options
+}
 func validDependencies(telemetry *fakeTelemetry, db *fakeDatabase, migration *fakeMigration, server *fakeServer) bootstrap.Dependencies {
 	return bootstrap.Dependencies{
 		LoadConfig: config.Load,
@@ -78,7 +90,7 @@ func Test_Application_RejectsPendingMigration_and_closes_prior_resources_once(t 
 	dependencies := validDependencies(telemetry, db, migration, &fakeServer{})
 
 	// When
-	app, err := bootstrap.New(context.Background(), bootstrap.Options{LogWriter: &bytes.Buffer{}}, dependencies)
+	app, err := bootstrap.New(context.Background(), withConfig(t, bootstrap.Options{LogWriter: &bytes.Buffer{}}), dependencies)
 
 	// Then
 	if app != nil || err == nil {
@@ -95,7 +107,7 @@ func Test_Application_RejectsDirtyMigration_and_closes_prior_resources_once(t *t
 	migration := &fakeMigration{version: migrations.CurrentVersion, dirty: true}
 
 	// When
-	_, err := bootstrap.New(context.Background(), bootstrap.Options{LogWriter: &bytes.Buffer{}}, validDependencies(telemetry, db, migration, &fakeServer{}))
+	_, err := bootstrap.New(context.Background(), withConfig(t, bootstrap.Options{LogWriter: &bytes.Buffer{}}), validDependencies(telemetry, db, migration, &fakeServer{}))
 
 	// Then
 	if err == nil || telemetry.closes != 1 || db.closes != 1 || migration.closes != 1 {
@@ -108,7 +120,7 @@ func Test_Application_CleansOnBindFailure_in_reverse_once(t *testing.T) {
 	telemetry, db := &fakeTelemetry{}, &fakeDatabase{}
 	migration := &fakeMigration{version: migrations.CurrentVersion}
 	server := &fakeServer{startErr: errors.New("端口已占用")}
-	app, err := bootstrap.New(context.Background(), bootstrap.Options{LogWriter: &bytes.Buffer{}}, validDependencies(telemetry, db, migration, server))
+	app, err := bootstrap.New(context.Background(), withConfig(t, bootstrap.Options{LogWriter: &bytes.Buffer{}}), validDependencies(telemetry, db, migration, server))
 	if err != nil {
 		t.Fatalf("new app: %v", err)
 	}
@@ -131,7 +143,7 @@ func Test_Application_RejectsUnavailableDB_and_closes_telemetry_once(t *testing.
 	}
 
 	// When
-	_, err := bootstrap.New(context.Background(), bootstrap.Options{LogWriter: &bytes.Buffer{}}, dependencies)
+	_, err := bootstrap.New(context.Background(), withConfig(t, bootstrap.Options{LogWriter: &bytes.Buffer{}}), dependencies)
 
 	// Then
 	if err == nil || telemetry.closes != 1 {
@@ -149,7 +161,7 @@ func Test_Application_RejectsContentConstruction_and_closes_prior_resources_once
 	}
 
 	// When
-	_, err := bootstrap.New(context.Background(), bootstrap.Options{LogWriter: &bytes.Buffer{}}, dependencies)
+	_, err := bootstrap.New(context.Background(), withConfig(t, bootstrap.Options{LogWriter: &bytes.Buffer{}}), dependencies)
 
 	// Then
 	if err == nil || telemetry.closes != 1 || db.closes != 1 {
@@ -167,7 +179,7 @@ func Test_Application_RejectsRESTConstruction_and_closes_prior_resources_once(t 
 	}
 
 	// When
-	_, err := bootstrap.New(context.Background(), bootstrap.Options{LogWriter: &bytes.Buffer{}}, dependencies)
+	_, err := bootstrap.New(context.Background(), withConfig(t, bootstrap.Options{LogWriter: &bytes.Buffer{}}), dependencies)
 
 	// Then
 	if err == nil || telemetry.closes != 1 || db.closes != 1 {
@@ -181,7 +193,7 @@ func Test_Application_RejectsInvalidConfig_before_resources(t *testing.T) {
 	dependencies.LoadConfig = func(config.Options) (config.Config, error) { return config.Config{}, errors.New("配置无效") }
 
 	// When
-	app, err := bootstrap.New(context.Background(), bootstrap.Options{LogWriter: &bytes.Buffer{}}, dependencies)
+	app, err := bootstrap.New(context.Background(), withConfig(t, bootstrap.Options{LogWriter: &bytes.Buffer{}}), dependencies)
 
 	// Then
 	if app != nil || err == nil {
@@ -195,7 +207,7 @@ func Test_Application_RejectsTelemetryConstruction_without_cleanup(t *testing.T)
 	dependencies.NewTelemetry = func(config.Telemetry) (bootstrap.Telemetry, error) { return nil, errors.New("遥测构造失败") }
 
 	// When
-	app, err := bootstrap.New(context.Background(), bootstrap.Options{LogWriter: &bytes.Buffer{}}, dependencies)
+	app, err := bootstrap.New(context.Background(), withConfig(t, bootstrap.Options{LogWriter: &bytes.Buffer{}}), dependencies)
 
 	// Then
 	if app != nil || err == nil {
@@ -211,7 +223,7 @@ func Test_Application_RejectsHTTPConstruction_and_closes_prior_resources_once(t 
 	dependencies.NewHTTP = func(httpserver.Options) (bootstrap.HTTPServer, error) { return nil, errors.New("HTTP 构造失败") }
 
 	// When
-	_, err := bootstrap.New(context.Background(), bootstrap.Options{LogWriter: &bytes.Buffer{}}, dependencies)
+	_, err := bootstrap.New(context.Background(), withConfig(t, bootstrap.Options{LogWriter: &bytes.Buffer{}}), dependencies)
 
 	// Then
 	if err == nil || telemetry.closes != 1 || db.closes != 1 {

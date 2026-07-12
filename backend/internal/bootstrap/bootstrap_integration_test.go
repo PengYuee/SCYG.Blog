@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -20,18 +21,20 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	"github.com/PengYuee/SCYG.Blog/backend/internal/bootstrap"
+	qaconfig "github.com/PengYuee/SCYG.Blog/backend/internal/qa/config"
 	"github.com/PengYuee/SCYG.Blog/backend/migrations"
 )
 
 func Test_Application_StartReadyShutdown_with_random_database(t *testing.T) {
 	// Given
-	adminDSN := os.Getenv("SCYG_POSTGRES_ADMIN_DSN")
-	if adminDSN == "" {
-		t.Fatal("缺少安全的 PostgreSQL 管理 DSN")
+	qaConfig, err := qaconfig.LoadLocal()
+	if err != nil {
+		t.Fatalf("加载集成测试 QA 配置失败：%v", err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	adminDSN := qaConfig.AdminDSN().Value()
+	ctx, cancel := context.WithTimeout(context.Background(), qaConfig.CommandTimeout())
 	defer cancel()
-	name, targetDSN := createTemporaryDatabase(t, ctx, adminDSN)
+	name, targetDSN := createTemporaryDatabase(t, ctx, qaConfig)
 	defer dropTemporaryDatabase(t, adminDSN, name)
 	applyMigrations(t, targetDSN)
 	listener, listenErr := net.Listen("tcp", "127.0.0.1:0")
@@ -40,10 +43,12 @@ func Test_Application_StartReadyShutdown_with_random_database(t *testing.T) {
 	}
 	port := fmt.Sprint(listener.Addr().(*net.TCPAddr).Port)
 	_ = listener.Close()
-	for key, value := range map[string]string{"SCYG_DATABASE_DSN": targetDSN, "SCYG_HTTP_HOST": "127.0.0.1", "SCYG_HTTP_PORT": port, "SCYG_APP_ENV": "test", "SCYG_DOCS_ENABLED": "true"} {
-		t.Setenv(key, value)
+	configFile := filepath.Join(t.TempDir(), "runtime.yaml")
+	runtimeConfig := fmt.Sprintf("app:\n  env: test\nhttp:\n  host: 127.0.0.1\n  port: %s\ndatabase:\n  dsn: %s\ndocs:\n  enabled: true\n", port, targetDSN)
+	if err = os.WriteFile(configFile, []byte(runtimeConfig), 0o600); err != nil {
+		t.Fatalf("写入集成测试运行配置失败：%v", err)
 	}
-	app, err := bootstrap.New(ctx, bootstrap.Options{LogWriter: io.Discard}, bootstrap.DefaultDependencies())
+	app, err := bootstrap.New(ctx, bootstrap.Options{ConfigFile: configFile, LogWriter: io.Discard}, bootstrap.DefaultDependencies())
 	if err != nil {
 		t.Fatalf("构造应用: %v", err)
 	}
@@ -69,13 +74,14 @@ func Test_Application_StartReadyShutdown_with_random_database(t *testing.T) {
 	}
 }
 
-func createTemporaryDatabase(t *testing.T, ctx context.Context, adminDSN string) (string, string) {
+func createTemporaryDatabase(t *testing.T, ctx context.Context, qaConfig qaconfig.Config) (string, string) {
 	t.Helper()
 	bytes := make([]byte, 8)
 	if _, err := rand.Read(bytes); err != nil {
 		t.Fatalf("生成数据库名: %v", err)
 	}
-	name := "scyg_t11_" + hex.EncodeToString(bytes)
+	name := qaConfig.DatabasePrefix() + hex.EncodeToString(bytes)
+	adminDSN := qaConfig.AdminDSN().Value()
 	admin, err := sql.Open("pgx", adminDSN)
 	if err != nil {
 		t.Fatalf("打开管理连接: %v", err)

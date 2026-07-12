@@ -11,8 +11,10 @@ import (
 
 // Options controls the startup configuration source.
 type Options struct {
-	// File is an optional explicit YAML path. An empty path uses defaults and environment only.
+	// File 是显式 YAML 路径；空路径仅使用内置默认值和允许的环境覆盖。
 	File string
+	// DisableEnvironment 禁止环境变量覆盖，供本地迁移等纯文件入口使用。
+	DisableEnvironment bool
 }
 
 type rawConfig struct {
@@ -68,9 +70,11 @@ func Load(options Options) (Config, error) {
 		"http.cors_allowed_origins", "database.dsn", "database.max_open_conns", "database.max_idle_conns",
 		"database.conn_max_lifetime", "docs.enabled", "telemetry.otlp_endpoint",
 	}
-	for _, key := range keys {
-		if err := instance.BindEnv(key); err != nil {
-			return Config{}, fmt.Errorf("bind environment %s: %w", key, err)
+	if !options.DisableEnvironment {
+		for _, key := range keys {
+			if err := instance.BindEnv(key); err != nil {
+				return Config{}, fmt.Errorf("绑定环境配置 %s 失败：%w", key, err)
+			}
 		}
 	}
 	if options.File != "" {
@@ -80,10 +84,17 @@ func Load(options Options) (Config, error) {
 			return Config{}, &FileError{Path: options.File, Err: err}
 		}
 	}
+	// QA 段由独立 loader 解析；运行时副本在解码前移除该段，避免管理 DSN 进入 Config。
+	settings := instance.AllSettings()
+	delete(settings, "qa")
+	runtime := viper.New()
+	if err := runtime.MergeConfigMap(settings); err != nil {
+		return Config{}, fmt.Errorf("合并运行时配置失败：%w", err)
+	}
 	var raw rawConfig
 	hook := mapstructure.ComposeDecodeHookFunc(mapstructure.StringToTimeDurationHookFunc(), mapstructure.StringToSliceHookFunc(","))
-	if err := instance.UnmarshalExact(&raw, viper.DecodeHook(hook)); err != nil {
-		return Config{}, fmt.Errorf("decode configuration: %w", err)
+	if err := runtime.UnmarshalExact(&raw, viper.DecodeHook(hook)); err != nil {
+		return Config{}, fmt.Errorf("解析配置失败：%w", err)
 	}
 	return validate(raw)
 }

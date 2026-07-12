@@ -1,0 +1,42 @@
+# 应用环境：development、test 或 production。
+app:
+  env: development
+  # 结构化日志级别：debug、info、warn 或 error。
+  log_level: info
+
+# HTTP 服务监听、超时与来源限制。
+http:
+  host: 127.0.0.1
+  port: 8080
+  read_header_timeout: 5s
+  read_timeout: 15s
+  write_timeout: 15s
+  idle_timeout: 60s
+  shutdown_timeout: 10s
+  trusted_proxies: []
+  cors_allowed_origins:
+    - http://localhost:5173
+
+# 普通应用数据库连接与连接池配置；请替换密码占位值。
+database:
+  dsn: postgres://postgres:请填写密码@47.108.49.168:5432/scyg_blog?sslmode=disable
+  max_open_conns: 25
+  max_idle_conns: 5
+  conn_max_lifetime: 30m
+
+# 本地 API 文档开关。
+docs:
+  enabled: true
+
+# 可选 OpenTelemetry HTTP Collector 地址；留空表示不导出。
+telemetry:
+  otlp_endpoint: ""
+
+# 仅供 review、integration、e2e 与 F3 使用，不会进入运行时业务配置。
+qa:
+  # PostgreSQL 管理连接仅用于创建和清理隔离测试库；请替换密码占位值。
+  postgres_admin_dsn: postgres://postgres:请填写密码@47.108.49.168:5432/postgres?sslmode=disable
+  # 隔离测试数据库名称前缀。
+  database_prefix: scyg_qa_
+  # 单次 QA 叙事的最长执行时间。
+  command_timeout: 120s

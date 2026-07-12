@@ -9,3 +9,5 @@ coverage.html
 .idea/
 .vscode/
 *.swp
+/config.local.yaml
+/config.*.local.yaml
