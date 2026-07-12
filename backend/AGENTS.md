@@ -25,3 +25,10 @@ Go 1.25.0 modular-monolith foundation. This directory is the repository's only G
 - Use manual constructor injection; Wire, Fx, Dig, service locators, and mutable globals are forbidden.
 - Handwritten Go files must remain at or below 250 pure LOC.
 - Add comments for exported identifiers, signatures, fields, and non-obvious logic.
+
+## Module file organization
+- Business module source under `internal/modules/<module>` uses an entity prefix（实体前缀）and fixed responsibility suffix（固定职责后缀）: `<subject>_<role>.go` or `<subject>_<role>_<subrole>.go`; `api.go` and `module.go` remain required anchors.
+- Required roles include `command`, `query`, `result`, `usecase`, `port`, `view`, `model`, `repository`, `read_model`, `mapper`, `validation`, and `error`; use accurate semantic shared names instead of generic buckets.
+- PostgreSQL rows are 数据库数据模型 and use `*_model.go`; `*_record.go`, `models.go`, `usecases.go`, `results.go`, `helpers.go`, `utils.go`, and `common.go` are forbidden.
+- `internal/domain` and `internal/application` 禁止任何 Go 子 package，因此也禁止实体 Go 子包；技术性子目录必须先取得独立架构决策。Directories express technical layers, entity prefixes express business subjects, and fixed responsibility suffixes express roles.
+- Tests follow behavior and responsibility and need not map one-to-one to production files. These naming rules do not relax the existing 250 pure LOC limit.

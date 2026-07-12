@@ -97,6 +97,42 @@ func Test_Architecture_RejectsForbiddenImports(t *testing.T) {
 	}
 }
 
+func Test_Architecture_EnforcesModuleFileOrganization(t *testing.T) {
+	// Given
+	cases := []struct {
+		code   string
+		path   string
+		detail string
+	}{
+		{code: "ARCH_MODULE_FILE_NAME", path: "article_record.go", detail: "数据库数据模型文件必须使用 <subject>_model.go，禁止 *_record.go"},
+		{code: "ARCH_MODULE_FILE_NAME", path: "models.go", detail: "模块源码禁止泛化文件名 models.go；使用业务主体前缀和固定职责后缀"},
+		{code: "ARCH_MODULE_FILE_NAME", path: "usecases.go", detail: "模块源码禁止泛化文件名 usecases.go；使用业务主体前缀和固定职责后缀"},
+		{code: "ARCH_MODULE_FILE_NAME", path: "results.go", detail: "模块源码禁止泛化文件名 results.go；使用业务主体前缀和固定职责后缀"},
+		{code: "ARCH_MODULE_FILE_NAME", path: "article_creation.go", detail: "模块源码文件必须使用 <subject>_<role>.go 或 <subject>_<role>_<subrole>.go"},
+		{code: "ARCH_MODULE_FILE_NAME", path: "article_integration.go", detail: "模块源码文件必须使用 <subject>_<role>.go 或 <subject>_<role>_<subrole>.go"},
+		{code: "ARCH_MODULE_FILE_NAME", path: "helpers_test.go", detail: "测试文件禁止泛化职责 token helpers；使用业务主体和可观察行为命名"},
+		{code: "ARCH_MODULE_FILE_NAME", path: "utils_test.go", detail: "测试文件禁止泛化职责 token utils；使用业务主体和可观察行为命名"},
+		{code: "ARCH_MODULE_FILE_NAME", path: "integration_helpers_test.go", detail: "测试文件禁止泛化职责 token helpers；使用业务主体和可观察行为命名"},
+		{code: "ARCH_MODULE_FILE_NAME", path: "article_common_test.go", detail: "测试文件禁止泛化职责 token common；使用业务主体和可观察行为命名"},
+		{code: "ARCH_MODULE_LAYER_SUBPACKAGE", path: "internal/domain/article/entity.go", detail: "domain/application 下禁止 Go 子 package article；目录只表达技术层，业务主体必须使用文件名前缀"},
+	}
+
+	// When
+	violations, err := Scan(filepath.Join("testdata", "invalid"))
+
+	// Then
+	if err != nil {
+		t.Fatalf("扫描非法命名夹具失败：%v", err)
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.path, func(t *testing.T) {
+			if !containsExactViolation(violations, testCase.code, testCase.path, testCase.detail) {
+				t.Errorf("期望稳定 violation code/path/detail：%+v；实际：%v", testCase, violations)
+			}
+		})
+	}
+}
+
 func Test_Architecture_AcceptsCommentAndRawStringHeavyFiles(t *testing.T) {
 	// Given and When
 	violations, err := Scan(filepath.Join("testdata", "loc_legal"))
@@ -172,6 +208,15 @@ func Test_Architecture_AcceptsCommittedBackend(t *testing.T) {
 	if len(violations) != 0 {
 		t.Fatalf("committed backend rejected: %v", violations)
 	}
+}
+
+func containsExactViolation(violations []Violation, code, path, detail string) bool {
+	for _, violation := range violations {
+		if violation.Code == code && strings.HasSuffix(violation.Path, path) && violation.Detail == detail {
+			return true
+		}
+	}
+	return false
 }
 
 func containsViolation(violations []Violation, code, path string) bool {

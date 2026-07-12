@@ -47,6 +47,7 @@ func Scan(root string) ([]Violation, error) {
 	for _, file := range files {
 		violations = append(violations, checkSize(file)...)
 		violations = append(violations, checkPath(file)...)
+		violations = append(violations, checkFileOrganization(file)...)
 		violations = append(violations, checkImports(file)...)
 		violations = append(violations, checkDeclarations(file)...)
 	}
