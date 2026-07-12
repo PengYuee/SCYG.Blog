@@ -44,7 +44,6 @@ func Test_Taskfile_qa_messages_use_literal_command_blocks(t *testing.T) {
 		t.Fatalf("解析 Taskfile 失败：%v", err)
 	}
 	for _, command := range []string{
-		"cmd: |\n          echo 'F1 plan compliance: PASS'",
 		"cmd: |\n          echo 'F2 quality: PASS'",
 		"cmd: |\n          echo 'foundation QA: PASS'",
 		"cmd: |\n          echo 'F3 real system: PASS'",
@@ -58,12 +57,16 @@ func Test_Taskfile_qa_messages_use_literal_command_blocks(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+const qaPlanSuccessMarker = "F1 plan compliance: PASS"
+const qaPlanSuccessOutput = `Write-Output "` + qaPlanSuccessMarker + `"`
+
 func Test_Taskfile_qa_plan_delegates_to_isolated_PowerShell_runner(t *testing.T) {
 	// Given
 	taskfile := readDeliveryFile(t, "Taskfile.yml")
 	runnerPath := filepath.Join(backendRoot(t), "scripts", "qa-plan.ps1")
 
 	// When
+	runner := readDeliveryFile(t, filepath.Join("scripts", "qa-plan.ps1"))
 	_, err := os.Stat(runnerPath)
 
 	// Then
@@ -76,6 +79,39 @@ func Test_Taskfile_qa_plan_delegates_to_isolated_PowerShell_runner(t *testing.T)
 	if !strings.Contains(taskfile, "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/qa-plan.ps1") {
 		t.Fatal("qa:plan 必须仅调用独立 PowerShell 脚本")
 	}
+	if err := validateQAPlanRunner(runner); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func Test_QAPlanRunner_rejects_missing_or_incorrect_F1_marker(t *testing.T) {
+	cases := []struct {
+		name   string
+		runner string
+	}{
+		{name: "缺少标记", runner: `Write-Output "QA plan complete"`},
+		{name: "错误标记", runner: `Write-Output "F1 plan compliance: FAIL"`},
+	}
+
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			// When
+			err := validateQAPlanRunner(testCase.runner)
+
+			// Then
+			if err == nil {
+				t.Fatalf("无效 qa:plan 脚本通过验证：%q", testCase.runner)
+			}
+		})
+	}
+}
+
+// validateQAPlanRunner 确保 QA 计划运行器在成功路径输出精确 F1 标记。
+func validateQAPlanRunner(runner string) error {
+	if !strings.Contains(runner, qaPlanSuccessOutput) {
+		return fmt.Errorf("qa:plan 脚本必须在成功路径输出精确标记 %q", qaPlanSuccessMarker)
+	}
+	return nil
 }
 
 // validateTaskfileCommandNodes 拒绝包含冒号但未被 YAML 显式引用的命令标量。
