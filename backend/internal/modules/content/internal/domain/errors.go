@@ -39,3 +39,5 @@ func (conflict *VersionConflict) Error() string {
 
 // Unwrap 允许调用方以 ErrStaleVersion 判断版本冲突。
 func (*VersionConflict) Unwrap() error { return ErrStaleVersion }
+
+func invalid(field string) error { return fmt.Errorf("%s: %w", field, ErrInvalidValue) }

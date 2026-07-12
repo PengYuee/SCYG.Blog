@@ -151,35 +151,6 @@ func (article *Article) Delete(expected Version, clock Clock) error {
 	return nil
 }
 
-func validateDraft(draft ArticleDraft) error {
-	if !draft.ID.valid() {
-		return invalid("article_id")
-	}
-	if !draft.ArticleTypeID.valid() {
-		return ErrArticleTypeRequired
-	}
-	return validateText(draft.Title, draft.Slug, draft.Digest, draft.Content)
-}
-func validateRevision(revision ArticleRevision) error {
-	if !revision.ArticleTypeID.valid() {
-		return ErrArticleTypeRequired
-	}
-	return validateText(revision.Title, revision.Slug, revision.Digest, revision.Content)
-}
-func validateText(title Title, slug Slug, digest Digest, content Content) error {
-	switch {
-	case !title.valid():
-		return invalid("title")
-	case !slug.valid():
-		return invalid("slug")
-	case !digest.valid():
-		return invalid("digest")
-	case !content.valid():
-		return ErrContentRequired
-	default:
-		return nil
-	}
-}
 func (article *Article) current(expected Version) error {
 	if !expected.valid() || article.version != expected {
 		return &VersionConflict{Expected: expected, Actual: article.version}
@@ -200,24 +171,6 @@ func (article *Article) changeable(expected Version) error {
 }
 func (article *Article) sameRevision(revision ArticleRevision, tags []TagID) bool {
 	return article.articleTypeID == revision.ArticleTypeID && article.title == revision.Title && article.slug == revision.Slug && article.digest == revision.Digest && article.content == revision.Content && slices.Equal(article.tagIDs, tags)
-}
-func uniqueTags(input []TagID) ([]TagID, error) {
-	if len(input) == 0 {
-		return nil, fmt.Errorf("tags: %w", ErrInvalidValue)
-	}
-	seen := make(map[TagID]struct{}, len(input))
-	result := make([]TagID, 0, len(input))
-	for _, id := range input {
-		if !id.valid() {
-			return nil, invalid("tag_id")
-		}
-		if _, exists := seen[id]; exists {
-			return nil, ErrDuplicateTag
-		}
-		seen[id] = struct{}{}
-		result = append(result, id)
-	}
-	return result, nil
 }
 func (article *Article) ID() ArticleID                { return article.id }
 func (article *Article) ArticleTypeID() ArticleTypeID { return article.articleTypeID }

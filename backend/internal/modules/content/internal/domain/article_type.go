@@ -7,7 +7,7 @@ import (
 	"unicode/utf8"
 )
 
-// ArticleType classifies articles and owns naming, deletion, and version rules.
+// ArticleType 对文章分类，并维护命名、删除与版本规则。
 type ArticleType struct {
 	id         ArticleTypeID
 	name       Name
@@ -19,12 +19,12 @@ type ArticleType struct {
 	deletedAt  time.Time
 }
 
-// NewArticleType creates a validated version-one article type.
+// NewArticleType 创建已校验且初始版本为一的文章分类。
 func NewArticleType(id ArticleTypeID, name Name, clock Clock) (*ArticleType, error) {
 	return NewArticleTypeWithDetails(id, name, nil, 0, clock)
 }
 
-// NewArticleTypeWithDetails creates a validated article type with presentation metadata.
+// NewArticleTypeWithDetails 创建包含展示元数据的已校验文章分类。
 func NewArticleTypeWithDetails(id ArticleTypeID, name Name, image *string, meun int32, clock Clock) (*ArticleType, error) {
 	if !id.valid() {
 		return nil, invalid("article_type_id")
@@ -43,7 +43,7 @@ func NewArticleTypeWithDetails(id ArticleTypeID, name Name, image *string, meun 
 	return &ArticleType{id: id, name: name, image: imageValue, meun: meun, version: initialVersion(), createdAt: now, modifiedAt: now}, nil
 }
 
-// ArticleTypePatch contains explicitly provided mutable article-type values.
+// ArticleTypePatch 包含调用方明确提供的可变文章分类值。
 type ArticleTypePatch struct {
 	Name          *Name
 	ImageProvided bool
@@ -51,7 +51,7 @@ type ArticleTypePatch struct {
 	Meun          *int32
 }
 
-// Patch atomically updates any provided article-type values.
+// Patch 原子更新调用方提供的文章分类值。
 func (item *ArticleType) Patch(expected Version, patch ArticleTypePatch, clock Clock) error {
 	if err := taxonomyCurrent(item.version, expected, item.deletedAt); err != nil {
 		return err
@@ -94,12 +94,12 @@ func (item *ArticleType) Patch(expected Version, patch ArticleTypePatch, clock C
 	return nil
 }
 
-// Rename atomically changes the name when the entity is active and version matches.
+// Rename 在实体有效且版本匹配时原子修改名称。
 func (item *ArticleType) Rename(expected Version, name Name, clock Clock) error {
 	return item.Patch(expected, ArticleTypePatch{Name: &name}, clock)
 }
 
-// Delete atomically soft-deletes the active article type.
+// Delete 原子软删除有效文章分类。
 func (item *ArticleType) Delete(expected Version, clock Clock) error {
 	if err := taxonomyCurrent(item.version, expected, item.deletedAt); err != nil {
 		return err
@@ -123,107 +123,6 @@ func (item *ArticleType) Version() Version      { return item.version }
 func (item *ArticleType) CreatedAt() time.Time  { return item.createdAt }
 func (item *ArticleType) ModifiedAt() time.Time { return item.modifiedAt }
 func (item *ArticleType) DeletedAt() time.Time  { return item.deletedAt }
-
-// Tag labels articles and owns naming, deletion, and version rules.
-type Tag struct {
-	id         TagID
-	name       Name
-	version    Version
-	createdAt  time.Time
-	modifiedAt time.Time
-	deletedAt  time.Time
-}
-
-// NewTag creates a validated version-one tag.
-func NewTag(id TagID, name Name, clock Clock) (*Tag, error) {
-	if !id.valid() {
-		return nil, invalid("tag_id")
-	}
-	if !name.valid() {
-		return nil, invalid("name")
-	}
-	now, err := clockTime(clock, time.Time{})
-	if err != nil {
-		return nil, err
-	}
-	return &Tag{id: id, name: name, version: initialVersion(), createdAt: now, modifiedAt: now}, nil
-}
-
-// Rename atomically changes the name when the tag is active and version matches.
-func (tag *Tag) Rename(expected Version, name Name, clock Clock) error {
-	if err := taxonomyCurrent(tag.version, expected, tag.deletedAt); err != nil {
-		return err
-	}
-	if !name.valid() {
-		return invalid("name")
-	}
-	if tag.name == name {
-		return ErrNoChange
-	}
-	next, err := tag.version.next()
-	if err != nil {
-		return err
-	}
-	now, err := clockTime(clock, tag.modifiedAt)
-	if err != nil {
-		return err
-	}
-	tag.name, tag.modifiedAt, tag.version = name, now, next
-	return nil
-}
-
-// Delete atomically soft-deletes the active tag.
-func (tag *Tag) Delete(expected Version, clock Clock) error {
-	if err := taxonomyCurrent(tag.version, expected, tag.deletedAt); err != nil {
-		return err
-	}
-	next, err := tag.version.next()
-	if err != nil {
-		return err
-	}
-	now, err := clockTime(clock, tag.modifiedAt)
-	if err != nil {
-		return err
-	}
-	tag.deletedAt, tag.modifiedAt, tag.version = now, now, next
-	return nil
-}
-func (tag *Tag) ID() TagID             { return tag.id }
-func (tag *Tag) Name() Name            { return tag.name }
-func (tag *Tag) Version() Version      { return tag.version }
-func (tag *Tag) CreatedAt() time.Time  { return tag.createdAt }
-func (tag *Tag) ModifiedAt() time.Time { return tag.modifiedAt }
-func (tag *Tag) DeletedAt() time.Time  { return tag.deletedAt }
-
-func taxonomyCurrent(actual, expected Version, deletedAt time.Time) error {
-	if !expected.valid() || actual != expected {
-		return &VersionConflict{Expected: expected, Actual: actual}
-	}
-	if !deletedAt.IsZero() {
-		return ErrDeleted
-	}
-	return nil
-}
-
-// TagArticle represents only the business association between article and tag.
-type TagArticle struct {
-	articleID ArticleID
-	tagID     TagID
-}
-
-// NewTagArticle creates a validated association from parsed identifiers.
-func NewTagArticle(articleID ArticleID, tagID TagID) (TagArticle, error) {
-	if !articleID.valid() {
-		return TagArticle{}, invalid("article_id")
-	}
-	if !tagID.valid() {
-		return TagArticle{}, invalid("tag_id")
-	}
-	return TagArticle{articleID: articleID, tagID: tagID}, nil
-}
-func (link TagArticle) ArticleID() ArticleID { return link.articleID }
-func (link TagArticle) TagID() TagID         { return link.tagID }
-
 func parseImage(image *string) (*string, error) {
 	if image == nil {
 		return nil, nil
@@ -240,7 +139,7 @@ func parseImage(image *string) (*string, error) {
 	return &value, nil
 }
 
-// ValidateImage validates optional article-type image text without mutating it.
+// ValidateImage 校验可选文章分类图片文本且不修改输入。
 func ValidateImage(image *string) error { _, err := parseImage(image); return err }
 func copyString(value *string) *string {
 	if value == nil {

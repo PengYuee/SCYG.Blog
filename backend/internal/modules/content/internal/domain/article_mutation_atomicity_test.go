@@ -13,35 +13,6 @@ type countingClock struct {
 }
 
 func (clock *countingClock) Now() time.Time { clock.calls++; return clock.now }
-
-func Test_Article_NewArticle_rejects_forged_zero_values_and_invalid_clock(t *testing.T) {
-	valid := internalDraft(t)
-	cases := []struct {
-		name   string
-		mutate func(*ArticleDraft)
-		clock  Clock
-	}{
-		{"article id", func(value *ArticleDraft) { value.ID = ArticleID{} }, packageClock{time.Unix(1, 0)}},
-		{"article type id", func(value *ArticleDraft) { value.ArticleTypeID = ArticleTypeID{} }, packageClock{time.Unix(1, 0)}},
-		{"title", func(value *ArticleDraft) { value.Title = Title{} }, packageClock{time.Unix(1, 0)}},
-		{"slug", func(value *ArticleDraft) { value.Slug = Slug{} }, packageClock{time.Unix(1, 0)}},
-		{"digest", func(value *ArticleDraft) { value.Digest = Digest{} }, packageClock{time.Unix(1, 0)}},
-		{"content", func(value *ArticleDraft) { value.Content = Content{} }, packageClock{time.Unix(1, 0)}},
-		{"zero clock", func(*ArticleDraft) {}, packageClock{}},
-		{"nil clock", func(*ArticleDraft) {}, nil},
-	}
-	for _, testCase := range cases {
-		t.Run(testCase.name, func(t *testing.T) {
-			draft := valid
-			testCase.mutate(&draft)
-			_, err := NewArticle(draft, testCase.clock)
-			if err == nil {
-				t.Fatal("expected boundary rejection")
-			}
-		})
-	}
-}
-
 func Test_Article_Revise_rejects_no_change_without_clock_or_version_change(t *testing.T) {
 	article := internalArticle(t)
 	clock := &countingClock{now: article.ModifiedAt().Add(time.Hour)}
@@ -98,19 +69,6 @@ func Test_Article_Delete_and_Archive_are_terminal(t *testing.T) {
 	}
 	if err := archived.Delete(archivedVersion, clock); !errors.Is(err, ErrInvalidTransition) {
 		t.Fatalf("delete archived: %v", err)
-	}
-}
-
-func Test_TagArticle_rejects_zero_identifiers(t *testing.T) {
-	articleID, _ := NewArticleID(1)
-	tagID, _ := NewTagID(1)
-	for _, pair := range []struct {
-		articleID ArticleID
-		tagID     TagID
-	}{{ArticleID{}, tagID}, {articleID, TagID{}}} {
-		if _, err := NewTagArticle(pair.articleID, pair.tagID); !errors.Is(err, ErrInvalidValue) {
-			t.Fatalf("expected invalid association, got %v", err)
-		}
 	}
 }
 
@@ -218,24 +176,5 @@ func Test_Article_Revise_rejects_forged_zero_values_atomically(t *testing.T) {
 				t.Fatalf("forged value changed article: %v", err)
 			}
 		})
-	}
-}
-
-func Test_ArticleType_and_Tag_reject_invalid_boundaries_and_overflow(t *testing.T) {
-	name, _ := NewName("Name")
-	now := packageClock{time.Unix(1, 0)}
-	if _, err := NewArticleType(ArticleTypeID{}, name, now); !errors.Is(err, ErrInvalidValue) {
-		t.Fatalf("zero type id: %v", err)
-	}
-	if _, err := NewTag(TagID{}, name, now); !errors.Is(err, ErrInvalidValue) {
-		t.Fatalf("zero tag id: %v", err)
-	}
-	typeID, _ := NewArticleTypeID(1)
-	item, _ := NewArticleType(typeID, name, now)
-	item.version = Version{math.MaxUint64}
-	renamed, _ := NewName("Renamed")
-	beforeName, beforeTime := item.name, item.modifiedAt
-	if err := item.Rename(item.version, renamed, packageClock{time.Unix(2, 0)}); !errors.Is(err, ErrVersionExhausted) || item.name != beforeName || item.modifiedAt != beforeTime {
-		t.Fatalf("taxonomy overflow was not atomic: %v", err)
 	}
 }
