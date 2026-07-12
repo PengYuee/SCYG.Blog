@@ -233,7 +233,7 @@ tasks:
     cmds:
       - cmd: >-
           powershell.exe -NoProfile -Command
-          "$env:PLAN_PATH = (Resolve-Path -LiteralPath '{{.PLAN_PATH}}').Path; $env:EVIDENCE_ROOT = (Resolve-Path -LiteralPath '{{.EVIDENCE_ROOT}}').Path; go test -timeout 30s ./internal/reviewtest -run 'Test_PlanCompliance_' -count=1"
+          "$$env:PLAN_PATH = (Resolve-Path -LiteralPath '{{.PLAN_PATH}}').Path; $$env:EVIDENCE_ROOT = (Resolve-Path -LiteralPath '{{.EVIDENCE_ROOT}}').Path; go test -timeout 30s ./internal/reviewtest -run 'Test_PlanCompliance_' -count=1"
         platforms: [windows]
       - cmd: >-
           PLAN_PATH="$(realpath '{{.PLAN_PATH}}')" EVIDENCE_ROOT="$(realpath '{{.EVIDENCE_ROOT}}')" go test -timeout 30s ./internal/reviewtest -run 'Test_PlanCompliance_' -count=1

@@ -102,6 +102,20 @@ func Test_PlanCompliance_reads_explicit_artifacts_without_product_commit(t *test
 	}
 }
 
+func Test_PlanCompliance_preserves_PowerShell_environment_variables_in_Task_template(t *testing.T) {
+	// Given
+	taskfile := readFile(t, filepath.Join(repositoryRoot(t), "backend", "Taskfile.yml"))
+
+	// When
+	planPathEscaped := strings.Contains(taskfile, "$$env:PLAN_PATH")
+	evidenceRootEscaped := strings.Contains(taskfile, "$$env:EVIDENCE_ROOT")
+
+	// Then
+	if !planPathEscaped || !evidenceRootEscaped {
+		t.Fatal("qa:plan 必须转义 PowerShell 环境变量，避免 Task 提前展开为 :PLAN_PATH")
+	}
+}
+
 func Test_PlanCompliance_accepts_late_binding_ADR_without_history_rewrite(t *testing.T) {
 	// Given
 	adr := readFile(t, filepath.Join(repositoryRoot(t), "backend", "docs", "architecture", "adr-010-scalar-asset-pin.md"))
