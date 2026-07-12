@@ -53,6 +53,8 @@ func Test_E2E_scalar_is_offline_and_self_hosted(t *testing.T) {
 
 func Test_E2E_public_reads_hide_drafts(t *testing.T) {
 	h := newHarness(t, allowAll{})
+	// 每个真实请求使用独立 App/Engine，避免 Gin Context 在数据库收尾前复用。
+	h.restartPerRequest = true
 	defer h.close()
 	articleType, tag := createContent(t, h)
 	draft := createArticle(t, h, articleType, tag, "draft", articleStatusDraft)
