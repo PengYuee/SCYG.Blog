@@ -7,12 +7,15 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	module "github.com/PengYuee/SCYG.Blog/backend/internal/modules/content"
 	contentpostgres "github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/postgres"
+	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/blobstorage"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/config"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/database"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/httpserver"
@@ -41,12 +44,12 @@ func DefaultDependencies() Dependencies {
 			}
 			return runner, nil
 		},
-		NewContent: func(resource Database, authorizer module.Authorizer, currentAuthor module.CurrentAuthorProvider) (*module.Module, error) {
+		NewContent: func(resource Database, authorizer module.Authorizer, currentAuthor module.CurrentAuthorProvider, filesystem *blobstorage.Filesystem, pendingTTL time.Duration) (*module.Module, error) {
 			db, ok := resource.(*database.Database)
 			if !ok {
 				return nil, errors.New("数据库资源类型不正确")
 			}
-			return contentpostgres.New(contentpostgres.Dependencies{Database: db, Authorizer: authorizer, CurrentAuthor: currentAuthor})
+			return contentpostgres.New(contentpostgres.Dependencies{Database: db, Authorizer: authorizer, CurrentAuthor: currentAuthor, ImageFilesystem: filesystem, ImagePendingTTL: pendingTTL})
 		},
 		NewREST: func(content *module.Module, health *observability.Health, docs bool) (func(*gin.Engine) error, error) {
 			return rest.New(rest.Options{Content: content, Health: health, DocsEnabled: docs})
@@ -128,7 +131,16 @@ func New(ctx context.Context, options Options, dependencies Dependencies) (*App,
 		fixed := module.NewFixedCurrentAuthorProvider(authorID)
 		currentAuthor = fixed
 	}
-	content, err := dependencies.NewContent(db, options.Authorizer, currentAuthor)
+	storageDirectory, pathErr := filepath.Abs(cfg.ArticleImages().Directory())
+	if pathErr != nil {
+		return nil, fail(fmt.Errorf("解析图片存储目录: %w", pathErr))
+	}
+	imageFilesystem, storageErr := blobstorage.New(storageDirectory)
+	if storageErr != nil {
+		return nil, fail(fmt.Errorf("构造图片存储: %w", storageErr))
+	}
+	stack = append(stack, cleanupStep{name: "图片存储", close: func(context.Context) error { return imageFilesystem.Close() }})
+	content, err := dependencies.NewContent(db, options.Authorizer, currentAuthor, imageFilesystem, cfg.ArticleImages().PendingTTL())
 	if err != nil {
 		return nil, fail(fmt.Errorf("构造内容模块: %w", err))
 	}
@@ -153,5 +165,15 @@ func New(ctx context.Context, options Options, dependencies Dependencies) (*App,
 	if nilLike(server) {
 		return nil, fail(errors.New("HTTP 构造器返回空结果"))
 	}
-	return newApp(cfg, logger, health, server, telemetry, db, options.LifecycleObserver), nil
+	return newApp(cfg, logger, health, server, telemetry, &databaseWithStorage{Database: db, storage: imageFilesystem}, options.LifecycleObserver), nil
+}
+
+// databaseWithStorage 保持既有关闭顺序，并在数据库后关闭固定根句柄。
+type databaseWithStorage struct {
+	Database
+	storage *blobstorage.Filesystem
+}
+
+func (resource *databaseWithStorage) Close() error {
+	return errors.Join(resource.Database.Close(), resource.storage.Close())
 }

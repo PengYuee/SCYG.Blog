@@ -76,6 +76,48 @@ func (repo *articleImageRepository) FindForUpdate(ctx context.Context, ids []dom
 	}
 	return result, nil
 }
+
+// FindForUpdateByStorageKeys 按存储键稳定排序并锁定图片元数据行。
+func (repo *articleImageRepository) FindForUpdateByStorageKeys(ctx context.Context, keys []domain.StorageKey) ([]*domain.ArticleImage, error) {
+	if len(keys) == 0 {
+		return []*domain.ArticleImage{}, nil
+	}
+	raw := make([]string, len(keys))
+	for index, key := range keys {
+		raw[index] = key.String()
+	}
+	sort.Strings(raw)
+	var rows []articleImageModel
+	if err := repo.db.WithContext(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).Where("storage_key IN ?", raw).Order("storage_key ASC").Find(&rows).Error; err != nil {
+		return nil, translate(err)
+	}
+	result := make([]*domain.ArticleImage, 0, len(rows))
+	for _, row := range rows {
+		image, err := articleImageFromModel(row)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, image)
+	}
+	return result, nil
+}
+
+// FindArticleReferences 返回文章当前引用的图片标识，并保持稳定顺序。
+func (repo *articleImageRepository) FindArticleReferences(ctx context.Context, articleID domain.ArticleID) ([]domain.ArticleImageID, error) {
+	var rows []articleImageReferenceModel
+	if err := repo.db.WithContext(ctx).Where("article_id = ?", articleID.Int64()).Order("image_id ASC").Find(&rows).Error; err != nil {
+		return nil, translate(err)
+	}
+	result := make([]domain.ArticleImageID, 0, len(rows))
+	for _, row := range rows {
+		id, err := domain.NewArticleImageID(row.ImageID)
+		if err != nil {
+			return nil, fmt.Errorf("map article image reference: %w", err)
+		}
+		result = append(result, id)
+	}
+	return result, nil
+}
 func (repo *articleImageRepository) ReplaceArticleReferences(ctx context.Context, articleID domain.ArticleID, ids []domain.ArticleImageID, now time.Time) error {
 	var existing []articleImageReferenceModel
 	if err := repo.db.WithContext(ctx).Where("article_id = ?", articleID.Int64()).Order("image_id ASC").Find(&existing).Error; err != nil {

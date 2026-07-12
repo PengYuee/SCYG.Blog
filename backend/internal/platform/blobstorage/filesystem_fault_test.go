@@ -146,3 +146,27 @@ func Test_New_rejects_drive_relative_directory(t *testing.T) {
 		t.Fatal("接受了驱动器相对路径")
 	}
 }
+
+func Test_CommitTemp_directory_sync_failure_reports_committed_final(t *testing.T) {
+	root := t.TempDir()
+	store, err := New(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	token, _, err := store.WriteTemp(context.Background(), "0123456789abcdef0123456789abcdef", strings.NewReader("payload"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	store.root = writeFaultRoot{rootOperations: store.root, directoryErr: errors.New("directory sync")}
+	key := "0123456789abcdef0123456789abcdef.jpg"
+	err = store.CommitTemp(token, key)
+	var committed *CommitCleanupError
+	if !errors.As(err, &committed) || !committed.Committed() {
+		t.Fatalf("error=%v", err)
+	}
+	payload, readErr := os.ReadFile(filepath.Join(root, key))
+	if readErr != nil || string(payload) != "payload" {
+		t.Fatalf("payload=%q err=%v", payload, readErr)
+	}
+}

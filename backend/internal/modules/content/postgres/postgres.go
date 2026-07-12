@@ -1,4 +1,4 @@
-// Package postgres 在内容模块边界内组合私有 PostgreSQL 适配器。
+// Package postgres 在内容模块边界内组合私有 PostgreSQL 与图片存储适配器。
 package postgres
 
 import (
@@ -7,6 +7,7 @@ import (
 
 	module "github.com/PengYuee/SCYG.Blog/backend/internal/modules/content"
 	contentpostgres "github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/internal/postgres"
+	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/blobstorage"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/database"
 )
 
@@ -18,6 +19,10 @@ type Dependencies struct {
 	Authorizer module.Authorizer
 	// CurrentAuthor 是可替换可信作者来源；nil 时由模块安全降级为不可用。
 	CurrentAuthor module.CurrentAuthorProvider
+	// ImageFilesystem 是由 bootstrap 持有生命周期的固定根存储。
+	ImageFilesystem *blobstorage.Filesystem
+	// ImagePendingTTL 是图片等待文章确认的期限。
+	ImagePendingTTL time.Duration
 }
 
 // New 构造私有持久化适配器并调用 content.NewModule。
@@ -37,7 +42,11 @@ func New(dependencies Dependencies) (*module.Module, error) {
 	if err != nil {
 		return nil, err
 	}
-	return module.NewModule(module.Dependencies{Clock: systemClock{}, Authorizer: dependencies.Authorizer, CurrentAuthor: dependencies.CurrentAuthor, UnitOfWork: unit, Articles: read, Taxonomies: read})
+	var storage *ImageStorage
+	if dependencies.ImageFilesystem != nil {
+		storage = NewImageStorage(dependencies.ImageFilesystem)
+	}
+	return module.NewModule(module.Dependencies{Clock: systemClock{}, Authorizer: dependencies.Authorizer, CurrentAuthor: dependencies.CurrentAuthor, UnitOfWork: unit, Articles: read, Taxonomies: read, ArticleImageStager: storage, ArticleImagePublisher: storage, ArticleImageDiscarder: storage, ArticleImageLoader: storage, ArticleImagePendingTTL: dependencies.ImagePendingTTL})
 }
 
 type systemClock struct{}

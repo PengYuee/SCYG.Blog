@@ -43,8 +43,9 @@ type CommandService interface {
 
 // Handler 将生成 DTO 适配为协议无关的内容服务。
 type Handler struct {
-	queries  QueryService
-	commands CommandService
+	queries   QueryService
+	commands  CommandService
+	tempFiles requestTempOperations
 }
 
 // NewHandler 构造严格的生成式传输适配器；读写服务均不得为 nil。
@@ -52,7 +53,7 @@ func NewHandler(queries QueryService, commands CommandService) (*Handler, error)
 	if nilService(queries) || nilService(commands) {
 		return nil, errors.New("内容 REST 服务为空")
 	}
-	return &Handler{queries: queries, commands: commands}, nil
+	return &Handler{queries: queries, commands: commands, tempFiles: osRequestTempOperations{}}, nil
 }
 
 // Register 挂载契约校验和全部生成式严格内容路由。
@@ -127,10 +128,13 @@ func (handler *Handler) ContractFailure(ctx *gin.Context, failure contract.Failu
 func (handler *Handler) requestError(ctx *gin.Context, _ error) {
 	writeProblem(ctx, http.StatusBadRequest, module.CodeValidation, "请求体格式不合法", nil)
 }
+
 func (handler *Handler) applicationError(ctx *gin.Context, err error) {
 	writeApplicationProblem(ctx, err)
 }
 
-var _ generated.StrictServerInterface = (*Handler)(nil)
-var _ QueryService = (*module.Module)(nil)
-var _ CommandService = (*module.Module)(nil)
+var (
+	_ generated.StrictServerInterface = (*Handler)(nil)
+	_ QueryService                    = (*module.Module)(nil)
+	_ CommandService                  = (*module.Module)(nil)
+)

@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"io"
 	"time"
 
@@ -25,9 +26,17 @@ type ArticleImageRepository interface {
 	FindByStorageKey(context.Context, domain.StorageKey) (*domain.ArticleImage, error)
 	FindOwner(context.Context, domain.ArticleImageID) (domain.ImageOwnerID, error)
 	FindForUpdate(context.Context, []domain.ArticleImageID) ([]*domain.ArticleImage, error)
+	FindForUpdateByStorageKeys(context.Context, []domain.StorageKey) ([]*domain.ArticleImage, error)
+	FindArticleReferences(context.Context, domain.ArticleID) ([]domain.ArticleImageID, error)
 	ReplaceArticleReferences(context.Context, domain.ArticleID, []domain.ArticleImageID, time.Time) error
 	CountReferencesForUpdate(context.Context, domain.ArticleImageID) (int64, error)
 	ListExpiredPending(context.Context, time.Time, int) ([]*domain.ArticleImage, error)
 	ListExpiredOrphaned(context.Context, time.Time, int) ([]*domain.ArticleImage, error)
 	DeleteMetadata(context.Context, domain.ArticleImageID) error
+}
+
+// StorageCommitSucceeded 判断错误是否仅表示提交后的临时清理失败。
+func StorageCommitSucceeded(err error) bool {
+	var committed interface{ Committed() bool }
+	return errors.As(err, &committed) && committed.Committed()
 }

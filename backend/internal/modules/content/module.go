@@ -3,21 +3,21 @@ package content
 import (
 	"errors"
 	"reflect"
+	"time"
 
 	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/internal/application"
 )
 
 // Clock 为用例提供确定性时间。
-type Clock = application.Clock
-
-// UnitOfWork 管理事务范围内的内容仓储，写操作必须通过它保持原子性。
-type UnitOfWork = application.UnitOfWork
-
-// ArticleReadModel 提供已发布文章投影。
-type ArticleReadModel = application.ArticleReadModel
-
-// TaxonomyReadModel 提供未删除分类和标签投影。
-type TaxonomyReadModel = application.TaxonomyReadModel
+type (
+	Clock = application.Clock
+	// UnitOfWork 管理事务范围内的内容仓储，写操作必须通过它保持原子性。
+	UnitOfWork = application.UnitOfWork
+	// ArticleReadModel 提供已发布文章投影。
+	ArticleReadModel = application.ArticleReadModel
+	// TaxonomyReadModel 提供未删除分类和标签投影。
+	TaxonomyReadModel = application.TaxonomyReadModel
+)
 
 // Dependencies 包含构造 Module 所需的显式协议无关协作者。
 type Dependencies struct {
@@ -33,19 +33,34 @@ type Dependencies struct {
 	Articles ArticleReadModel
 	// Taxonomies 提供分类与标签读取投影。
 	Taxonomies TaxonomyReadModel
+	// ArticleImageStager 提供验证后图片暂存。
+	ArticleImageStager ArticleImageStager
+	// ArticleImageCommitter 提供图片提交与暂存丢弃。
+	ArticleImagePublisher ArticleImagePublisher
+	// ArticleImageDiscarder 提供暂存丢弃。
+	ArticleImageDiscarder ArticleImageDiscarder
+	// ArticleImageLoader 提供最终图片有界读取。
+	ArticleImageLoader ArticleImageLoader
+	// ArticleImagePendingTTL 是上传图片等待文章确认的期限；零值使用 24 小时。
+	ArticleImagePendingTTL time.Duration
 }
 
 // Module 是具体的协议无关内容门面。
 type Module struct {
-	clock         Clock
-	authorizer    Authorizer
-	currentAuthor CurrentAuthorProvider
-	unit          UnitOfWork
-	articles      ArticleReadModel
-	taxonomies    TaxonomyReadModel
+	clock           Clock
+	authorizer      Authorizer
+	currentAuthor   CurrentAuthorProvider
+	unit            UnitOfWork
+	articles        ArticleReadModel
+	taxonomies      TaxonomyReadModel
+	imageStager     ArticleImageStager
+	imagePublisher  ArticleImagePublisher
+	imageDiscarder  ArticleImageDiscarder
+	imageLoader     ArticleImageLoader
+	imagePendingTTL time.Duration
 }
 
-// NewModule 安全组装全部内容用例；省略鉴权器时默认 DenyAll，其他依赖不得为 nil。
+// NewModule 安全组装全部内容用例；可选依赖均按最小权限安全降级。
 func NewModule(dependencies Dependencies) (*Module, error) {
 	if nilLike(dependencies.Clock) {
 		return nil, errors.New("内容时钟为空")
@@ -59,7 +74,11 @@ func NewModule(dependencies Dependencies) (*Module, error) {
 	if nilLike(dependencies.Taxonomies) {
 		return nil, errors.New("内容分类读模型为空")
 	}
-	return &Module{clock: dependencies.Clock, authorizer: AuthorizerOrDeny(dependencies.Authorizer), currentAuthor: CurrentAuthorProviderOrUnavailable(dependencies.CurrentAuthor), unit: dependencies.UnitOfWork, articles: dependencies.Articles, taxonomies: dependencies.Taxonomies}, nil
+	ttl := dependencies.ArticleImagePendingTTL
+	if ttl <= 0 {
+		ttl = 24 * time.Hour
+	}
+	return &Module{clock: dependencies.Clock, authorizer: AuthorizerOrDeny(dependencies.Authorizer), currentAuthor: CurrentAuthorProviderOrUnavailable(dependencies.CurrentAuthor), unit: dependencies.UnitOfWork, articles: dependencies.Articles, taxonomies: dependencies.Taxonomies, imageStager: articleImageStagerOrUnavailable(dependencies.ArticleImageStager), imagePublisher: articleImagePublisherOrUnavailable(dependencies.ArticleImagePublisher), imageDiscarder: articleImageDiscarderOrUnavailable(dependencies.ArticleImageDiscarder), imageLoader: articleImageLoaderOrUnavailable(dependencies.ArticleImageLoader), imagePendingTTL: ttl}, nil
 }
 
 func nilLike(value any) bool {

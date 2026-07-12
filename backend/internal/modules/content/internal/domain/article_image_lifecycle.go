@@ -79,5 +79,17 @@ func (image *ArticleImage) Orphan(at time.Time) error {
 	return nil
 }
 
+// Cancel 将所有者取消的待确认图片置为可由 TTL 回收的孤儿状态。
+func (image *ArticleImage) Cancel(at time.Time) error {
+	if image.status == ArticleImageStatusOrphaned {
+		return nil
+	}
+	if image.status != ArticleImageStatusPending || at.Before(image.createdAt) {
+		return fmt.Errorf("图片不能取消：%w", ErrInvalidTransition)
+	}
+	image.status, image.committedAt, image.orphanedAt, image.expiresAt = ArticleImageStatusOrphaned, at, at, at.Add(24*time.Hour)
+	return nil
+}
+
 // Status 返回当前图片状态。
 func (image *ArticleImage) Status() ArticleImageStatus { return image.status }
