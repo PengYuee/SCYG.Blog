@@ -31,7 +31,7 @@ export type MutationRecorder = {
   readonly requests: Request[]
 }
 
-const apiPattern = /\/(?:api\/)?(?:Article|ArticleType|Tag)\//
+const apiPattern = /\/api\/(?:Article|ArticleType|Tag)\//
 const mutationPattern = /\/(?:Create|Update|UpLoad|Delete)/i
 const page = (items: readonly unknown[]) => ({ items, page: { number: 1, size: 20, total_items: items.length, total_pages: items.length === 0 ? 0 : 1 } })
 

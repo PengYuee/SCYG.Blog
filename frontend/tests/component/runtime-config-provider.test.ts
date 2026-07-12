@@ -16,11 +16,11 @@ describe("runtime config provider", () => {
   it("returns the typed config provided by the application", () => {
     // Given / When: 应用边界提供已解析配置。
     const wrapper = mount(RuntimeConfigConsumer, {
-      global: { provide: { [runtimeConfigKey]: { serverUrl: "http://localhost:5000" } } },
+      global: { provide: { [runtimeConfigKey]: { serverUrl: "http://localhost:5000/api" } } },
     })
 
     // Then: 组件读取同一个运行时后端地址。
-    expect(wrapper.text()).toBe("http://localhost:5000")
+    expect(wrapper.text()).toBe("http://localhost:5000/api")
   })
 
   it("throws a Chinese typed error when the provider is missing", () => {

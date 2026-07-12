@@ -18,7 +18,7 @@ pnpm build
 pnpm preview
 ```
 
-开发服务默认入口为 `http://localhost:5173/`。`public/config.json` 是 API 地址的唯一来源；应用会在导入路由和公共页面、挂载 Vue 之前加载并校验该文件。部署时直接修改已部署的 `config.json` 中 `serverUrl`，无需重新构建前端。配置加载或校验失败时，应用不会挂载，并会显示中文启动错误。
+开发服务默认入口为 `http://localhost:5173/`。`public/config.json` 是 API 地址的唯一来源；应用会在导入路由和公共页面、挂载 Vue 之前加载并校验该文件。部署时直接修改已部署的 `config.json` 中 `serverUrl`（完整 API 根地址，必须包含 `/api`），无需重新构建前端。配置加载或校验失败时，应用不会挂载，并会显示中文启动错误。
 
 ## 路由边界
 
@@ -29,7 +29,7 @@ pnpm preview
 
 ## 数据与写入模型
 
-公共文章、分类、标签与搜索统一通过 `public/config.json` 中 `serverUrl` 指向的真实 REST API 读取，API 托管的相对图片也使用同一地址归一化，响应会在边界完成结构解析。项目没有真实认证接入，也不会持久化令牌或伪造后端登录态。
+公共文章、分类、标签与搜索统一通过 `public/config.json` 中 `serverUrl`（例如 `http://localhost:5000/api`）指向的完整 REST API 根地址读取，API 托管的相对图片也使用同一地址归一化，响应会在边界完成结构解析。项目没有真实认证接入，也不会持久化令牌或伪造后端登录态。
 
 作者编辑、分类和图片操作仅在非生产环境且 `VITE_FAKE_AUTHOR=true` 时使用内存 Fake 仓储。Fake 数据会随页面刷新丢失，不代表后端写入成功。生产构建会强制关闭 Fake 作者能力；共享 mutation guard 会在调用适配器或网络层之前阻止写入。
 

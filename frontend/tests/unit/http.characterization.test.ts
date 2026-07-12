@@ -16,13 +16,13 @@ describe("HTTP error characterization", () => {
 
   it("resolves relative business APIs against RuntimeConfig.serverUrl", () => {
     // Given: 部署配置指向独立于 Vite 的后端服务。
-    configureHttp({ serverUrl: "http://localhost:5000" })
+    configureHttp({ serverUrl: "http://localhost:5000/api" })
 
     // When: Axios 解析一条相对业务接口路径。
     const requestUrl = http.getUri({ url: "/Article/GetArticleList" })
 
     // Then: 最终请求地址使用运行时后端而非 Vite 来源。
-    expect(requestUrl).toBe("http://localhost:5000/Article/GetArticleList")
+    expect(requestUrl).toBe("http://localhost:5000/api/Article/GetArticleList")
     expect(requestUrl).not.toContain("localhost:4173")
   })
   it("preserves explicitly supplied HttpRequestError fields", () => {

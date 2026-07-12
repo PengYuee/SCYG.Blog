@@ -25,12 +25,12 @@ describe("runtime configuration boundary", () => {
 
   it("loads config asynchronously from the public runtime file", async () => {
     // Given: the runtime endpoint returns the deployed configuration.
-    const fetcher = vi.fn(async () => new Response('{"serverUrl":"http://localhost:5000"}'))
+    const fetcher = vi.fn(async () => new Response('{"serverUrl":"http://localhost:5000/api"}'))
     // When: configuration is loaded.
     const config = await loadRuntimeConfig(fetcher)
     // Then: the fixed public path and parsed value are used.
     expect(fetcher).toHaveBeenCalledWith("/config.json", expect.objectContaining({ signal: expect.any(AbortSignal) }))
-    expect(config.serverUrl).toBe("http://localhost:5000")
+    expect(config.serverUrl).toBe("http://localhost:5000/api")
   })
 
   it("converts malformed JSON to CONFIG_INVALID instead of SyntaxError", async () => {

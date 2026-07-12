@@ -33,7 +33,7 @@ describe("T9 article list behavior", () => {
     // Given: 带全部三种筛选的直接深链。
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: "/articles", component: ArticleListView }, { path: "/articles/:id", component: { template: "<p>detail</p>" } }] })
     await router.push("/articles?q=Vue&categoryId=2&tagId=9")
-    const wrapper = mount(ArticleListView, { global: { plugins: [router], provide: { [runtimeConfigKey]: { serverUrl: "http://localhost:5000" } }, stubs: { BlogLayout: { template: "<main><slot /></main>" } } } })
+    const wrapper = mount(ArticleListView, { global: { plugins: [router], provide: { [runtimeConfigKey]: { serverUrl: "http://localhost:5000/api" } }, stubs: { BlogLayout: { template: "<main><slot /></main>" } } } })
     await flushPromises()
 
     // When: 首屏完成后尚未发生自动翻页。

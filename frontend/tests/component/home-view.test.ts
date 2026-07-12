@@ -58,7 +58,7 @@ const mountHome = async (articleApi: ArticleFeedApi, taxonomyApi: TaxonomyApi): 
   const router = await createTestRouter()
   const wrapper = mount(HomeView, {
     props: { articleFeed: createArticleFeed(articleApi, 20), taxonomy: createTaxonomy(taxonomyApi), observerFactory },
-    global: { plugins: [router], provide: { [runtimeConfigKey]: { serverUrl: "http://localhost:5000" } } },
+    global: { plugins: [router], provide: { [runtimeConfigKey]: { serverUrl: "http://localhost:5000/api" } } },
   })
   await flushPromises()
   return { wrapper, router }
@@ -90,7 +90,7 @@ describe("T8 desktop homepage discovery", () => {
     await router.isReady()
 
     // When: RouterView 按 T9 的直接组件方式渲染首页。
-    const wrapper = mount(RouterView, { global: { plugins: [router], provide: { [runtimeConfigKey]: { serverUrl: "http://localhost:5000" } } } })
+    const wrapper = mount(RouterView, { global: { plugins: [router], provide: { [runtimeConfigKey]: { serverUrl: "http://localhost:5000/api" } } } })
     await flushPromises()
 
     // Then: 默认类型化状态机呈现两个作用域失败，而不是空白页面或缺失属性异常。
@@ -145,7 +145,7 @@ describe("T8 desktop homepage discovery", () => {
         taxonomy: createTaxonomy({ listArticleTypes: async () => pendingCategories, listTags: async () => tags }),
         observerFactory,
       },
-      global: { plugins: [router], provide: { [runtimeConfigKey]: { serverUrl: "http://localhost:5000" } } },
+      global: { plugins: [router], provide: { [runtimeConfigKey]: { serverUrl: "http://localhost:5000/api" } } },
     })
     await wrapper.vm.$nextTick()
 

@@ -23,20 +23,20 @@ describe("runtime-config bootstrap", () => {
     appendApplicationRoot(targetDocument)
     const mountApplication = vi.fn()
     const loadApplication = vi.fn(async () => {
-      expect(http.defaults.baseURL).toBe("http://localhost:5000")
+      expect(http.defaults.baseURL).toBe("http://localhost:5000/api")
       return { mountApplication }
     })
 
     // When: 启动边界完成配置加载。
     await bootstrapApplication({
       document: targetDocument,
-      fetcher: async () => new Response('{"serverUrl":"http://localhost:5000"}'),
+      fetcher: async () => new Response('{"serverUrl":"http://localhost:5000/api"}'),
       loadApplication,
     })
 
     // Then: 业务模块只在 HTTP 初始化后导入并收到同一配置。
     expect(loadApplication).toHaveBeenCalledOnce()
-    expect(mountApplication).toHaveBeenCalledWith({ serverUrl: "http://localhost:5000" })
+    expect(mountApplication).toHaveBeenCalledWith({ serverUrl: "http://localhost:5000/api" })
   })
 
   it("shows a Chinese alert and makes zero business requests when config fails", async () => {

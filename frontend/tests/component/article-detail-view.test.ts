@@ -84,7 +84,7 @@ const mountDetail = async (
   const router = await createDetailRouter(id)
   return mount(ArticleDetailView, {
     props: { articleLoader: loader, ...(taxonomy === undefined ? {} : { taxonomy }) },
-    global: { plugins: [router], provide: { [runtimeConfigKey]: { serverUrl: "http://localhost:5000" } }, stubs: { MdPreview: MdPreviewStub, MdCatalog: MdCatalogStub } },
+    global: { plugins: [router], provide: { [runtimeConfigKey]: { serverUrl: "http://localhost:5000/api" } }, stubs: { MdPreview: MdPreviewStub, MdCatalog: MdCatalogStub } },
   })
 }
 

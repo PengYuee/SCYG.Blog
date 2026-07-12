@@ -1,9 +1,9 @@
 import { expect, test } from "@playwright/test"
 import { installReadFixtures } from "../t13/fixtures/api-fixtures"
 
-const backendOrigin = "http://localhost:5000"
+const backendApiRoot = "http://localhost:5000/api/"
 const viteOrigin = "http://127.0.0.1:4173"
-const businessPath = /\/(?:Article|ArticleType|Tag)\//
+const businessPath = /\/(?:api\/)?(?:Article|ArticleType|Tag)\//
 
 test("uses config.json for every public business request", async ({ page }) => {
   // Given: 生产预览返回真实 config.json，后端读取由确定性 fixture 接管。
@@ -19,7 +19,7 @@ test("uses config.json for every public business request", async ({ page }) => {
 
   // Then: 每一条业务请求都发往运行时后端，绝不使用 Vite 来源。
   expect(businessRequests.length).toBeGreaterThan(0)
-  expect(businessRequests.every((url) => url.startsWith(backendOrigin))).toBe(true)
+  expect(businessRequests.every((url) => url.startsWith(backendApiRoot))).toBe(true)
   expect(businessRequests.some((url) => url.startsWith(viteOrigin))).toBe(false)
 })
 
