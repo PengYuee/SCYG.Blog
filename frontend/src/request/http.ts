@@ -1,4 +1,5 @@
 import axios from "axios"
+import type { RuntimeConfig } from "@/config/runtime"
 
 /** 归一化 HTTP 错误，供调用方按稳定字段处理。 */
 export class HttpRequestError extends Error {
@@ -28,10 +29,14 @@ export class HttpRequestError extends Error {
 
 /** Axios 实例：统一接口根地址与 10 秒超时，不包含任何 UI 副作用。 */
 export const http = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL ?? "/api",
   timeout: 10_000,
   headers: { Accept: "application/json" },
 })
+
+/** 使用已解析的运行时配置初始化共享 HTTP 客户端。 */
+export function configureHttp(config: RuntimeConfig): void {
+  http.defaults.baseURL = config.serverUrl
+}
 
 /**
  * 将未知 HTTP 失败归一化为稳定错误。

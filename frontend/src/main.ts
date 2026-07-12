@@ -1,11 +1,5 @@
-import { createPinia } from "pinia"
-import { createApp } from "vue"
-import App from "@/App.vue"
 import "@/assets/main.css"
-import { router } from "@/router"
+import { bootstrapApplication } from "@/bootstrap"
 
-/** Vue 应用实例。 */
-const app = createApp(App)
-app.use(createPinia())
-app.use(router)
-app.mount("#app")
+/** 在样式就绪后启动运行时配置边界。 */
+void bootstrapApplication()

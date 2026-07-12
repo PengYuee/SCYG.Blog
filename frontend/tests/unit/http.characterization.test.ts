@@ -1,8 +1,30 @@
 import type { AxiosError, AxiosResponse } from "axios"
-import { describe, expect, it } from "vitest"
-import { HttpRequestError, normalizeHttpError } from "@/request/http"
+import { beforeEach, describe, expect, it } from "vitest"
+import { configureHttp, HttpRequestError, http, normalizeHttpError } from "@/request/http"
 
 describe("HTTP error characterization", () => {
+  beforeEach(() => {
+    delete http.defaults.baseURL
+  })
+  it("starts without a Vite-origin API fallback", () => {
+    // Given / When: 共享客户端尚未读取运行时配置。
+    const baseUrl = http.defaults.baseURL
+
+    // Then: 客户端不会静默退回 Vite 同源或 /api。
+    expect(baseUrl).toBeUndefined()
+  })
+
+  it("resolves relative business APIs against RuntimeConfig.serverUrl", () => {
+    // Given: 部署配置指向独立于 Vite 的后端服务。
+    configureHttp({ serverUrl: "http://localhost:5000" })
+
+    // When: Axios 解析一条相对业务接口路径。
+    const requestUrl = http.getUri({ url: "/Article/GetArticleList" })
+
+    // Then: 最终请求地址使用运行时后端而非 Vite 来源。
+    expect(requestUrl).toBe("http://localhost:5000/Article/GetArticleList")
+    expect(requestUrl).not.toContain("localhost:4173")
+  })
   it("preserves explicitly supplied HttpRequestError fields", () => {
     // Given: a stable code, status and original cause.
     const cause = new TypeError("transport")
