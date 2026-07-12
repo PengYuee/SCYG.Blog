@@ -11,15 +11,15 @@
 5. `internal/postgres` 私有实现 application 端口，显式表名/列名，使用 SQL migration，禁止 `AutoMigrate` 与跨模块表访问。
 6. 每个 transport 在自身目录声明最小消费接口，将自身 DTO、状态、Header 和错误映射到模块根类型。
 
-`domain`、`application`、`postgres` 是技术层目录。`domain` 与 `application` 下禁止任何 Go 子 package，因此也禁止实体 Go 子包，例如 `internal/domain/article/`、`internal/domain/tag/` 或 `internal/application/article/`；实体或业务主题必须体现在文件名前缀中。技术性子目录也需要独立架构决策，不得绕过当前扁平层契约。新增 adapter 应位于模块既定技术层，而不是嵌套到 domain/application。
+模块 Go package 只允许五个固定位置：模块根、`internal/domain`、`internal/application`、`internal/postgres`、`postgres`。这些目录表达技术层；所有位置下都禁止任何 Go 子 package，因此也禁止实体 Go 子包；根级 `article/`、`internal/domain/article/`、`internal/application/article/`、`internal/postgres/article/` 均被拒绝。技术性子目录也需要独立架构决策，不得绕过当前扁平层契约；业务主体必须体现在文件名前缀中。
 
 ## 文件命名契约
 
-生产文件默认使用 `<subject>_<role>.go`；同一职责需要进一步区分时使用 `<subject>_<role>_<subrole>.go`。例如 `article_command.go`、`article_command_usecase.go`、`article_result_mapper.go`。前缀回答“处理哪个业务主体”，后缀回答“承担什么职责”。共享代码优先使用准确语义名，不得退化为 `helpers.go`、`utils.go` 或 `common.go`。
+生产文件名格式写作 `<subject>_<role>.go` 或 `<subject>_<role>_<subrole>.go`。生产文件的完整 stem 必须精确解析为 `<subject>_<role>` 或 `<subject>_<role>_<subrole>`；scanner 从最长的最终后缀组合匹配，不接受中间任意 token 命中。例如 `article_command.go`、`article_command_usecase.go`、`article_result_mapper.go` 合法，而 `article_command_garbage.go`、`article_mapper_common.go` 和未知 subrole 非法。subject 必须是非空小写 snake_case，且不得包含 `common`、`shared`、`utils`、`helpers` 等泛化词或职责词。前缀回答“处理哪个业务主体”，最终后缀回答“承担什么职责”。
 
 固定职责后缀至少包括：`command`、`query`、`result`、`usecase`、`port`、`view`、`model`、`repository`、`read_model`、`mapper`、`validation`、`error`。
 
-模块根锚点 `api.go`、`module.go` 是固定例外。以下准确单词语义名也属于有限例外：`clock.go`、`status.go`、`handler.go`、`problem.go`、`etag.go`；现有聚合实体文件、`authorization.go`、`application_error.go`、`unit_of_work.go`、`error_translator.go` 与组合入口 `postgres.go` 仅在其名称准确覆盖单一职责时允许。此清单不是创建新泛名的入口。
+准确语义例外按 layer 限定：模块根仅允许 `api.go`、`module.go`、`authorization.go`、`application_error.go`；domain 仅允许聚合实体文件及 `clock.go`、`status.go`、`errors.go`；internal/postgres 仅允许 `unit_of_work.go`、`error_translator.go`、`model_time_mapper.go`；公开组合层仅允许 `postgres.go`。例外移到其他层即非法，例如 `internal/application/article.go`。这是封闭集合，不是无限白名单。
 
 | 固定 role | 用途 | 示例 |
 | --- | --- | --- |
@@ -32,6 +32,8 @@
 | `validation` / `error` | 校验规则与稳定错误 | `article_validation.go`、`application_error.go` |
 
 允许的补充精确职责包括 `reconstitute`、`rule`、`handler`、`etag`、`pagination`、`response`、`translator`、`sort`、`parser`、`validator` 和 `value`，例如 `article_type_reconstitute.go`、`taxonomy_rule.go`、`pagination_mapper.go`、`response_mapper.go`。它们仍须带业务主体或准确共享语义，不能变成无限豁免。
+
+复杂后缀也是有限集合，例如 `command_usecase`、`command_usecase_patch`、`query_usecase`、`response_validator`、`repository_port`、`read_model_port`、`result_mapper`、`result_sort`、`command_parser`、`query_parser`；最终 token 或组合不在集合中时必须拒绝。
 
 PostgreSQL 行结构统一称为“数据库数据模型”，文件只能使用 `<subject>_model.go`。禁止 `*_record.go` 和复数泛名 `models.go`。模块根或任意技术层同时禁止 `usecases.go`、`results.go`、`helpers.go`、`utils.go`、`common.go`。
 
