@@ -1,4 +1,4 @@
-﻿import { inject, type InjectionKey } from "vue"
+import { inject, type InjectionKey } from "vue"
 import { createArticleApi } from "@/request/api/article"
 import { createArticleTypeApi } from "@/request/api/article-type"
 import { createTagApi } from "@/request/api/tag"
@@ -29,4 +29,3 @@ export function useApiServices(): ApiServices {
   if (services === undefined) throw new Error("缺少 API 服务提供者")
   return services
 }
-

@@ -31,7 +31,8 @@ const [articleFeed, taxonomy] = (() => {
     props.articleFeed ?? createArticleFeed(services.article, 20),
     props.taxonomy ?? createTaxonomy({ listArticleTypes: () => services.articleType.list(), listTags: () => services.tag.list() }),
   ] as const
-})()/** 驱动非 UI 状态机快照进入 Vue 响应式渲染周期。 */
+})()
+/** 驱动非 UI 状态机快照进入 Vue 响应式渲染周期。 */
 const renderRevision = ref(0)
 /** 仅在调用方提供观察器时向布局传递该可选属性。 */
 const layoutProps = computed<{ readonly observerFactory?: ObserverFactory }>(() => props.observerFactory === undefined ? {} : { observerFactory: props.observerFactory })
