@@ -46,7 +46,7 @@ func scenarioRequirements() []scenarioRequirement {
 		{Name: "Test_E2E_scalar_is_offline_and_self_hosted", RequiredSymbols: []string{"newHarness", "request", "assertLocalReferences", "StatusOK", "Fatalf"}},
 		{Name: "Test_E2E_public_reads_hide_drafts", RequiredSymbols: []string{"newHarness", "createContent", "createArticle", "request", "StatusNotFound", "StatusOK", "Fatalf"}},
 		{Name: "Test_E2E_allow_all_performs_real_crud", RequiredSymbols: []string{"newHarness", "createContent", "createArticle", "MethodDelete", "StatusNoContent", "Fatalf"}},
-		{Name: "Test_E2E_production_denies_writes", RequiredSymbols: []string{"newHarness", "snapshotDatabase", "request", "DeepEqual", "StatusForbidden", "Fatalf"}},
+		{Name: "Test_E2E_production_denies_writes", RequiredSymbols: []string{"newHarness", "newHarnessWithDatabase", "resourceSeed", "deniedWrites", "snapshotDatabase", "assertForbiddenProblem", "DeepEqual", "StatusForbidden", "Fatalf"}},
 		{Name: "Test_E2E_stale_etag_is_rejected", RequiredSymbols: []string{"newHarness", "snapshotTag", "request", "DeepEqual", "StatusPreconditionFailed", "Fatalf"}},
 		{Name: "Test_E2E_readiness_fails_during_database_outage", RequiredSymbols: []string{"newHarness", "setDatabaseConnectionsAllowed", "waitHTTPStatus", "StatusServiceUnavailable", "StatusOK", "Fatalf"}},
 		{Name: "Test_E2E_restart_preserves_committed_data", RequiredSymbols: []string{"newHarness", "Shutdown", "start", "Contains", "Fatalf"}},

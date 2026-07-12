@@ -18,10 +18,14 @@ import (
 
 // databaseSnapshot 固定写拒绝和并发失败前后的持久化可观察状态。
 type databaseSnapshot struct {
-	ArticleTypes int
-	Tags         int
-	Articles     int
-	TagArticles  int
+	ArticleTypes     int
+	Tags             int
+	Articles         int
+	TagArticles      int
+	ArticleTypeState string
+	TagState         string
+	ArticleState     string
+	TagArticleState  string
 }
 
 // entitySnapshot 固定实体版本和内容，证明失败请求没有产生写入。
@@ -39,6 +43,17 @@ func snapshotDatabase(t *testing.T, ctx context.Context, dsn string) databaseSna
 	for table, target := range map[string]*int{`"ArticleType"`: &result.ArticleTypes, `"Tag"`: &result.Tags, `"Article"`: &result.Articles, `"TagArticle"`: &result.TagArticles} {
 		if err := pool.QueryRowContext(ctx, "SELECT count(*) FROM "+table).Scan(target); err != nil {
 			t.Fatalf("读取数据库快照失败：%v", err)
+		}
+	}
+	queries := map[string]*string{
+		`SELECT coalesce(string_agg(concat_ws(':', "Id", "Version", "Name", coalesce("Image", ''), "Meun"), ',' ORDER BY "Id"), '') FROM "ArticleType"`:      &result.ArticleTypeState,
+		`SELECT coalesce(string_agg(concat_ws(':', "Id", "Version", "Name"), ',' ORDER BY "Id"), '') FROM "Tag"`:                                             &result.TagState,
+		`SELECT coalesce(string_agg(concat_ws(':', "Id", "Version", "Title", "Slug", "Digest", "Content", "Status"), ',' ORDER BY "Id"), '') FROM "Article"`: &result.ArticleState,
+		`SELECT coalesce(string_agg(concat_ws(':', "ArticleId", "TagId"), ',' ORDER BY "ArticleId", "TagId"), '') FROM "TagArticle"`:                         &result.TagArticleState,
+	}
+	for query, target := range queries {
+		if err := pool.QueryRowContext(ctx, query).Scan(target); err != nil {
+			t.Fatalf("读取数据库内容快照失败：%v", err)
 		}
 	}
 	return result

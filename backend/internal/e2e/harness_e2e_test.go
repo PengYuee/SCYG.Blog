@@ -45,6 +45,10 @@ type harness struct {
 	client   *http.Client
 	baseURL  string
 	observer bootstrap.LifecycleObserver
+	// authorizer 在隔离请求间重建应用时保持授权语义。
+	authorizer content.Authorizer
+	// restartPerRequest 禁止同一 Gin Engine 处理相邻 CRUD 请求。
+	restartPerRequest bool
 }
 
 // newHarness 创建随机数据库、执行真实迁移并启动真实 bootstrap HTTP 应用。
@@ -62,7 +66,7 @@ func newHarnessWithObserver(t *testing.T, authorizer content.Authorizer, observe
 	ctx, cancel := context.WithTimeout(context.Background(), qaConfig.CommandTimeout())
 	adminDSN := qaConfig.AdminDSN().Value()
 	name, dsn := createDatabase(t, ctx, qaConfig)
-	h := &harness{t: t, ctx: ctx, cancel: cancel, adminDSN: adminDSN, dsn: dsn, name: name, client: &http.Client{Timeout: 5 * time.Second}, observer: observer}
+	h := &harness{t: t, ctx: ctx, cancel: cancel, adminDSN: adminDSN, dsn: dsn, name: name, client: &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{DisableKeepAlives: true}}, observer: observer, authorizer: authorizer}
 	h.migrateUp()
 	h.start(authorizer)
 	return h
@@ -97,6 +101,9 @@ func (h *harness) start(authorizer content.Authorizer) {
 // request 通过真实 TCP HTTP 边界发送请求并返回响应。
 func (h *harness) request(method, path, body string, headers map[string]string) *http.Response {
 	h.t.Helper()
+	if h.app == nil {
+		h.start(h.authorizer)
+	}
 	request, err := http.NewRequestWithContext(h.ctx, method, h.baseURL+path, bytes.NewBufferString(body))
 	if err != nil {
 		h.t.Fatalf("构造 E2E 请求失败：%v", err)
@@ -107,11 +114,24 @@ func (h *harness) request(method, path, body string, headers map[string]string) 
 	for key, value := range headers {
 		request.Header.Set(key, value)
 	}
+	request.Close = true
 	response, err := h.client.Do(request)
 	if err != nil {
 		h.t.Fatalf("执行 E2E 请求失败：%v", err)
 	}
-	h.t.Cleanup(func() { _ = response.Body.Close() })
+	payload, readErr := io.ReadAll(response.Body)
+	closeErr := response.Body.Close()
+	if readErr != nil || closeErr != nil {
+		h.t.Fatalf("完整读取并关闭 E2E 响应失败：read=%v close=%v", readErr, closeErr)
+	}
+	response.Body = io.NopCloser(bytes.NewReader(payload))
+	response.ContentLength = int64(len(payload))
+	if h.restartPerRequest {
+		if err := h.app.Shutdown(h.ctx); err != nil {
+			h.t.Fatalf("关闭隔离 E2E 应用失败：%v", err)
+		}
+		h.app = nil
+	}
 	return response
 }
 
@@ -148,7 +168,9 @@ func (h *harness) close() {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 	if h.app != nil {
-		_ = h.app.Shutdown(shutdownCtx)
+		if err := h.app.Shutdown(shutdownCtx); err != nil {
+			h.t.Errorf("关闭 E2E 应用失败：%v", err)
+		}
 	}
 	h.cancel()
 	dropDatabase(h.t, h.adminDSN, h.name)

@@ -76,6 +76,7 @@ func Test_E2E_public_reads_hide_drafts(t *testing.T) {
 
 func Test_E2E_allow_all_performs_real_crud(t *testing.T) {
 	h := newHarness(t, allowAll{})
+	h.restartPerRequest = true
 	defer h.close()
 	articleType, tag := createContent(t, h)
 	article := createArticle(t, h, articleType, tag, "crud", articleStatusDraft)
@@ -99,19 +100,30 @@ func Test_E2E_allow_all_performs_real_crud(t *testing.T) {
 }
 
 func Test_E2E_production_denies_writes(t *testing.T) {
-	h := newHarness(t, nil)
-	defer h.close()
-	before := snapshotDatabase(t, h.ctx, h.dsn)
-	response := h.request(http.MethodPost, "/api/v1/tags", "{\"name\":\"denied\"}", nil)
-	if response.StatusCode != http.StatusForbidden {
-		t.Fatalf("生产写入未返回403：%d", response.StatusCode)
+	seed := newHarness(t, allowAll{})
+	articleType, tag := createContent(t, seed)
+	article := createArticle(t, seed, articleType, tag, "denied", articleStatusDraft)
+	seedType, seedTag, seedArticle := resourceSeed(t, articleType), resourceSeed(t, tag), resourceSeed(t, article)
+	if err := seed.app.Shutdown(seed.ctx); err != nil {
+		t.Fatalf("关闭 AllowAll seed 应用失败：%v", err)
 	}
-	after := snapshotDatabase(t, h.ctx, h.dsn)
-	if !reflect.DeepEqual(before, after) {
-		t.Fatalf("403 后数据库发生变化：before=%+v after=%+v", before, after)
+	seed.app = nil
+
+	production := newHarnessWithDatabase(t, nil, seed)
+	defer production.close()
+	for _, write := range deniedWrites(seedType, seedTag, seedArticle) {
+		before := snapshotDatabase(t, production.ctx, production.dsn)
+		response := production.request(write.Method, write.Path, write.Body, write.Headers)
+		if response.StatusCode != http.StatusForbidden {
+			t.Fatalf("%s 未返回403：%d", write.Name, response.StatusCode)
+		}
+		assertForbiddenProblem(t, response)
+		after := snapshotDatabase(t, production.ctx, production.dsn)
+		if !reflect.DeepEqual(before, after) {
+			t.Fatalf("%s 的403后数据库发生变化：before=%+v after=%+v", write.Name, before, after)
+		}
 	}
 }
-
 func Test_E2E_stale_etag_is_rejected(t *testing.T) {
 	h := newHarness(t, allowAll{})
 	defer h.close()
