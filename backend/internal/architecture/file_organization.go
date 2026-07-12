@@ -17,7 +17,7 @@ const (
 
 func checkFileOrganization(file sourceFile) []Violation {
 	parts := strings.Split(file.relative, "/")
-	if len(parts) < 4 || parts[0] != "internal" || parts[1] != "modules" {
+	if len(parts) < 2 || parts[0] != "internal" || parts[1] != "modules" {
 		return nil
 	}
 	layer, extraPackage := moduleFileLayer(parts)
@@ -31,6 +31,13 @@ func checkFileOrganization(file sourceFile) []Violation {
 }
 
 func moduleFileLayer(parts []string) (string, string) {
+	// internal/modules 下的 Go 文件必须先进入具体模块目录，不能绕过五层拓扑。
+	if len(parts) < 3 {
+		return "", "internal/modules"
+	}
+	if len(parts) < 4 {
+		return "", parts[2]
+	}
 	if len(parts) == 4 {
 		return "root", ""
 	}

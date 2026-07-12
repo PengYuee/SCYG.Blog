@@ -136,6 +136,7 @@ func Test_Architecture_EnforcesModuleFileOrganization(t *testing.T) {
 		{code: "ARCH_MODULE_FILE_NAME", path: "article_results_test.go", detail: "模块测试文件名禁止泛化 token results；使用具体业务和可观察行为命名"},
 		{code: "ARCH_MODULE_FILE_NAME", path: "internal/domain/api.go", detail: "api.go 和 module.go 仅允许位于模块根目录"},
 		{code: "ARCH_MODULE_FILE_NAME", path: "internal/domain/module.go", detail: "api.go 和 module.go 仅允许位于模块根目录"},
+		{code: "ARCH_MODULE_LAYER_SUBPACKAGE", path: "internal/modules/orphan.go", detail: "模块 Go package 仅允许根、internal/domain、internal/application、internal/postgres 和 postgres；禁止额外子 package orphan.go"},
 		{code: "ARCH_MODULE_LAYER_SUBPACKAGE", path: "internal/domain/article/entity.go", detail: "模块 Go package 仅允许根、internal/domain、internal/application、internal/postgres 和 postgres；禁止额外子 package article"},
 		{code: "ARCH_MODULE_LAYER_SUBPACKAGE", path: "internal/modules/bad/article/article.go", detail: "模块 Go package 仅允许根、internal/domain、internal/application、internal/postgres 和 postgres；禁止额外子 package article"},
 		{code: "ARCH_MODULE_LAYER_SUBPACKAGE", path: "internal/postgres/article/article_model.go", detail: "模块 Go package 仅允许根、internal/domain、internal/application、internal/postgres 和 postgres；禁止额外子 package article"},
