@@ -4,6 +4,7 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"log/slog"
 	"os"
 	"testing"
@@ -12,7 +13,8 @@ import (
 	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/internal/application"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/internal/domain"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/database"
-	qaconfig "github.com/PengYuee/SCYG.Blog/backend/internal/qa/config"
+	qadatabase "github.com/PengYuee/SCYG.Blog/backend/internal/qa/database"
+	"github.com/PengYuee/SCYG.Blog/backend/migrations"
 )
 
 type fixedClock struct{ now time.Time }
@@ -28,14 +30,34 @@ type repositoryFixture struct {
 
 func openRepositoryFixture(t *testing.T) repositoryFixture {
 	t.Helper()
-	qaConfig, err := qaconfig.LoadLocal()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	isolated, err := qadatabase.New(ctx, "content_postgres_")
 	if err != nil {
 		t.Fatal(err)
 	}
-	dsn := qaConfig.DatabaseDSN().Value()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	db, err := database.New(ctx, database.Options{DSN: dsn, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), MaxOpenConns: 5, MaxIdleConns: 2, ConnMaxLifetime: time.Minute})
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cleanupCancel()
+		if closeErr := isolated.Close(cleanupCtx); closeErr != nil {
+			t.Error(closeErr)
+		}
+	})
+	migrationPool, err := sql.Open("pgx", isolated.DSN())
+	if err != nil {
+		t.Fatal(err)
+	}
+	runner, err := migrations.New(migrationPool, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = runner.Up(); err != nil {
+		t.Fatal(err)
+	}
+	if err = runner.Close(); err != nil {
+		t.Fatal(err)
+	}
+	db, err := database.New(ctx, database.Options{DSN: isolated.DSN(), Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), MaxOpenConns: 5, MaxIdleConns: 2, ConnMaxLifetime: time.Minute})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -16,7 +16,7 @@ import (
 	"gorm.io/gorm"
 
 	db "github.com/PengYuee/SCYG.Blog/backend/internal/platform/database"
-	qaconfig "github.com/PengYuee/SCYG.Blog/backend/internal/qa/config"
+	qadatabase "github.com/PengYuee/SCYG.Blog/backend/internal/qa/database"
 	"github.com/PengYuee/SCYG.Blog/backend/migrations"
 )
 
@@ -30,45 +30,40 @@ type tag struct {
 
 func (tag) TableName() string { return "Tag" }
 
-// qaDatabaseDSN 从本地 YAML 读取普通集成测试数据库连接。
-func qaDatabaseDSN(t *testing.T) string {
-	t.Helper()
-	cfg, err := qaconfig.LoadLocal()
-	if err != nil {
-		t.Fatal(err)
-	}
-	return cfg.DatabaseDSN().Value()
+type isolatedDatabase struct {
+	*db.Database
+	dsn string
 }
 
-func open(t *testing.T) *db.Database {
+func open(t *testing.T) isolatedDatabase {
 	t.Helper()
-	dsn := qaDatabaseDSN(t)
-
-	value, err := db.New(context.Background(), db.Options{DSN: dsn, Logger: slog.Default(), MaxOpenConns: 5, MaxIdleConns: 2, ConnMaxLifetime: time.Minute})
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	isolated, err := qadatabase.New(ctx, "database_")
 	if err != nil {
 		t.Fatal(err)
 	}
-	resetDatabase(t, value)
 	t.Cleanup(func() {
-		resetDatabase(t, value)
-		if err := value.Close(); err != nil {
-			t.Error(err)
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cleanupCancel()
+		if closeErr := isolated.Close(cleanupCtx); closeErr != nil {
+			t.Error(closeErr)
 		}
 	})
-	return value
-}
-
-func resetDatabase(t *testing.T, database *db.Database) {
-	t.Helper()
-	const resetSQL = `DROP TABLE IF EXISTS "RecoveryProof", "Broken", article_image_references, article_images, "TagArticle", "Article", "Tag", "ArticleType", schema_migrations CASCADE`
-	if err := database.GORM().Exec(resetSQL).Error; err != nil {
-		t.Fatalf("reset isolated test database: %v", err)
+	value, err := db.New(ctx, db.Options{DSN: isolated.DSN(), Logger: slog.Default(), MaxOpenConns: 5, MaxIdleConns: 2, ConnMaxLifetime: time.Minute})
+	if err != nil {
+		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		if closeErr := value.Close(); closeErr != nil {
+			t.Error(closeErr)
+		}
+	})
+	return isolatedDatabase{Database: value, dsn: isolated.DSN()}
 }
-
-func mr(t *testing.T, d *db.Database) *migrations.Runner {
+func mr(t *testing.T, d isolatedDatabase) *migrations.Runner {
 	t.Helper()
-	pool, e := sql.Open("pgx", qaDatabaseDSN(t))
+	pool, e := sql.Open("pgx", d.dsn)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -87,7 +82,7 @@ func mr(t *testing.T, d *db.Database) *migrations.Runner {
 	return r
 }
 
-func up(t *testing.T, d *db.Database) {
+func up(t *testing.T, d isolatedDatabase) {
 	t.Helper()
 	if e := mr(t, d).Up(); e != nil {
 		t.Fatal(e)
@@ -128,7 +123,7 @@ func Test_ExactSchema_catalog(t *testing.T) {
 func Test_Transaction_commit_rollback_cancel_constraints(t *testing.T) {
 	d := open(t)
 	up(t, d)
-	u, e := db.NewUnitOfWork(d)
+	u, e := db.NewUnitOfWork(d.Database)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -197,7 +192,7 @@ func Test_InvalidMigration_dirty_force_recovery(t *testing.T) {
 	v2u, _ := os.ReadFile("../../../migrations/000002_article_images.up.sql")
 	v2d, _ := os.ReadFile("../../../migrations/000002_article_images.down.sql")
 	bad := fstest.MapFS{"000001_initial.up.sql": {Data: v1u}, "000001_initial.down.sql": {Data: v1d}, "000002_article_images.up.sql": {Data: v2u}, "000002_article_images.down.sql": {Data: v2d}, "000003_bad.up.sql": {Data: []byte(`CREATE TABLE "Broken"("Id" bigint); INVALID SQL;`)}, "000003_bad.down.sql": {Data: []byte(`DROP TABLE "Broken";`)}}
-	badPool, e := sql.Open("pgx", qaDatabaseDSN(t))
+	badPool, e := sql.Open("pgx", d.dsn)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -229,7 +224,7 @@ func Test_InvalidMigration_dirty_force_recovery(t *testing.T) {
 	if e = r.Close(); e != nil {
 		t.Fatal(e)
 	}
-	goodPool, e := sql.Open("pgx", qaDatabaseDSN(t))
+	goodPool, e := sql.Open("pgx", d.dsn)
 	if e != nil {
 		t.Fatal(e)
 	}
