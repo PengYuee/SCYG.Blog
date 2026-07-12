@@ -16,14 +16,3 @@ type articleTypeModel struct {
 }
 
 func (articleTypeModel) TableName() string { return "ArticleType" }
-
-// taxonomyProjectionRow 是分类与标签查询共用的数据模型。
-type taxonomyProjectionRow struct {
-	ID                   int64      `gorm:"column:Id"`
-	Name                 string     `gorm:"column:Name"`
-	Image                *string    `gorm:"column:Image"`
-	Meun                 int32      `gorm:"column:Meun"`
-	Version              int64      `gorm:"column:Version"`
-	CreationTime         time.Time  `gorm:"column:CreationTime"`
-	LastModificationTime *time.Time `gorm:"column:LastModificationTime"`
-}
