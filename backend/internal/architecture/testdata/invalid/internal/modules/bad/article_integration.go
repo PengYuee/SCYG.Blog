@@ -1,3 +1,0 @@
-package bad
-
-func integrateArticle() {}
