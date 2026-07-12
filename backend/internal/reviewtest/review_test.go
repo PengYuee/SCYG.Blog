@@ -45,7 +45,11 @@ func readFile(t *testing.T, path string) string {
 func metadataPath(t *testing.T, environment, fallback string) string {
 	t.Helper()
 	if explicit := os.Getenv(environment); explicit != "" {
-		return explicit
+		// 显式相对路径始终以仓库根为基准，避免测试包工作目录改变解析结果。
+		if filepath.IsAbs(explicit) {
+			return filepath.Clean(explicit)
+		}
+		return filepath.Join(repositoryRoot(t), explicit)
 	}
 	candidate := filepath.Join(repositoryRoot(t), filepath.FromSlash(fallback))
 	if _, err := os.Stat(candidate); err == nil {
@@ -55,6 +59,32 @@ func metadataPath(t *testing.T, environment, fallback string) string {
 	return ""
 }
 
+func Test_MetadataPath_resolves_repository_relative_environment_from_arbitrary_cwd(t *testing.T) {
+	// Given
+	isolationWorkingDirectory := t.TempDir()
+	originalWorkingDirectory, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("读取当前工作目录失败：%v", err)
+	}
+	t.Cleanup(func() {
+		if restoreErr := os.Chdir(originalWorkingDirectory); restoreErr != nil {
+			t.Errorf("恢复当前工作目录失败：%v", restoreErr)
+		}
+	})
+	if err := os.Chdir(isolationWorkingDirectory); err != nil {
+		t.Fatalf("切换到隔离工作目录失败：%v", err)
+	}
+	t.Setenv("PLAN_PATH", filepath.FromSlash(".omo/plans/go-service-architecture-foundation.md"))
+
+	// When
+	resolved := metadataPath(t, "PLAN_PATH", ".omo/plans/go-service-architecture-foundation.md")
+
+	// Then
+	expected := filepath.Join(repositoryRoot(t), ".omo", "plans", "go-service-architecture-foundation.md")
+	if resolved != expected {
+		t.Fatalf("计划路径应基于仓库根解析，得到 %q，期望 %q", resolved, expected)
+	}
+}
 func Test_PlanCompliance_reads_explicit_artifacts_without_product_commit(t *testing.T) {
 	planPath := metadataPath(t, "PLAN_PATH", ".omo/plans/go-service-architecture-foundation.md")
 	evidenceRoot := metadataPath(t, "EVIDENCE_ROOT", ".omo/evidence")
