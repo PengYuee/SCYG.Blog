@@ -1,9 +1,9 @@
 package httpserver
 
 import (
-	"bytes"
 	"crypto/rand"
 	"encoding/hex"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -134,8 +134,13 @@ func cors(origins []string) gin.HandlerFunc {
 	}
 }
 
-func requestLimit(limit int64) gin.HandlerFunc {
+// requestLimit 按精确方法与路径选择流式请求上限，其他请求保持安全默认值。
+func requestLimit(defaultLimit, uploadLimit int64) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
+		limit := defaultLimit
+		if ctx.Request.Method == http.MethodPost && ctx.Request.URL.Path == "/api/v1/article-images" && ctx.Request.URL.RawQuery == "" && !ctx.Request.URL.ForceQuery {
+			limit = uploadLimit
+		}
 		if ctx.Request.Body == nil {
 			ctx.Next()
 			return
@@ -144,18 +149,26 @@ func requestLimit(limit int64) gin.HandlerFunc {
 			ctx.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, gin.H{"error": "request_too_large"})
 			return
 		}
-		body, err := io.ReadAll(io.LimitReader(ctx.Request.Body, limit+1))
-		closeErr := ctx.Request.Body.Close()
-		if err != nil || closeErr != nil {
-			ctx.AbortWithStatusJSON(http.StatusBadRequest, gin.H{"error": "invalid_request_body"})
-			return
-		}
-		if int64(len(body)) > limit {
-			ctx.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, gin.H{"error": "request_too_large"})
-			return
-		}
-		ctx.Request.Body = io.NopCloser(bytes.NewReader(body))
-		ctx.Request.ContentLength = int64(len(body))
+		limited := http.MaxBytesReader(ctx.Writer, ctx.Request.Body, limit)
+		ctx.Request.Body = &requestBody{ReadCloser: limited, context: ctx}
 		ctx.Next()
 	}
+}
+
+// requestBody 在读取超过限制时立即中止请求并保持统一 JSON 错误。
+type requestBody struct {
+	// ReadCloser 是标准库提供的流式限制读取器。
+	io.ReadCloser
+	// context 用于在读取越界时终止当前 Gin 请求。
+	context *gin.Context
+}
+
+// Read 转发流式读取，并把 MaxBytesError 映射为稳定的 413 JSON 响应。
+func (body *requestBody) Read(buffer []byte) (int, error) {
+	read, err := body.ReadCloser.Read(buffer)
+	var maxBytesError *http.MaxBytesError
+	if errors.As(err, &maxBytesError) && !body.context.IsAborted() {
+		body.context.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, gin.H{"error": "request_too_large"})
+	}
+	return read, err
 }

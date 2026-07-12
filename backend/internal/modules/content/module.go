@@ -25,6 +25,8 @@ type Dependencies struct {
 	Clock Clock
 	// Authorizer 是可选鉴权器，缺省时安全降级为 DenyAll。
 	Authorizer Authorizer
+	// CurrentAuthor 是可选可信作者来源，缺省时安全降级为不可用。
+	CurrentAuthor CurrentAuthorProvider
 	// UnitOfWork 是所有写操作的事务边界。
 	UnitOfWork UnitOfWork
 	// Articles 提供公开文章读取投影。
@@ -35,11 +37,12 @@ type Dependencies struct {
 
 // Module 是具体的协议无关内容门面。
 type Module struct {
-	clock      Clock
-	authorizer Authorizer
-	unit       UnitOfWork
-	articles   ArticleReadModel
-	taxonomies TaxonomyReadModel
+	clock         Clock
+	authorizer    Authorizer
+	currentAuthor CurrentAuthorProvider
+	unit          UnitOfWork
+	articles      ArticleReadModel
+	taxonomies    TaxonomyReadModel
 }
 
 // NewModule 安全组装全部内容用例；省略鉴权器时默认 DenyAll，其他依赖不得为 nil。
@@ -56,7 +59,7 @@ func NewModule(dependencies Dependencies) (*Module, error) {
 	if nilLike(dependencies.Taxonomies) {
 		return nil, errors.New("内容分类读模型为空")
 	}
-	return &Module{clock: dependencies.Clock, authorizer: AuthorizerOrDeny(dependencies.Authorizer), unit: dependencies.UnitOfWork, articles: dependencies.Articles, taxonomies: dependencies.Taxonomies}, nil
+	return &Module{clock: dependencies.Clock, authorizer: AuthorizerOrDeny(dependencies.Authorizer), currentAuthor: CurrentAuthorProviderOrUnavailable(dependencies.CurrentAuthor), unit: dependencies.UnitOfWork, articles: dependencies.Articles, taxonomies: dependencies.Taxonomies}, nil
 }
 
 func nilLike(value any) bool {

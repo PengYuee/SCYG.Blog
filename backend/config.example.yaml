@@ -32,9 +32,22 @@ docs:
 telemetry:
   otlp_endpoint: ""
 
+# 文章正文图片的本地存储、生命周期与上传安全限制。
+article_images:
+  # 可使用相对配置文件目录的路径；不得包含向上路径穿越。
+  directory: data/article-images
+  pending_ttl: 24h
+  orphan_grace: 24h
+  cleanup_interval: 1h
+  upload_request_bytes: 6291456
+  max_file_bytes: 5242880
+  max_pixels: 25000000
+  max_dimension: 8192
+  # 仅 development 可填写 32 位小写十六进制作者 ID；留空时写入仍不可用。
+  development_author_id: ""
 # 仅供 review、integration、e2e 与 F3 使用，不会进入运行时业务配置。
 qa:
-  # PostgreSQL 管理连接仅用于创建和清理隔离测试库；请替换密码占位值。
+  # PostgreSQL 管理连接必须指向 postgres；账号需有 CREATEDB 权限，仅供迁移 up 自动建库及隔离测试清理。
   postgres_admin_dsn: postgres://postgres:请填写密码@47.108.49.168:5432/postgres?sslmode=disable
   # 隔离测试数据库名称前缀。
   database_prefix: scyg_qa_

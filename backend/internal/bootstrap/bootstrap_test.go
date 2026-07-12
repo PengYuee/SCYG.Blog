@@ -66,6 +66,7 @@ func withConfig(t *testing.T, options bootstrap.Options) bootstrap.Options {
 	options.ConfigFile = path
 	return options
 }
+
 func validDependencies(telemetry *fakeTelemetry, db *fakeDatabase, migration *fakeMigration, server *fakeServer) bootstrap.Dependencies {
 	return bootstrap.Dependencies{
 		LoadConfig: config.Load,
@@ -75,7 +76,9 @@ func validDependencies(telemetry *fakeTelemetry, db *fakeDatabase, migration *fa
 		NewTelemetry: func(config.Telemetry) (bootstrap.Telemetry, error) { return telemetry, nil },
 		NewDatabase:  func(context.Context, database.Options) (bootstrap.Database, error) { return db, nil },
 		NewMigration: func(config.DSN) (bootstrap.Migration, error) { return migration, nil },
-		NewContent:   func(bootstrap.Database, module.Authorizer) (*module.Module, error) { return &module.Module{}, nil },
+		NewContent: func(bootstrap.Database, module.Authorizer, module.CurrentAuthorProvider) (*module.Module, error) {
+			return &module.Module{}, nil
+		},
 		NewREST: func(*module.Module, *observability.Health, bool) (func(*gin.Engine) error, error) {
 			return func(*gin.Engine) error { return nil }, nil
 		},
@@ -156,7 +159,7 @@ func Test_Application_RejectsContentConstruction_and_closes_prior_resources_once
 	telemetry, db := &fakeTelemetry{}, &fakeDatabase{}
 	migration := &fakeMigration{version: migrations.CurrentVersion}
 	dependencies := validDependencies(telemetry, db, migration, &fakeServer{})
-	dependencies.NewContent = func(bootstrap.Database, module.Authorizer) (*module.Module, error) {
+	dependencies.NewContent = func(bootstrap.Database, module.Authorizer, module.CurrentAuthorProvider) (*module.Module, error) {
 		return nil, errors.New("内容构造失败")
 	}
 
@@ -228,5 +231,41 @@ func Test_Application_RejectsHTTPConstruction_and_closes_prior_resources_once(t 
 	// Then
 	if err == nil || telemetry.closes != 1 || db.closes != 1 {
 		t.Fatalf("err=%v telemetry=%d db=%d", err, telemetry.closes, db.closes)
+	}
+}
+
+func Test_Application_injects_stable_development_author_from_validated_config(t *testing.T) {
+	// Given
+	telemetry, db := &fakeTelemetry{}, &fakeDatabase{}
+	migration := &fakeMigration{version: migrations.CurrentVersion}
+	server := &fakeServer{}
+	dependencies := validDependencies(telemetry, db, migration, server)
+	var captured module.CurrentAuthorProvider
+	dependencies.NewContent = func(_ bootstrap.Database, _ module.Authorizer, provider module.CurrentAuthorProvider) (*module.Module, error) {
+		captured = provider
+		return &module.Module{}, nil
+	}
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	yaml := "database:\n  dsn: postgres://postgres:postgres@localhost:5432/scyg?sslmode=disable\narticle_images:\n  development_author_id: 0123456789abcdef0123456789abcdef\n"
+	if err := os.WriteFile(path, []byte(yaml), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// When
+	app, err := bootstrap.New(context.Background(), bootstrap.Options{ConfigFile: path, LogWriter: &bytes.Buffer{}}, dependencies)
+	// Then
+	if err != nil {
+		t.Fatal(err)
+	}
+	if captured == nil {
+		t.Fatal("development author provider was not injected")
+	}
+	first, firstErr := captured.CurrentAuthor(context.Background())
+	second, secondErr := captured.CurrentAuthor(context.Background())
+	if firstErr != nil || secondErr != nil || first != second || first.String() != "0123456789abcdef0123456789abcdef" {
+		t.Fatalf("unstable author: %v %v %v %v", first, second, firstErr, secondErr)
+	}
+	if shutdownErr := app.Shutdown(context.Background()); shutdownErr != nil {
+		t.Fatal(shutdownErr)
 	}
 }

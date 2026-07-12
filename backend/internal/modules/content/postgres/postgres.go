@@ -16,6 +16,8 @@ type Dependencies struct {
 	Database *database.Database
 	// Authorizer 是可替换授权策略；nil 时由模块安全降级为 DenyAll。
 	Authorizer module.Authorizer
+	// CurrentAuthor 是可替换可信作者来源；nil 时由模块安全降级为不可用。
+	CurrentAuthor module.CurrentAuthorProvider
 }
 
 // New 构造私有持久化适配器并调用 content.NewModule。
@@ -35,7 +37,7 @@ func New(dependencies Dependencies) (*module.Module, error) {
 	if err != nil {
 		return nil, err
 	}
-	return module.NewModule(module.Dependencies{Clock: systemClock{}, Authorizer: dependencies.Authorizer, UnitOfWork: unit, Articles: read, Taxonomies: read})
+	return module.NewModule(module.Dependencies{Clock: systemClock{}, Authorizer: dependencies.Authorizer, CurrentAuthor: dependencies.CurrentAuthor, UnitOfWork: unit, Articles: read, Taxonomies: read})
 }
 
 type systemClock struct{}

@@ -3,6 +3,8 @@ package config
 import (
 	"net"
 	"net/url"
+	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 )
@@ -25,12 +27,11 @@ func validate(raw rawConfig) (Config, error) {
 	if err := validateTelemetry(raw.Telemetry); err != nil {
 		return Config{}, err
 	}
-	return Config{
-		app:      App{environment: environment, logLevel: level},
-		http:     HTTP{host: raw.HTTP.Host, port: raw.HTTP.Port, readHeaderTimeout: raw.HTTP.ReadHeaderTimeout, readTimeout: raw.HTTP.ReadTimeout, writeTimeout: raw.HTTP.WriteTimeout, idleTimeout: raw.HTTP.IdleTimeout, shutdownTimeout: raw.HTTP.ShutdownTimeout, trustedProxies: append([]string(nil), raw.HTTP.TrustedProxies...), corsAllowedOrigins: append([]string(nil), raw.HTTP.CORSAllowedOrigins...)},
-		database: Database{dsn: DSN{value: raw.Database.DSN}, maxOpenConns: raw.Database.MaxOpenConns, maxIdleConns: raw.Database.MaxIdleConns, connMaxLifetime: raw.Database.ConnMaxLifetime},
-		docs:     Docs{enabled: raw.Docs.Enabled}, telemetry: Telemetry{otlpEndpoint: raw.Telemetry.OTLPEndpoint},
-	}, nil
+	articleImages, err := validateArticleImages(raw.ArticleImages, environment)
+	if err != nil {
+		return Config{}, err
+	}
+	return Config{app: App{environment: environment, logLevel: level}, http: HTTP{host: raw.HTTP.Host, port: raw.HTTP.Port, readHeaderTimeout: raw.HTTP.ReadHeaderTimeout, readTimeout: raw.HTTP.ReadTimeout, writeTimeout: raw.HTTP.WriteTimeout, idleTimeout: raw.HTTP.IdleTimeout, shutdownTimeout: raw.HTTP.ShutdownTimeout, trustedProxies: append([]string(nil), raw.HTTP.TrustedProxies...), corsAllowedOrigins: append([]string(nil), raw.HTTP.CORSAllowedOrigins...)}, database: Database{dsn: DSN{value: raw.Database.DSN}, maxOpenConns: raw.Database.MaxOpenConns, maxIdleConns: raw.Database.MaxIdleConns, connMaxLifetime: raw.Database.ConnMaxLifetime}, docs: Docs{enabled: raw.Docs.Enabled}, telemetry: Telemetry{otlpEndpoint: raw.Telemetry.OTLPEndpoint}, articleImages: articleImages}, nil
 }
 
 func validateHTTP(raw rawHTTP) error {
@@ -108,3 +109,58 @@ func validateTelemetry(raw rawTelemetry) error {
 }
 
 func invalid(field, rule string) error { return &ValidationError{Field: field, Rule: rule} }
+
+func validateArticleImages(raw rawArticleImages, environment Environment) (ArticleImages, error) {
+	rawDirectory := strings.TrimSpace(raw.Directory)
+	segments := strings.FieldsFunc(rawDirectory, func(character rune) bool { return character == '/' || character == '\\' })
+	if slices.Contains(segments, "..") {
+		return ArticleImages{}, invalid("article_images.directory", "不得包含上级目录路径")
+	}
+	directory := filepath.ToSlash(filepath.Clean(rawDirectory))
+	if directory == "." || directory == ".." || strings.HasPrefix(directory, "../") {
+		return ArticleImages{}, invalid("article_images.directory", "不能为空且不得逃逸工作目录")
+	}
+	if raw.PendingTTL <= 0 {
+		return ArticleImages{}, invalid("article_images.pending_ttl", "必须大于零")
+	}
+	if raw.OrphanGrace <= 0 {
+		return ArticleImages{}, invalid("article_images.orphan_grace", "必须大于零")
+	}
+	if raw.CleanupInterval <= 0 || raw.CleanupInterval >= raw.PendingTTL || raw.CleanupInterval >= raw.OrphanGrace {
+		return ArticleImages{}, invalid("article_images.cleanup_interval", "必须大于零且小于 pending_ttl 和 orphan_grace")
+	}
+	if raw.MaxFileBytes <= 0 {
+		return ArticleImages{}, invalid("article_images.max_file_bytes", "必须大于零")
+	}
+	if raw.UploadRequestBytes <= raw.MaxFileBytes {
+		return ArticleImages{}, invalid("article_images.upload_request_bytes", "必须大于 max_file_bytes")
+	}
+	if raw.MaxPixels <= 0 {
+		return ArticleImages{}, invalid("article_images.max_pixels", "必须大于零")
+	}
+	if raw.MaxDimension <= 0 {
+		return ArticleImages{}, invalid("article_images.max_dimension", "必须大于零")
+	}
+	if raw.DevelopmentAuthorID != "" {
+		if environment != EnvironmentDevelopment {
+			return ArticleImages{}, invalid("article_images.development_author_id", "仅 development 环境允许配置固定作者")
+		}
+		if !validDevelopmentAuthorID(raw.DevelopmentAuthorID) {
+			return ArticleImages{}, invalid("article_images.development_author_id", "必须为 32 位小写十六进制")
+		}
+	}
+	return ArticleImages{directory: directory, developmentAuthorID: raw.DevelopmentAuthorID, pendingTTL: raw.PendingTTL, orphanGrace: raw.OrphanGrace, cleanupInterval: raw.CleanupInterval, uploadRequestBytes: raw.UploadRequestBytes, maxFileBytes: raw.MaxFileBytes, maxPixels: raw.MaxPixels, maxDimension: raw.MaxDimension}, nil
+}
+
+func validDevelopmentAuthorID(raw string) bool {
+	if len(raw) != 32 {
+		return false
+	}
+	for index := range len(raw) {
+		character := raw[index]
+		if (character < '0' || character > '9') && (character < 'a' || character > 'f') {
+			return false
+		}
+	}
+	return true
+}

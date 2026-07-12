@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"sync"
 
@@ -13,7 +14,9 @@ import (
 
 // App 持有已完成迁移校验、尚未开放 readiness 的 API 生命周期资源。
 type App struct {
-	config       config.Config
+	config config.Config
+	// logger 复用组合根创建的结构化日志器。
+	logger       *slog.Logger
 	health       *observability.Health
 	server       HTTPServer
 	telemetry    Telemetry

@@ -128,11 +128,12 @@ func (telemetry Telemetry) OTLPEndpoint() string { return telemetry.otlpEndpoint
 
 // Config is an immutable, validated startup configuration value.
 type Config struct {
-	app       App
-	telemetry Telemetry
-	database  Database
-	http      HTTP
-	docs      Docs
+	app           App
+	telemetry     Telemetry
+	database      Database
+	http          HTTP
+	docs          Docs
+	articleImages ArticleImages
 }
 
 // App returns immutable application settings.
@@ -149,6 +150,9 @@ func (config Config) Docs() Docs { return config.docs }
 
 // Telemetry returns immutable telemetry settings.
 func (config Config) Telemetry() Telemetry { return config.telemetry }
+
+// ArticleImages 返回不可变的文章图片存储与安全限制。
+func (config Config) ArticleImages() ArticleImages { return config.articleImages }
 
 // String returns a deterministic secret-free summary.
 func (config Config) String() string {

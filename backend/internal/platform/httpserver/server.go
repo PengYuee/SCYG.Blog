@@ -18,6 +18,8 @@ import (
 const (
 	// MaxRequestBodyBytes is the maximum accepted inbound request body.
 	MaxRequestBodyBytes int64 = 1 << 20
+	// MaxArticleImageUploadRequestBytes 是文章图片上传请求体的默认上限。
+	MaxArticleImageUploadRequestBytes int64 = 6 << 20
 	// MaxHeaderBytes is the maximum accepted HTTP header size.
 	MaxHeaderBytes = 1 << 20
 )
@@ -33,6 +35,8 @@ type Options struct {
 	Mount MountRoutes
 	// HTTP supplies validated immutable server settings.
 	HTTP config.HTTP
+	// ArticleImages 提供已验证的图片上传请求体上限；零值兼容既有构造测试并使用安全默认值。
+	ArticleImages config.ArticleImages
 }
 
 // Server owns one configured HTTP server and its concurrent shutdown state.
@@ -63,7 +67,11 @@ func New(options Options) (*Server, error) {
 	if err := engine.SetTrustedProxies(options.HTTP.TrustedProxies()); err != nil {
 		return nil, fmt.Errorf("set trusted proxies: %w", err)
 	}
-	engine.Use(requestID(), securityHeaders(), recovery(options.Logger), accessLog(options.Logger), cors(options.HTTP.CORSAllowedOrigins()), requestLimit(MaxRequestBodyBytes))
+	uploadRequestBytes := options.ArticleImages.UploadRequestBytes()
+	if uploadRequestBytes == 0 {
+		uploadRequestBytes = MaxArticleImageUploadRequestBytes
+	}
+	engine.Use(requestID(), securityHeaders(), recovery(options.Logger), accessLog(options.Logger), cors(options.HTTP.CORSAllowedOrigins()), requestLimit(MaxRequestBodyBytes, uploadRequestBytes))
 	if err := options.Mount(engine); err != nil {
 		return nil, fmt.Errorf("mount routes: %w", err)
 	}

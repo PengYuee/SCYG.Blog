@@ -41,12 +41,12 @@ func DefaultDependencies() Dependencies {
 			}
 			return runner, nil
 		},
-		NewContent: func(resource Database, authorizer module.Authorizer) (*module.Module, error) {
+		NewContent: func(resource Database, authorizer module.Authorizer, currentAuthor module.CurrentAuthorProvider) (*module.Module, error) {
 			db, ok := resource.(*database.Database)
 			if !ok {
 				return nil, errors.New("数据库资源类型不正确")
 			}
-			return contentpostgres.New(contentpostgres.Dependencies{Database: db, Authorizer: authorizer})
+			return contentpostgres.New(contentpostgres.Dependencies{Database: db, Authorizer: authorizer, CurrentAuthor: currentAuthor})
 		},
 		NewREST: func(content *module.Module, health *observability.Health, docs bool) (func(*gin.Engine) error, error) {
 			return rest.New(rest.Options{Content: content, Health: health, DocsEnabled: docs})
@@ -119,7 +119,16 @@ func New(ctx context.Context, options Options, dependencies Dependencies) (*App,
 		return nil, fail(fmt.Errorf("关闭迁移检查器: %w", closeErr))
 	}
 	stack = stack[:len(stack)-1]
-	content, err := dependencies.NewContent(db, options.Authorizer)
+	var currentAuthor module.CurrentAuthorProvider
+	if configuredAuthorID := cfg.ArticleImages().DevelopmentAuthorID(); configuredAuthorID != "" {
+		authorID, parseErr := module.NewAuthorID(configuredAuthorID)
+		if parseErr != nil {
+			return nil, fail(fmt.Errorf("构造开发作者身份: %w", parseErr))
+		}
+		fixed := module.NewFixedCurrentAuthorProvider(authorID)
+		currentAuthor = fixed
+	}
+	content, err := dependencies.NewContent(db, options.Authorizer, currentAuthor)
 	if err != nil {
 		return nil, fail(fmt.Errorf("构造内容模块: %w", err))
 	}
@@ -137,12 +146,12 @@ func New(ctx context.Context, options Options, dependencies Dependencies) (*App,
 	if nilLike(mount) {
 		return nil, fail(errors.New("REST 构造器返回空结果"))
 	}
-	server, err := dependencies.NewHTTP(httpserver.Options{Logger: logger, Mount: mount, HTTP: cfg.HTTP()})
+	server, err := dependencies.NewHTTP(httpserver.Options{Logger: logger, Mount: mount, HTTP: cfg.HTTP(), ArticleImages: cfg.ArticleImages()})
 	if err != nil {
 		return nil, fail(fmt.Errorf("构造 HTTP: %w", err))
 	}
 	if nilLike(server) {
 		return nil, fail(errors.New("HTTP 构造器返回空结果"))
 	}
-	return newApp(cfg, health, server, telemetry, db, options.LifecycleObserver), nil
+	return newApp(cfg, logger, health, server, telemetry, db, options.LifecycleObserver), nil
 }
