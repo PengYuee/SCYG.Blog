@@ -46,7 +46,8 @@ func (transaction recordingTransaction) Articles() application.ArticleRepository
 func (recordingTransaction) ArticleTypes() application.ArticleTypeRepository {
 	return unusedArticleTypes{}
 }
-func (recordingTransaction) Tags() application.TagRepository { return unusedTags{} }
+func (recordingTransaction) Tags() application.TagRepository                   { return unusedTags{} }
+func (recordingTransaction) ArticleImages() application.ArticleImageRepository { return nil }
 
 type recordingArticles struct{ sequence *[]string }
 

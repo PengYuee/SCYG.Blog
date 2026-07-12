@@ -51,12 +51,30 @@ func openRepositoryFixture(t *testing.T) repositoryFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = db.GORM().Exec(`TRUNCATE "TagArticle", "Article", "Tag", "ArticleType" RESTART IDENTITY CASCADE`).Error; err != nil {
+	if err = db.GORM().Exec(`TRUNCATE article_image_references, article_images, "TagArticle", "Article", "Tag", "ArticleType" RESTART IDENTITY CASCADE`).Error; err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
+		if cleanErr := db.GORM().Exec(`TRUNCATE article_image_references, article_images, "TagArticle", "Article", "Tag", "ArticleType" RESTART IDENTITY CASCADE`).Error; cleanErr != nil {
+			t.Error(cleanErr)
+		}
+		for _, table := range []string{"article_image_references", "article_images"} {
+			var count int64
+			if countErr := db.GORM().Table(table).Count(&count).Error; countErr != nil || count != 0 {
+				t.Errorf("清理后 %s count=%d err=%v", table, count, countErr)
+			}
+		}
+		sqlDB, sqlErr := db.GORM().DB()
+		if sqlErr != nil {
+			t.Error(sqlErr)
+			return
+		}
 		if closeErr := db.Close(); closeErr != nil {
 			t.Error(closeErr)
+			return
+		}
+		if pingErr := sqlDB.Ping(); pingErr == nil {
+			t.Error("数据库连接关闭后仍可 Ping")
 		}
 	})
 	return repositoryFixture{db: db, uow: uow, read: read, clock: fixedClock{now: time.Date(2026, 7, 12, 12, 0, 0, 0, time.UTC)}}

@@ -4,7 +4,7 @@
 
 ## 前置条件
 
-- Go `1.25.0`、Task `v3.49.1`。
+- Go `1.26.0`、Task `v3.49.1`。
 - 静态门禁不要求数据库或 Docker，但首次运行固定版本工具时可能下载工具。
 - 标注“PostgreSQL”的本地命令统一读取 `config.local.yaml`。
 - 标注“Docker”的命令需要 Docker Engine 与 Compose；会创建并清理容器资源。

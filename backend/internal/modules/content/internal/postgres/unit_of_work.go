@@ -26,14 +26,15 @@ func (unit *UnitOfWork) Within(ctx context.Context, callback func(context.Contex
 		return errors.New("content transaction callback is nil")
 	}
 	return translate(unit.transaction.WithinTransaction(ctx, func(transactionContext context.Context, handle *gorm.DB) error {
-		return callback(transactionContext, &repositories{articles: &articleRepository{db: handle}, articleTypes: &articleTypeRepository{db: handle}, tags: &tagRepository{db: handle}})
+		return callback(transactionContext, &repositories{articles: &articleRepository{db: handle}, articleTypes: &articleTypeRepository{db: handle}, tags: &tagRepository{db: handle}, articleImages: &articleImageRepository{db: handle}})
 	}))
 }
 
 type repositories struct {
-	articles     *articleRepository
-	articleTypes *articleTypeRepository
-	tags         *tagRepository
+	articles      *articleRepository
+	articleTypes  *articleTypeRepository
+	tags          *tagRepository
+	articleImages *articleImageRepository
 }
 
 func (repos *repositories) Articles() application.ArticleRepository { return repos.articles }
@@ -41,5 +42,8 @@ func (repos *repositories) ArticleTypes() application.ArticleTypeRepository {
 	return repos.articleTypes
 }
 func (repos *repositories) Tags() application.TagRepository { return repos.tags }
+func (repos *repositories) ArticleImages() application.ArticleImageRepository {
+	return repos.articleImages
+}
 
 var _ application.UnitOfWork = (*UnitOfWork)(nil)

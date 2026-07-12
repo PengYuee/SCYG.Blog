@@ -1,6 +1,6 @@
 # Backend Agent Guide
 
-Go 1.25.0 modular-monolith foundation. This directory is the repository's only Go module.
+Go 1.26.0 modular-monolith foundation. This directory is the repository's only Go module.
 
 ## Commands
 - `task format` — format Go sources with exact-version `go run` gofumpt and goimports.
@@ -10,8 +10,8 @@ Go 1.25.0 modular-monolith foundation. This directory is the repository's only G
 - `task ci` — run the current buildable Gate B checks.
 
 ## Pinned environment
-- Go: `1.25.0`.
-- Go build image: `golang:1.25.0-bookworm@sha256:81dc45d05a7444ead8c92a389621fafabc8e40f8fd1a19d7e5df14e61e98bc1a`.
+- Go: `1.26.0`.
+- Go build image: `golang:1.26.0-bookworm@sha256:2a0ba12e116687098780d3ce700f9ce3cb340783779646aafbabed748fa6677c`.
 - PostgreSQL: `postgres:17.5@sha256:aadf2c0696f5ef357aa7a68da995137f0cf17bad0bf6e1f17de06ae5c769b302`.
 - Task: `v3.49.1`; bootstrap with `go run github.com/go-task/task/v3/cmd/task@v3.49.1 <task>` or install that exact version.
 

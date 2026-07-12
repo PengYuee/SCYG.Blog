@@ -398,7 +398,7 @@ Later implementation records decision details without reopening this architectur
 | ADR-009 | Authorizer extension point with production deny-all writes |
 | ADR-010 | Scalar `1.62.5` 自托管资产取代不可解析的 `1.49.3` 绑定版本 |
 
-Toolchain/dependency baselines are Go 1.25.0, Gin 1.11.0, GORM 1.31.1, Viper 1.20.1, oapi-codegen 2.7.2, golang-migrate 4.19.0, and self-hosted Scalar 1.62.5 (ADR-010). A pin may change only when its exact version cannot resolve, with official release evidence and an ADR recorded before code uses the replacement.
+Toolchain/dependency baselines are Go 1.26.0, Gin 1.11.0, GORM 1.31.1, Viper 1.20.1, oapi-codegen 2.7.2, golang-migrate 4.19.0, and self-hosted Scalar 1.62.5 (ADR-010). A pin may change only when its exact version cannot resolve, with official release evidence and an ADR recorded before code uses the replacement.
 
 ## References and Provenance
 
