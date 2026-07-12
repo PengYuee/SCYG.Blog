@@ -232,20 +232,23 @@ tasks:
       - go test -timeout 30s ./internal/reviewtest -run 'Test_PlanCompliance_' -count=1
       - git log --format=%s --all
       - git ls-tree -r --name-only HEAD
-      - echo 'F1 plan compliance: PASS'
+      - cmd: |
+          echo 'F1 plan compliance: PASS'
 
   qa:quality:
     desc: Run bounded static gates and encoded manual review assertions
     cmds:
       - task: qa:static
       - go test -timeout 30s ./internal/reviewtest ./internal/architecture ./internal/deliverytest -count=1
-      - echo 'F2 quality: PASS'
+      - cmd: |
+          echo 'F2 quality: PASS'
 
   qa:scope:
     desc: Reject excluded runtime scope while allowing future design documentation
     cmds:
       - go test -timeout 30s ./internal/reviewtest -run 'Test_Scope' -count=1
-      - echo 'F4 scope: PASS'
+      - cmd: |
+          echo 'F4 scope: PASS'
 
   qa:foundation:
     desc: Run real PostgreSQL, API, Compose, fault, restart and shutdown narratives

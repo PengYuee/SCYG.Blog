@@ -29,6 +29,29 @@ func Test_Taskfile_exposes_shared_delivery_and_quality_gates(t *testing.T) {
 	}
 }
 
+func Test_Taskfile_qa_messages_use_literal_command_blocks(t *testing.T) {
+	// Given
+	taskfile := readDeliveryFile(t, "Taskfile.yml")
+	var document yaml.Node
+
+	// When
+	err := yaml.Unmarshal([]byte(taskfile), &document)
+
+	// Then
+	if err != nil {
+		t.Fatalf("解析 Taskfile 失败：%v", err)
+	}
+	for _, command := range []string{
+		"cmd: |\n          echo 'F1 plan compliance: PASS'",
+		"cmd: |\n          echo 'F2 quality: PASS'",
+		"cmd: |\n          echo 'F4 scope: PASS'",
+	} {
+		if !strings.Contains(taskfile, command) {
+			t.Fatalf("带冒号的 QA 消息必须使用 YAML 字面量命令块：%q", command)
+		}
+	}
+}
+
 func Test_GitHubActions_is_backend_scoped_and_uses_immutable_actions(t *testing.T) {
 	// Given
 	workflow := readDeliveryFile(t, "../.github/workflows/backend-quality.yml")

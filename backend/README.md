@@ -40,6 +40,7 @@ Docker 开发路径为 `task compose:smoke`，结束后必须执行 `task compos
 ## 架构交接
 
 - [绑定架构](docs/architecture/go-backend-architecture.md)
+- [ADR-010：Scalar 自托管资产版本](docs/architecture/adr-010-scalar-asset-pin.md)
 - [新增业务模块](docs/guides/module-extension.md)
 - [未来协议与外部集成](docs/guides/protocol-integration-extension.md)
 
