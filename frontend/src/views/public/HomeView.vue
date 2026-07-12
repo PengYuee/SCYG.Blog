@@ -7,12 +7,8 @@ import type { ObserverFactory } from "@/components/public/BlogHeader.vue"
 import ProfileCard from "@/components/public/ProfileCard.vue"
 import RecommendedArticles from "@/components/public/RecommendedArticles.vue"
 import TagCloud from "@/components/public/TagCloud.vue"
-import { useRuntimeConfig } from "@/config/runtime-provider"
 import BlogLayout from "@/layouts/BlogLayout.vue"
-import { parseArticleList } from "@/request/api/article"
-import { parseArticleTypes } from "@/request/api/article-type"
-import { parseTags } from "@/request/api/tag"
-import { http } from "@/request/http"
+import { useApiServices } from "@/request/api-services"
 import { createArticleFeed, type ArticleFeed } from "@/stores/article-feed"
 import { createTaxonomy, type Taxonomy } from "@/stores/taxonomy"
 import type { ArticleDetail } from "@/types/article"
@@ -27,30 +23,15 @@ type Props = {
 }
 
 const props = defineProps<Props>()
-/** 应用启动时解析并提供的唯一 API 地址。 */
-const runtimeConfig = useRuntimeConfig()
-/** 未注入时使用现有只读 API 边界创建生产文章流。 */
-const articleFeed = props.articleFeed ?? createArticleFeed({
-  /** 获取并解析一页真实文章。 */
-  async list(request) {
-    const response = await http.get("/Article/GetArticleList", { params: request })
-    return parseArticleList(response.data)
-  },
-}, 20)
-/** 未注入时使用现有只读 API 边界创建生产字典。 */
-const taxonomy = props.taxonomy ?? createTaxonomy({
-  /** 获取并解析有序分类。 */
-  async listArticleTypes() {
-    const response = await http.get("/ArticleType/GetArticleTypeDic")
-    return parseArticleTypes(response.data, runtimeConfig.serverUrl)
-  },
-  /** 获取并解析标签。 */
-  async listTags() {
-    const response = await http.get("/Tag/GetTagDic")
-    return parseTags(response.data)
-  },
-})
-/** 驱动非 UI 状态机快照进入 Vue 响应式渲染周期。 */
+/** 根据显式依赖完整性决定是否读取应用服务容器。 */
+const [articleFeed, taxonomy] = (() => {
+  if (props.articleFeed !== undefined && props.taxonomy !== undefined) return [props.articleFeed, props.taxonomy] as const
+  const services = useApiServices()
+  return [
+    props.articleFeed ?? createArticleFeed(services.article, 20),
+    props.taxonomy ?? createTaxonomy({ listArticleTypes: () => services.articleType.list(), listTags: () => services.tag.list() }),
+  ] as const
+})()/** 驱动非 UI 状态机快照进入 Vue 响应式渲染周期。 */
 const renderRevision = ref(0)
 /** 仅在调用方提供观察器时向布局传递该可选属性。 */
 const layoutProps = computed<{ readonly observerFactory?: ObserverFactory }>(() => props.observerFactory === undefined ? {} : { observerFactory: props.observerFactory })

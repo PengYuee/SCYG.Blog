@@ -1,31 +1,8 @@
 import axios from "axios"
 import type { RuntimeConfig } from "@/config/runtime"
 
-/** 归一化 HTTP 错误，供调用方按稳定字段处理。 */
-export class HttpRequestError extends Error {
-  /** 错误类型名称。 */
-  readonly name = "HttpRequestError"
-  /** 可选 HTTP 状态码。 */
-  readonly status: number | undefined
-  /** Axios 错误代码或业务回退代码。 */
-  readonly code: string
-
-  /**
-   * 创建归一化 HTTP 错误。
-   * @param message 面向调用方的错误消息。
-   * @param status 可选 HTTP 状态码。
-   * @param code 稳定错误代码。
-   * @param cause 原始异常。
-   * @returns HttpRequestError 实例。
-   * @throws 此构造方法不抛出额外异常。
-   * @since 1.0.0
-   */
-  constructor(message: string, status: number | undefined, code: string, cause: unknown) {
-    super(message, { cause })
-    this.status = status
-    this.code = code
-  }
-}
+export { HttpRequestError } from "@/request/http-error"
+import { HttpRequestError } from "@/request/http-error"
 
 /** Axios 实例：统一接口根地址与 10 秒超时，不包含任何 UI 副作用。 */
 export const http = axios.create({

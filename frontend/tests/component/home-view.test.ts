@@ -2,7 +2,7 @@ import { flushPromises, mount, type VueWrapper } from "@vue/test-utils"
 import { createMemoryHistory, createRouter, RouterView, type Router } from "vue-router"
 import { afterEach, describe, expect, it, vi } from "vitest"
 import HomeView from "@/views/public/HomeView.vue"
-import { runtimeConfigKey } from "@/config/runtime-provider"
+import { apiServicesKey, createApiServices } from "@/request/api-services"
 import { http } from "@/request/http"
 import { createArticleFeed, type ArticleFeedApi } from "@/stores/article-feed"
 import { createTaxonomy, type TaxonomyApi } from "@/stores/taxonomy"
@@ -58,7 +58,7 @@ const mountHome = async (articleApi: ArticleFeedApi, taxonomyApi: TaxonomyApi): 
   const router = await createTestRouter()
   const wrapper = mount(HomeView, {
     props: { articleFeed: createArticleFeed(articleApi, 20), taxonomy: createTaxonomy(taxonomyApi), observerFactory },
-    global: { plugins: [router], provide: { [runtimeConfigKey]: { serverUrl: "http://localhost:5000/api" } } },
+    global: { plugins: [router] },
   })
   await flushPromises()
   return { wrapper, router }
@@ -90,7 +90,8 @@ describe("T8 desktop homepage discovery", () => {
     await router.isReady()
 
     // When: RouterView 按 T9 的直接组件方式渲染首页。
-    const wrapper = mount(RouterView, { global: { plugins: [router], provide: { [runtimeConfigKey]: { serverUrl: "http://localhost:5000/api" } } } })
+    const apiServices = createApiServices(http, "http://localhost:5000/api")
+    const wrapper = mount(RouterView, { global: { plugins: [router], provide: { [apiServicesKey]: apiServices } } })
     await flushPromises()
 
     // Then: 默认类型化状态机呈现两个作用域失败，而不是空白页面或缺失属性异常。
@@ -145,7 +146,7 @@ describe("T8 desktop homepage discovery", () => {
         taxonomy: createTaxonomy({ listArticleTypes: async () => pendingCategories, listTags: async () => tags }),
         observerFactory,
       },
-      global: { plugins: [router], provide: { [runtimeConfigKey]: { serverUrl: "http://localhost:5000/api" } } },
+      global: { plugins: [router] },
     })
     await wrapper.vm.$nextTick()
 

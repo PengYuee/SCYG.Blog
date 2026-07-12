@@ -4,12 +4,8 @@ import { computed, ref, shallowRef, watch } from "vue"
 import { useRoute, useRouter } from "vue-router"
 import ArticleSection from "@/components/article/ArticleSection.vue"
 import TagCloud from "@/components/public/TagCloud.vue"
-import { useRuntimeConfig } from "@/config/runtime-provider"
 import BlogLayout from "@/layouts/BlogLayout.vue"
-import { createArticleApi } from "@/request/api/article"
-import { createArticleTypeApi } from "@/request/api/article-type"
-import { createTagApi } from "@/request/api/tag"
-import { http } from "@/request/http"
+import { useApiServices } from "@/request/api-services"
 import { parseArticleListQuery, serializeArticleListQuery, type ArticleListQuery } from "@/router/query"
 import { createArticleFeed } from "@/stores/article-feed"
 import { createTaxonomy } from "@/stores/taxonomy"
@@ -17,17 +13,12 @@ import { searchLoadedArticles } from "@/utils/search"
 
 const route = useRoute()
 const router = useRouter()
-/** 应用启动时解析并提供的唯一 API 地址。 */
-const runtimeConfig = useRuntimeConfig()
-/** 公共 API 适配器共享浏览器同源地址以解析分类图片。 */
-const articleApi = createArticleApi(http, runtimeConfig.serverUrl)
-const articleTypeApi = createArticleTypeApi(http, runtimeConfig.serverUrl)
-const tagApi = createTagApi(http)
+/** 读取应用挂载时创建的同一 API 服务容器。 */
+const services = useApiServices()
 /** T4 文章流保持显式九篇分页，不注册滚动监听。 */
-const feed = createArticleFeed(articleApi, 9)
+const feed = createArticleFeed(services.article, 9)
 /** T4 分类状态机为筛选和卡片提供同一字典。 */
-const taxonomy = createTaxonomy({ listArticleTypes: () => articleTypeApi.list(), listTags: () => tagApi.list() })
-/** Vue 快照在状态机操作结束后显式同步。 */
+const taxonomy = createTaxonomy({ listArticleTypes: () => services.articleType.list(), listTags: () => services.tag.list() })/** Vue 快照在状态机操作结束后显式同步。 */
 const feedState = shallowRef(feed.state)
 const taxonomyState = shallowRef(taxonomy.state)
 /** 当前路由查询的类型化解析结果。 */

@@ -4,12 +4,9 @@ import { computed, ref, watch } from "vue"
 import { useRoute } from "vue-router"
 import MarkdownRenderer from "@/components/article/MarkdownRenderer.vue"
 import BlogFooter from "@/components/public/BlogFooter.vue"
-import { useRuntimeConfig } from "@/config/runtime-provider"
 import BlogHeader from "@/components/public/BlogHeader.vue"
-import { createArticleApi } from "@/request/api/article"
-import { createArticleTypeApi } from "@/request/api/article-type"
-import { createTagApi } from "@/request/api/tag"
-import { http, HttpRequestError } from "@/request/http"
+import { useApiServices } from "@/request/api-services"
+import { HttpRequestError } from "@/request/http-error"
 import { createTaxonomy, type Taxonomy, type TaxonomyState } from "@/stores/taxonomy"
 import type { ArticleDetail } from "@/types/article"
 
@@ -39,31 +36,26 @@ const articleDateFormatter = new Intl.DateTimeFormat("zh-CN", { year: "numeric",
 /** 格式化已由 T3 解析的文章日期。 */
 const formatArticleDate = (value: string): string => articleDateFormatter.format(new Date(value))
 
-/** 应用启动时解析并提供的唯一 API 地址。 */
-const runtimeConfig = useRuntimeConfig()
-const serverUrl = runtimeConfig.serverUrl
-/** 生产文章详情适配器。 */
-const productionArticleLoader = createArticleApi(http, serverUrl)
-/** 生产 taxonomy 状态机，分类图片在 T3 边界完成安全 URL 归一化。 */
-const productionTaxonomy = createTaxonomy({
-  listArticleTypes: () => createArticleTypeApi(http, serverUrl).list(),
-  listTags: () => createTagApi(http).list(),
-})
+/** 根据显式依赖完整性决定是否读取应用服务容器。 */
+const [articleLoader, taxonomy] = (() => {
+  if (props.articleLoader !== undefined && props.taxonomy !== undefined) return [props.articleLoader, props.taxonomy] as const
+  const services = useApiServices()
+  return [
+    props.articleLoader ?? services.article,
+    props.taxonomy ?? createTaxonomy({ listArticleTypes: () => services.articleType.list(), listTags: () => services.tag.list() }),
+  ] as const
+})()
 /** 当前路由提供 T9 详情参数，但不修改生产路由。 */
 const route = useRoute()
 /** 当前文章请求状态。 */
 const state = ref<DetailState>({ kind: "idle" })
 /** taxonomy 独立快照；它缺席或迟到都不阻塞正文。 */
-const taxonomyState = ref<TaxonomyState>((props.taxonomy ?? productionTaxonomy).state)
+const taxonomyState = ref<TaxonomyState>(taxonomy.state)
 /** 分类图片加载失败后切换到项目自有回退图。 */
 const categoryImageFailed = ref(false)
 /** 请求世代阻止路由快速切换时旧响应覆盖新文章。 */
 let requestGeneration = 0
 
-/** 当前注入或生产文章加载器。 */
-const articleLoader = props.articleLoader ?? productionArticleLoader
-/** 当前注入或生产 taxonomy。 */
-const taxonomy = props.taxonomy ?? productionTaxonomy
 
 /** 解析显式测试标识或 T9 路由参数。 */
 const requestedArticleId = computed<number | null>(() => {

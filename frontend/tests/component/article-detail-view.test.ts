@@ -1,9 +1,9 @@
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils"
 import { defineComponent, h } from "vue"
-import { runtimeConfigKey } from "@/config/runtime-provider"
 import { createMemoryHistory, createRouter, type Router } from "vue-router"
 import { describe, expect, it, vi } from "vitest"
 import ArticleDetailView from "@/views/public/ArticleDetailView.vue"
+import { apiServicesKey, createApiServices, type ApiServices } from "@/request/api-services"
 import { http, HttpRequestError } from "@/request/http"
 import { sanitizeMarkdown } from "@/security/sanitize-markdown"
 import type { Taxonomy, TaxonomyState } from "@/stores/taxonomy"
@@ -80,11 +80,12 @@ const mountDetail = async (
   loader: { readonly detail: (id: number) => Promise<ArticleDetail> },
   taxonomy?: Taxonomy,
   id = "101",
+  apiServices?: ApiServices,
 ): Promise<VueWrapper> => {
   const router = await createDetailRouter(id)
   return mount(ArticleDetailView, {
     props: { articleLoader: loader, ...(taxonomy === undefined ? {} : { taxonomy }) },
-    global: { plugins: [router], provide: { [runtimeConfigKey]: { serverUrl: "http://localhost:5000/api" } }, stubs: { MdPreview: MdPreviewStub, MdCatalog: MdCatalogStub } },
+    global: { plugins: [router], ...(apiServices === undefined ? {} : { provide: { [apiServicesKey]: apiServices } }), stubs: { MdPreview: MdPreviewStub, MdCatalog: MdCatalogStub } },
   })
 }
 
@@ -140,7 +141,8 @@ describe("T10 article detail", () => {
     })
 
     // When: 详情页使用生产 taxonomy 适配器加载分类。
-    const wrapper = await mountDetail({ detail: async () => articleFixture() })
+    const apiServices = createApiServices(http, "http://localhost:5000/api")
+    const wrapper = await mountDetail({ detail: async () => articleFixture() }, undefined, "101", apiServices)
     await flushPromises()
 
     // Then: 相对图片与 API 请求共享运行时后端地址。
