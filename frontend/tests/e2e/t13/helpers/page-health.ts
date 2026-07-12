@@ -35,13 +35,16 @@ export async function gotoReady(page: Page, url: string, ready: Locator): Promis
   await expect(ready).toBeVisible()
 }
 
-/** 等待字体与图片终态，并显式结束有限动画、取消无限动画。 */
-export async function settleVisualState(page: Page): Promise<void> {
-  await page.evaluate(async () => {
-    await document.fonts.ready
-    await Promise.all(Array.from(document.images).map((image) => {
-      if (image.complete) return Promise.resolve()
-      return new Promise<void>((resolve) => {
+/** 在有界时间内等待字体与图片终态，并结束有限动画、取消无限动画。 */
+export async function settleVisualState(page: Page, timeoutMs = 10_000): Promise<void> {
+  await page.evaluate(async (timeout) => {
+    const bounded = async (operation: Promise<unknown>): Promise<void> => {
+      await Promise.race([operation, new Promise<void>((resolve) => window.setTimeout(resolve, timeout))])
+    }
+    await bounded(document.fonts.ready)
+    await Promise.all(Array.from(document.images).map(async (image) => {
+      if (image.complete) return
+      await bounded(new Promise<void>((resolve) => {
         // 先绑定 load/error，再复查 complete，避免状态切换落在检查与监听之间。
         const settled = (): void => {
           image.removeEventListener("load", settled)
@@ -51,14 +54,14 @@ export async function settleVisualState(page: Page): Promise<void> {
         image.addEventListener("load", settled, { once: true })
         image.addEventListener("error", settled, { once: true })
         if (image.complete) settled()
-      })
+      }))
     }))
     for (const animation of document.getAnimations()) {
       const iterations = animation.effect?.getTiming().iterations
       if (iterations === Infinity) animation.cancel()
       else if (animation.playState === "running" || animation.playState === "pending") animation.finish()
     }
-  })
+  }, timeoutMs)
 }
 
 /** 从当前 helper 模块位置上溯五级到仓库根目录，不依赖 Playwright rootDir。 */
