@@ -27,9 +27,11 @@ type ArticleImageRepository interface {
 	FindOwner(context.Context, domain.ArticleImageID) (domain.ImageOwnerID, error)
 	FindForUpdate(context.Context, []domain.ArticleImageID) ([]*domain.ArticleImage, error)
 	FindForUpdateByStorageKeys(context.Context, []domain.StorageKey) ([]*domain.ArticleImage, error)
+	LockReferenceTransition(context.Context, []domain.ArticleImageID, []domain.StorageKey) ([]*domain.ArticleImage, error)
 	FindArticleReferences(context.Context, domain.ArticleID) ([]domain.ArticleImageID, error)
 	ReplaceArticleReferences(context.Context, domain.ArticleID, []domain.ArticleImageID, time.Time) error
 	CountReferencesForUpdate(context.Context, domain.ArticleImageID) (int64, error)
+	CountReferencesForLockedImage(context.Context, domain.ArticleImageID) (int64, error)
 	ListExpiredPending(context.Context, time.Time, int) ([]*domain.ArticleImage, error)
 	ListExpiredOrphaned(context.Context, time.Time, int) ([]*domain.ArticleImage, error)
 	DeleteMetadata(context.Context, domain.ArticleImageID) error

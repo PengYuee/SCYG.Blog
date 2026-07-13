@@ -19,12 +19,15 @@ func (repo *articleImageRepository) Save(ctx context.Context, image *domain.Arti
 	result := repo.db.WithContext(ctx).Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "id"}}, DoUpdates: clause.AssignmentColumns([]string{"owner_id", "storage_key", "media_type", "byte_size", "width", "height", "sha256", "status", "created_at", "committed_at", "orphaned_at", "expires_at"})}).Create(&row)
 	return translate(result.Error)
 }
+
 func (repo *articleImageRepository) Find(ctx context.Context, id domain.ArticleImageID) (*domain.ArticleImage, error) {
 	return repo.find(repo.db.WithContext(ctx).Where("id = ?", id.String()))
 }
+
 func (repo *articleImageRepository) FindByStorageKey(ctx context.Context, key domain.StorageKey) (*domain.ArticleImage, error) {
 	return repo.find(repo.db.WithContext(ctx).Where("storage_key = ?", key.String()))
 }
+
 func (repo *articleImageRepository) find(query *gorm.DB) (*domain.ArticleImage, error) {
 	var row articleImageModel
 	result := query.Take(&row)
@@ -40,6 +43,7 @@ func (repo *articleImageRepository) find(query *gorm.DB) (*domain.ArticleImage, 
 	}
 	return image, nil
 }
+
 func (repo *articleImageRepository) FindOwner(ctx context.Context, id domain.ArticleImageID) (domain.ImageOwnerID, error) {
 	var row struct {
 		OwnerID string `gorm:"column:owner_id"`
@@ -53,6 +57,7 @@ func (repo *articleImageRepository) FindOwner(ctx context.Context, id domain.Art
 	}
 	return domain.NewImageOwnerID(row.OwnerID)
 }
+
 func (repo *articleImageRepository) FindForUpdate(ctx context.Context, ids []domain.ArticleImageID) ([]*domain.ArticleImage, error) {
 	if len(ids) == 0 {
 		return []*domain.ArticleImage{}, nil
@@ -102,6 +107,43 @@ func (repo *articleImageRepository) FindForUpdateByStorageKeys(ctx context.Conte
 	return result, nil
 }
 
+// LockReferenceTransition 将旧引用与新存储键映射到同一 ID 序列并一次性稳定加锁。
+func (repo *articleImageRepository) LockReferenceTransition(ctx context.Context, oldIDs []domain.ArticleImageID, newKeys []domain.StorageKey) ([]*domain.ArticleImage, error) {
+	if len(oldIDs) == 0 && len(newKeys) == 0 {
+		return []*domain.ArticleImage{}, nil
+	}
+	rawIDs := make([]string, len(oldIDs))
+	for index, id := range oldIDs {
+		rawIDs[index] = id.String()
+	}
+	rawKeys := make([]string, len(newKeys))
+	for index, key := range newKeys {
+		rawKeys[index] = key.String()
+	}
+	query := repo.db.WithContext(ctx).Clauses(clause.Locking{Strength: "UPDATE"})
+	switch {
+	case len(rawIDs) == 0:
+		query = query.Where("storage_key IN ?", rawKeys)
+	case len(rawKeys) == 0:
+		query = query.Where("id IN ?", rawIDs)
+	default:
+		query = query.Where("id IN ? OR storage_key IN ?", rawIDs, rawKeys)
+	}
+	var rows []articleImageModel
+	if err := query.Order("id ASC").Find(&rows).Error; err != nil {
+		return nil, translate(err)
+	}
+	result := make([]*domain.ArticleImage, 0, len(rows))
+	for _, row := range rows {
+		image, err := articleImageFromModel(row)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, image)
+	}
+	return result, nil
+}
+
 // FindArticleReferences 返回文章当前引用的图片标识，并保持稳定顺序。
 func (repo *articleImageRepository) FindArticleReferences(ctx context.Context, articleID domain.ArticleID) ([]domain.ArticleImageID, error) {
 	var rows []articleImageReferenceModel
@@ -118,6 +160,7 @@ func (repo *articleImageRepository) FindArticleReferences(ctx context.Context, a
 	}
 	return result, nil
 }
+
 func (repo *articleImageRepository) ReplaceArticleReferences(ctx context.Context, articleID domain.ArticleID, ids []domain.ArticleImageID, now time.Time) error {
 	var existing []articleImageReferenceModel
 	if err := repo.db.WithContext(ctx).Where("article_id = ?", articleID.Int64()).Order("image_id ASC").Find(&existing).Error; err != nil {
@@ -149,6 +192,7 @@ func (repo *articleImageRepository) ReplaceArticleReferences(ctx context.Context
 	}
 	return nil
 }
+
 func (repo *articleImageRepository) CountReferencesForUpdate(ctx context.Context, id domain.ArticleImageID) (int64, error) {
 	var image articleImageModel
 	if err := repo.db.WithContext(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).Where("id = ?", id.String()).Take(&image).Error; err != nil {
@@ -164,12 +208,24 @@ func (repo *articleImageRepository) CountReferencesForUpdate(ctx context.Context
 	}
 	return int64(len(rows)), nil
 }
+
+// CountReferencesForLockedImage 在调用方已持有图片行锁时仅稳定锁定并统计引用行。
+func (repo *articleImageRepository) CountReferencesForLockedImage(ctx context.Context, id domain.ArticleImageID) (int64, error) {
+	var rows []articleImageReferenceModel
+	if err := repo.db.WithContext(ctx).Clauses(clause.Locking{Strength: "UPDATE"}).Where("image_id = ?", id.String()).Order("article_id ASC").Find(&rows).Error; err != nil {
+		return 0, translate(err)
+	}
+	return int64(len(rows)), nil
+}
+
 func (repo *articleImageRepository) ListExpiredPending(ctx context.Context, cutoff time.Time, limit int) ([]*domain.ArticleImage, error) {
 	return repo.listExpired(ctx, "pending", "expires_at", cutoff, limit)
 }
+
 func (repo *articleImageRepository) ListExpiredOrphaned(ctx context.Context, cutoff time.Time, limit int) ([]*domain.ArticleImage, error) {
 	return repo.listExpired(ctx, "orphaned", "expires_at", cutoff, limit)
 }
+
 func (repo *articleImageRepository) listExpired(ctx context.Context, status, column string, cutoff time.Time, limit int) ([]*domain.ArticleImage, error) {
 	if limit < 1 {
 		return []*domain.ArticleImage{}, nil
@@ -189,6 +245,7 @@ func (repo *articleImageRepository) listExpired(ctx context.Context, status, col
 	}
 	return result, nil
 }
+
 func (repo *articleImageRepository) DeleteMetadata(ctx context.Context, id domain.ArticleImageID) error {
 	return translate(repo.db.WithContext(ctx).Where("id = ?", id.String()).Delete(&articleImageModel{}).Error)
 }

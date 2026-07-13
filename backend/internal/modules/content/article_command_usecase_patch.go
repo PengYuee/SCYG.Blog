@@ -26,6 +26,28 @@ func (module *Module) PatchArticle(ctx context.Context, command PatchArticle) (A
 	if err = module.authorizer.Authorize(ctx, action, Resource{Kind: "article", ID: command.ID}); err != nil {
 		return ArticleResult{}, permission(err)
 	}
+	var keys []domain.StorageKey
+	err = module.unit.Within(ctx, func(transactionContext context.Context, transaction application.Transaction) error {
+		article, findErr := transaction.Articles().Find(transactionContext, id)
+		if findErr != nil {
+			return findErr
+		}
+		if patchErr := module.applyArticlePatch(article, version, command); patchErr != nil {
+			return patchErr
+		}
+		keys, findErr = managedImageKeys(article.Content().String())
+		return findErr
+	})
+	if err != nil {
+		return ArticleResult{}, stable(err)
+	}
+	identity, err := module.imageIdentity(ctx, keys, command.ID)
+	if err != nil {
+		return ArticleResult{}, err
+	}
+	if err = module.validateManagedImageFiles(keys); err != nil {
+		return ArticleResult{}, err
+	}
 	var result ArticleResult
 	err = module.unit.Within(ctx, func(transactionContext context.Context, transaction application.Transaction) error {
 		article, findErr := transaction.Articles().Find(transactionContext, id)
@@ -37,6 +59,9 @@ func (module *Module) PatchArticle(ctx context.Context, command PatchArticle) (A
 		}
 		if saveErr := transaction.Articles().Save(transactionContext, article); saveErr != nil {
 			return saveErr
+		}
+		if bindErr := bindArticleImages(transactionContext, transaction.ArticleImages(), article.ID(), keys, identity, module.clock.Now().UTC()); bindErr != nil {
+			return bindErr
 		}
 		result = articleResult(article)
 		return nil

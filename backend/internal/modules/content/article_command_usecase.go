@@ -13,8 +13,19 @@ func (module *Module) CreateArticle(ctx context.Context, command CreateArticle) 
 	if err != nil {
 		return ArticleResult{}, validation(err)
 	}
+	keys, err := managedImageKeys(draft.Content.String())
+	if err != nil {
+		return ArticleResult{}, validation(err)
+	}
 	if err = module.authorizer.Authorize(ctx, ActionCreateArticle, Resource{Kind: "article"}); err != nil {
 		return ArticleResult{}, permission(err)
+	}
+	identity, err := module.imageIdentity(ctx, keys, 0)
+	if err != nil {
+		return ArticleResult{}, err
+	}
+	if err = module.validateManagedImageFiles(keys); err != nil {
+		return ArticleResult{}, err
 	}
 	var result ArticleResult
 	err = module.unit.Within(ctx, func(transactionContext context.Context, transaction application.Transaction) error {
@@ -29,6 +40,11 @@ func (module *Module) CreateArticle(ctx context.Context, command CreateArticle) 
 		}
 		if saveErr := transaction.Articles().Save(transactionContext, article); saveErr != nil {
 			return saveErr
+		}
+		if len(keys) > 0 {
+			if bindErr := bindArticleImages(transactionContext, transaction.ArticleImages(), article.ID(), keys, identity, module.clock.Now().UTC()); bindErr != nil {
+				return bindErr
+			}
 		}
 		result = articleResult(article)
 		return nil
