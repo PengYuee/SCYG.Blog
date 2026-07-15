@@ -6,6 +6,8 @@ type LifecycleObserver interface {
 	ReadinessWithdrawn()
 	// HTTPClosed 记录 App-owned HTTP server 已成功关闭。
 	HTTPClosed()
+	// WorkerStopped 记录图片清理 worker 已停止。
+	WorkerStopped()
 	// DatabaseClosed 记录 App-owned database 已成功关闭。
 	DatabaseClosed()
 	// TelemetryClosed 记录 App-owned telemetry 已成功关闭。
@@ -17,6 +19,7 @@ type noopLifecycleObserver struct{}
 
 func (noopLifecycleObserver) ReadinessWithdrawn() {}
 func (noopLifecycleObserver) HTTPClosed()         {}
+func (noopLifecycleObserver) WorkerStopped()      {}
 func (noopLifecycleObserver) DatabaseClosed()     {}
 func (noopLifecycleObserver) TelemetryClosed()    {}
 

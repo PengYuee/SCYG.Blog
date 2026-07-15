@@ -43,6 +43,12 @@ type Dependencies struct {
 	ArticleImageLoader ArticleImageLoader
 	// ArticleImagePolicy 是图片上传、读取与生命周期共享的不可变策略。
 	ArticleImagePolicy ArticleImagePolicy
+	// ArticleImageFinalDeleter 提供后台最终文件删除能力。
+	ArticleImageFinalDeleter ArticleImageFinalDeleter
+	// ArticleImageTempLister 提供后台过期临时文件枚举能力。
+	ArticleImageTempLister ArticleImageTempLister
+	// ArticleImageTempDeleter 提供后台临时文件删除能力。
+	ArticleImageTempDeleter ArticleImageTempDeleter
 }
 
 // Module 是具体的协议无关内容门面。
@@ -60,6 +66,12 @@ type Module struct {
 	imagePendingTTL time.Duration
 	// imagePolicy 是上传校验与 orphan 生命周期共享的不可变策略。
 	imagePolicy ArticleImagePolicy
+	// imageFinalDeleter 执行最终文件幂等删除。
+	imageFinalDeleter ArticleImageFinalDeleter
+	// imageTempLister 枚举过期临时文件。
+	imageTempLister ArticleImageTempLister
+	// imageTempDeleter 执行临时文件幂等删除。
+	imageTempDeleter ArticleImageTempDeleter
 }
 
 // NewModule 安全组装全部内容用例；可选依赖均按最小权限安全降级。
@@ -77,7 +89,7 @@ func NewModule(dependencies Dependencies) (*Module, error) {
 		return nil, errors.New("内容分类读模型为空")
 	}
 	policy := dependencies.ArticleImagePolicy.orDefault()
-	return &Module{clock: dependencies.Clock, authorizer: AuthorizerOrDeny(dependencies.Authorizer), currentAuthor: CurrentAuthorProviderOrUnavailable(dependencies.CurrentAuthor), unit: dependencies.UnitOfWork, articles: dependencies.Articles, taxonomies: dependencies.Taxonomies, imageStager: articleImageStagerOrUnavailable(dependencies.ArticleImageStager), imagePublisher: articleImagePublisherOrUnavailable(dependencies.ArticleImagePublisher), imageDiscarder: articleImageDiscarderOrUnavailable(dependencies.ArticleImageDiscarder), imageLoader: articleImageLoaderOrUnavailable(dependencies.ArticleImageLoader), imagePendingTTL: policy.PendingTTL(), imagePolicy: policy}, nil
+	return &Module{clock: dependencies.Clock, authorizer: AuthorizerOrDeny(dependencies.Authorizer), currentAuthor: CurrentAuthorProviderOrUnavailable(dependencies.CurrentAuthor), unit: dependencies.UnitOfWork, articles: dependencies.Articles, taxonomies: dependencies.Taxonomies, imageStager: articleImageStagerOrUnavailable(dependencies.ArticleImageStager), imagePublisher: articleImagePublisherOrUnavailable(dependencies.ArticleImagePublisher), imageDiscarder: articleImageDiscarderOrUnavailable(dependencies.ArticleImageDiscarder), imageLoader: articleImageLoaderOrUnavailable(dependencies.ArticleImageLoader), imagePendingTTL: policy.PendingTTL(), imagePolicy: policy, imageFinalDeleter: articleImageFinalDeleterOrUnavailable(dependencies.ArticleImageFinalDeleter), imageTempLister: articleImageTempListerOrUnavailable(dependencies.ArticleImageTempLister), imageTempDeleter: articleImageTempDeleterOrUnavailable(dependencies.ArticleImageTempDeleter)}, nil
 }
 
 // ArticleImagePolicy 返回 REST 与存储必须共享的不可变图片策略。

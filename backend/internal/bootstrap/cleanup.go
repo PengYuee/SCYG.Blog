@@ -45,10 +45,15 @@ func validateDependencies(dependencies Dependencies) error {
 		name  string
 		value any
 	}{
-		{"配置加载器", dependencies.LoadConfig}, {"日志构造器", dependencies.NewLogger},
-		{"遥测构造器", dependencies.NewTelemetry}, {"数据库构造器", dependencies.NewDatabase},
-		{"迁移构造器", dependencies.NewMigration}, {"内容构造器", dependencies.NewContent},
-		{"REST 构造器", dependencies.NewREST}, {"HTTP 构造器", dependencies.NewHTTP},
+		{"配置加载器", dependencies.LoadConfig},
+		{"日志构造器", dependencies.NewLogger},
+		{"遥测构造器", dependencies.NewTelemetry},
+		{"数据库构造器", dependencies.NewDatabase},
+		{"迁移构造器", dependencies.NewMigration},
+		{"内容构造器", dependencies.NewContent},
+		{"图片清理 worker 构造器", dependencies.NewCleanupWorker},
+		{"REST 构造器", dependencies.NewREST},
+		{"HTTP 构造器", dependencies.NewHTTP},
 	}
 	for _, factory := range factories {
 		if nilLike(factory.value) {

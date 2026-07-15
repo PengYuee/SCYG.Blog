@@ -23,6 +23,9 @@ type TempToken struct{ name string }
 
 func (token TempToken) Name() string { return token.name }
 
+// NewTempToken 从内容模块持有的私有名称恢复同一存储实例生成的 token。
+func NewTempToken(name string) TempToken { return TempToken{name: name} }
+
 // TempMetadata 描述已完整写入并同步的临时对象。
 type TempMetadata struct{ Size int64 }
 
@@ -161,7 +164,7 @@ func (store *Filesystem) CommitTemp(token TempToken, key string) error {
 		return &CommitCleanupError{Err: fmt.Errorf("移除已提交临时图片：%w", err)}
 	}
 	if err := store.root.syncDirectory(); err != nil {
-		return &CommitCleanupError{Err: fmt.Errorf("同步图片目录：%w", err)
+		return &CommitCleanupError{Err: fmt.Errorf("同步图片目录：%w", err)}
 	}
 	return nil
 }

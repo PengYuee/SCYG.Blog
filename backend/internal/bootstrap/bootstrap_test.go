@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -80,12 +81,20 @@ func validDependencies(telemetry *fakeTelemetry, db *fakeDatabase, migration *fa
 		NewContent: func(bootstrap.Database, module.Authorizer, module.CurrentAuthorProvider, *blobstorage.Filesystem, module.ArticleImagePolicy) (*module.Module, error) {
 			return &module.Module{}, nil
 		},
+		NewCleanupWorker: func(bootstrap.CleanupRunner, time.Duration, *slog.Logger) (bootstrap.CleanupWorker, error) {
+			return &fakeCleanupWorker{}, nil
+		},
 		NewREST: func(*module.Module, *observability.Health, bool) (func(*gin.Engine) error, error) {
 			return func(*gin.Engine) error { return nil }, nil
 		},
 		NewHTTP: func(httpserver.Options) (bootstrap.HTTPServer, error) { return server, nil },
 	}
 }
+
+type fakeCleanupWorker struct{ starts, stops int }
+
+func (worker *fakeCleanupWorker) Start(context.Context) error { worker.starts++; return nil }
+func (worker *fakeCleanupWorker) Stop(context.Context) error  { worker.stops++; return nil }
 
 func Test_Application_RejectsPendingMigration_and_closes_prior_resources_once(t *testing.T) {
 	// Given

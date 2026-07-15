@@ -50,6 +50,7 @@ func DefaultDependencies() Dependencies {
 			}
 			return contentpostgres.New(contentpostgres.Dependencies{Database: db, Authorizer: authorizer, CurrentAuthor: currentAuthor, ImageFilesystem: filesystem, ImagePolicy: imagePolicy})
 		},
+		NewCleanupWorker: NewArticleImageCleanupWorker,
 		NewREST: func(content *module.Module, health *observability.Health, docs bool) (func(*gin.Engine) error, error) {
 			return rest.New(rest.Options{Content: content, Health: health, DocsEnabled: docs})
 		},
@@ -153,6 +154,13 @@ func New(ctx context.Context, options Options, dependencies Dependencies) (*App,
 	if content == nil {
 		return nil, fail(errors.New("内容构造器返回空结果"))
 	}
+	worker, workerErr := dependencies.NewCleanupWorker(content, cfg.ArticleImages().CleanupInterval(), logger)
+	if workerErr != nil {
+		return nil, fail(fmt.Errorf("构造图片清理 worker: %w", workerErr))
+	}
+	if nilLike(worker) {
+		return nil, fail(errors.New("图片清理 worker 构造器返回空结果"))
+	}
 	health, err := observability.NewHealth(db.Ping, func(context.Context) error { return nil })
 	if err != nil {
 		return nil, fail(fmt.Errorf("构造健康检查: %w", err))
@@ -171,7 +179,7 @@ func New(ctx context.Context, options Options, dependencies Dependencies) (*App,
 	if nilLike(server) {
 		return nil, fail(errors.New("HTTP 构造器返回空结果"))
 	}
-	return newApp(cfg, logger, health, server, telemetry, &databaseWithStorage{Database: db, storage: imageFilesystem}, options.LifecycleObserver), nil
+	return newApp(ctx, cfg, logger, health, server, worker, telemetry, &databaseWithStorage{Database: db, storage: imageFilesystem}, options.LifecycleObserver), nil
 }
 
 // databaseWithStorage 保持既有关闭顺序，并在数据库后关闭固定根句柄。

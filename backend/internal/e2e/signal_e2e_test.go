@@ -21,6 +21,8 @@ type lifecycleSnapshot struct {
 	ReadinessWithdrawn bool
 	// HTTPClosed 表示 App-owned HTTP 已关闭。
 	HTTPClosed bool
+	// WorkerStopped 表示图片清理 worker 已停止。
+	WorkerStopped bool
 	// DatabaseClosed 表示 App-owned database 已关闭。
 	DatabaseClosed bool
 	// TelemetryClosed 表示 App-owned telemetry 已关闭。
@@ -40,21 +42,32 @@ func (observer *lifecycleSnapshotObserver) ReadinessWithdrawn() {
 	defer observer.mutex.Unlock()
 	observer.snapshot.ReadinessWithdrawn = true
 }
+
 func (observer *lifecycleSnapshotObserver) HTTPClosed() {
 	observer.mutex.Lock()
 	defer observer.mutex.Unlock()
 	observer.snapshot.HTTPClosed = true
 }
+
+// WorkerStopped 记录图片清理 worker 已确认退出。
+func (observer *lifecycleSnapshotObserver) WorkerStopped() {
+	observer.mutex.Lock()
+	defer observer.mutex.Unlock()
+	observer.snapshot.WorkerStopped = true
+}
+
 func (observer *lifecycleSnapshotObserver) DatabaseClosed() {
 	observer.mutex.Lock()
 	defer observer.mutex.Unlock()
 	observer.snapshot.DatabaseClosed = true
 }
+
 func (observer *lifecycleSnapshotObserver) TelemetryClosed() {
 	observer.mutex.Lock()
 	defer observer.mutex.Unlock()
 	observer.snapshot.TelemetryClosed = true
 }
+
 func (observer *lifecycleSnapshotObserver) Snapshot() lifecycleSnapshot {
 	observer.mutex.Lock()
 	defer observer.mutex.Unlock()
@@ -112,7 +125,7 @@ func assertSignalSubprocessShutdown(t *testing.T) {
 	if err := json.Unmarshal(closed, &snapshot); err != nil {
 		t.Fatalf("解析真实生命周期快照失败：%v", err)
 	}
-	if !snapshot.ReadinessWithdrawn || !snapshot.HTTPClosed || !snapshot.DatabaseClosed || !snapshot.TelemetryClosed {
+	if !snapshot.ReadinessWithdrawn || !snapshot.HTTPClosed || !snapshot.WorkerStopped || !snapshot.DatabaseClosed || !snapshot.TelemetryClosed {
 		t.Fatalf("真实生命周期快照不完整：%+v", snapshot)
 	}
 	client := &http.Client{Timeout: time.Second}

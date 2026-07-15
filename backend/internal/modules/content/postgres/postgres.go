@@ -46,7 +46,7 @@ func New(dependencies Dependencies) (*module.Module, error) {
 	if dependencies.ImageFilesystem != nil {
 		storage = NewImageStorage(dependencies.ImageFilesystem, dependencies.ImagePolicy)
 	}
-	return module.NewModule(module.Dependencies{Clock: systemClock{}, Authorizer: dependencies.Authorizer, CurrentAuthor: dependencies.CurrentAuthor, UnitOfWork: unit, Articles: read, Taxonomies: read, ArticleImageStager: storage, ArticleImagePublisher: storage, ArticleImageDiscarder: storage, ArticleImageLoader: storage, ArticleImagePolicy: dependencies.ImagePolicy})
+	return module.NewModule(module.Dependencies{Clock: systemClock{}, Authorizer: dependencies.Authorizer, CurrentAuthor: dependencies.CurrentAuthor, UnitOfWork: unit, Articles: read, Taxonomies: read, ArticleImageStager: storage, ArticleImagePublisher: storage, ArticleImageDiscarder: storage, ArticleImageLoader: storage, ArticleImagePolicy: dependencies.ImagePolicy, ArticleImageFinalDeleter: storage, ArticleImageTempLister: storage, ArticleImageTempDeleter: storage})
 }
 
 type systemClock struct{}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"time"
 
 	module "github.com/PengYuee/SCYG.Blog/backend/internal/modules/content"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/blobstorage"
@@ -18,6 +19,29 @@ type ImageStorage struct {
 // NewImageStorage 构造图片存储适配器。
 func NewImageStorage(filesystem *blobstorage.Filesystem, policy module.ArticleImagePolicy) *ImageStorage {
 	return &ImageStorage{filesystem: filesystem, maxFileBytes: policy.MaxFileBytes()}
+}
+
+// DeleteArticleImage 幂等删除最终图片。
+func (storage *ImageStorage) DeleteArticleImage(key string) error {
+	return storage.filesystem.Delete(key)
+}
+
+// ListExpiredArticleImageTemps 返回达到截止时间的临时图片名称。
+func (storage *ImageStorage) ListExpiredArticleImageTemps(ctx context.Context, cutoff time.Time, limit int) ([]string, error) {
+	entries, err := storage.filesystem.ListExpiredTemps(ctx, cutoff, limit)
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, len(entries))
+	for index, entry := range entries {
+		names[index] = entry.Name()
+	}
+	return names, nil
+}
+
+// DeleteArticleImageTemp 幂等删除临时图片。
+func (storage *ImageStorage) DeleteArticleImageTemp(ctx context.Context, name string) error {
+	return storage.filesystem.DeleteTemp(ctx, name)
 }
 
 type imageContentReader struct{ content module.ArticleImageContent }
@@ -63,8 +87,11 @@ func (storage *ImageStorage) LoadArticleImage(key string) (content []byte, err e
 }
 
 var (
-	_ module.ArticleImageStager    = (*ImageStorage)(nil)
-	_ module.ArticleImagePublisher = (*ImageStorage)(nil)
-	_ module.ArticleImageDiscarder = (*ImageStorage)(nil)
-	_ module.ArticleImageLoader    = (*ImageStorage)(nil)
+	_ module.ArticleImageStager       = (*ImageStorage)(nil)
+	_ module.ArticleImagePublisher    = (*ImageStorage)(nil)
+	_ module.ArticleImageDiscarder    = (*ImageStorage)(nil)
+	_ module.ArticleImageLoader       = (*ImageStorage)(nil)
+	_ module.ArticleImageFinalDeleter = (*ImageStorage)(nil)
+	_ module.ArticleImageTempLister   = (*ImageStorage)(nil)
+	_ module.ArticleImageTempDeleter  = (*ImageStorage)(nil)
 )

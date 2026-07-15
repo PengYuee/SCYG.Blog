@@ -16,9 +16,11 @@ import (
 type App struct {
 	config config.Config
 	// logger 复用组合根创建的结构化日志器。
-	logger       *slog.Logger
-	health       *observability.Health
-	server       HTTPServer
+	logger *slog.Logger
+	health *observability.Health
+	server HTTPServer
+	// worker 在 HTTP ready 前启动，并在数据库关闭前停止。
+	worker       CleanupWorker
 	telemetry    Telemetry
 	database     Database
 	observer     LifecycleObserver
@@ -29,10 +31,17 @@ type App struct {
 	shutdownErr  error
 	shuttingDown bool
 	stopped      bool
+	// startFailed 表示启动清理尚未确认 worker 退出，只允许继续 Shutdown。
+	startFailed bool
+	// httpCleanup 表示 HTTP 已进入启动流程，关闭时需要执行 drain。
+	httpCleanup bool
+	// lifetime 为 worker 提供不受构造调用短期取消影响的应用上下文。
+	lifetime context.Context
 }
 
-func newApp(cfg config.Config, health *observability.Health, server HTTPServer, telemetry Telemetry, db Database, observer LifecycleObserver) *App {
-	return &App{config: cfg, health: health, server: server, telemetry: telemetry, database: db, observer: lifecycleObserverOrDefault(observer)}
+// newApp 汇集已经成功构造的应用生命周期资源。
+func newApp(lifetime context.Context, cfg config.Config, logger *slog.Logger, health *observability.Health, server HTTPServer, worker CleanupWorker, telemetry Telemetry, db Database, observer LifecycleObserver) *App {
+	return &App{config: cfg, logger: logger, health: health, server: server, worker: worker, telemetry: telemetry, database: db, observer: lifecycleObserverOrDefault(observer), lifetime: context.WithoutCancel(lifetime)}
 }
 
 // Start 同步绑定监听地址，并仅在启动结果完整有效后开放 readiness。
@@ -42,9 +51,16 @@ func (app *App) Start() error {
 	if app.stopped {
 		return errors.New("应用已经停止")
 	}
+	if app.startFailed {
+		return errors.New("应用启动失败，等待完成关闭")
+	}
 	if app.listener != nil {
 		return nil
 	}
+	if err := app.worker.Start(app.lifetime); err != nil {
+		return app.cleanupStartFailure(fmt.Errorf("启动图片清理 worker: %w", err), false)
+	}
+	app.httpCleanup = true
 	listener, serveErrors, err := app.server.Start()
 	if err == nil && nilLike(listener) {
 		err = errors.New("HTTP 启动返回空监听器")
@@ -53,17 +69,37 @@ func (app *App) Start() error {
 		err = errors.New("HTTP 启动返回空错误通道")
 	}
 	if err != nil {
-		app.health.Withdraw()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), app.config.HTTP().ShutdownTimeout())
-		defer cancel()
-		// HTTP 已构造，因此启动失败仍按 HTTP、数据库、遥测的创建逆序清理。
-		app.shutdownErr = errors.Join(fmt.Errorf("绑定 HTTP: %w", err), app.server.Shutdown(shutdownCtx), app.database.Close(), app.telemetry.Shutdown(shutdownCtx))
-		app.stopped = true
-		return app.shutdownErr
+		return app.cleanupStartFailure(fmt.Errorf("绑定 HTTP: %w", err), true)
+	}
+	if _, _, addressErr := net.SplitHostPort(listener.Addr().String()); addressErr != nil {
+		return app.cleanupStartFailure(fmt.Errorf("解析 HTTP 监听地址: %w", addressErr), true)
 	}
 	app.listener, app.serveErrors = listener, serveErrors
 	app.health.Activate()
 	return nil
+}
+
+// cleanupStartFailure 统一回收启动失败资源；worker 未退出时保留其数据库依赖并允许 Shutdown 重试。
+func (app *App) cleanupStartFailure(root error, cleanupHTTP bool) error {
+	app.health.Withdraw()
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), app.config.HTTP().ShutdownTimeout())
+	defer cancel()
+	var httpErr error
+	if cleanupHTTP {
+		httpErr = app.server.Shutdown(shutdownCtx)
+	}
+	workerErr := app.worker.Stop(shutdownCtx)
+	app.shutdownErr = errors.Join(root, httpErr, workerErr)
+	if workerErr != nil {
+		app.startFailed = true
+		app.httpCleanup = cleanupHTTP
+		return app.shutdownErr
+	}
+	databaseErr := app.database.Close()
+	telemetryErr := app.telemetry.Shutdown(shutdownCtx)
+	app.shutdownErr = errors.Join(app.shutdownErr, databaseErr, telemetryErr)
+	app.stopped = true
+	return app.shutdownErr
 }
 
 // Address 返回 Start 成功后绑定的监听地址。
@@ -98,7 +134,7 @@ func (app *App) Run(ctx context.Context) error {
 	return errors.Join(root, app.Shutdown(shutdownCtx))
 }
 
-// Shutdown 第一步撤回 readiness，再严格按 HTTP、数据库、遥测顺序关闭；并发调用共享一次结果。
+// Shutdown 第一步撤回 readiness，再严格按 HTTP、worker、数据库、遥测顺序关闭；并发调用共享一次结果。
 func (app *App) Shutdown(ctx context.Context) error {
 	app.mutex.Lock()
 	if app.stopped {
@@ -125,11 +161,26 @@ func (app *App) Shutdown(ctx context.Context) error {
 	app.health.Withdraw()
 	app.observer.ReadinessWithdrawn()
 	app.mutex.Unlock()
-	// server、database、telemetry 是真实创建顺序的严格逆序；仅成功关闭后发布事实。
-	httpErr := app.server.Shutdown(ctx)
+	// HTTP drain 后必须确认 worker 退出，才能关闭其依赖的数据库与遥测。
+	var httpErr error
+	if app.httpCleanup {
+		httpErr = app.server.Shutdown(ctx)
+	}
 	if httpErr == nil {
 		app.observer.HTTPClosed()
 	}
+	workerErr := app.worker.Stop(ctx)
+	if workerErr != nil {
+		// worker 未确认退出时保持数据库与遥测存活，允许后续 Shutdown 使用新期限继续等待。
+		err := errors.Join(httpErr, workerErr)
+		app.mutex.Lock()
+		app.shutdownErr = err
+		app.shuttingDown = false
+		close(done)
+		app.mutex.Unlock()
+		return err
+	}
+	app.observer.WorkerStopped()
 	databaseErr := app.database.Close()
 	if databaseErr == nil {
 		app.observer.DatabaseClosed()
@@ -138,11 +189,12 @@ func (app *App) Shutdown(ctx context.Context) error {
 	if telemetryErr == nil {
 		app.observer.TelemetryClosed()
 	}
-	err := errors.Join(httpErr, databaseErr, telemetryErr)
+	err := errors.Join(httpErr, workerErr, databaseErr, telemetryErr)
 	app.mutex.Lock()
 	app.shutdownErr = err
 	app.shuttingDown = false
 	app.stopped = true
+	app.startFailed = false
 	close(done)
 	app.mutex.Unlock()
 	return err
