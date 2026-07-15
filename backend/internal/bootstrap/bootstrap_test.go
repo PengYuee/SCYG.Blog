@@ -14,6 +14,7 @@ import (
 
 	"github.com/PengYuee/SCYG.Blog/backend/internal/bootstrap"
 	module "github.com/PengYuee/SCYG.Blog/backend/internal/modules/content"
+	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/blobstorage"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/config"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/database"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/httpserver"
@@ -76,7 +77,7 @@ func validDependencies(telemetry *fakeTelemetry, db *fakeDatabase, migration *fa
 		NewTelemetry: func(config.Telemetry) (bootstrap.Telemetry, error) { return telemetry, nil },
 		NewDatabase:  func(context.Context, database.Options) (bootstrap.Database, error) { return db, nil },
 		NewMigration: func(config.DSN) (bootstrap.Migration, error) { return migration, nil },
-		NewContent: func(bootstrap.Database, module.Authorizer, module.CurrentAuthorProvider) (*module.Module, error) {
+		NewContent: func(bootstrap.Database, module.Authorizer, module.CurrentAuthorProvider, *blobstorage.Filesystem, module.ArticleImagePolicy) (*module.Module, error) {
 			return &module.Module{}, nil
 		},
 		NewREST: func(*module.Module, *observability.Health, bool) (func(*gin.Engine) error, error) {
@@ -159,7 +160,7 @@ func Test_Application_RejectsContentConstruction_and_closes_prior_resources_once
 	telemetry, db := &fakeTelemetry{}, &fakeDatabase{}
 	migration := &fakeMigration{version: migrations.CurrentVersion}
 	dependencies := validDependencies(telemetry, db, migration, &fakeServer{})
-	dependencies.NewContent = func(bootstrap.Database, module.Authorizer, module.CurrentAuthorProvider) (*module.Module, error) {
+	dependencies.NewContent = func(bootstrap.Database, module.Authorizer, module.CurrentAuthorProvider, *blobstorage.Filesystem, module.ArticleImagePolicy) (*module.Module, error) {
 		return nil, errors.New("内容构造失败")
 	}
 
@@ -241,7 +242,7 @@ func Test_Application_injects_stable_development_author_from_validated_config(t 
 	server := &fakeServer{}
 	dependencies := validDependencies(telemetry, db, migration, server)
 	var captured module.CurrentAuthorProvider
-	dependencies.NewContent = func(_ bootstrap.Database, _ module.Authorizer, provider module.CurrentAuthorProvider) (*module.Module, error) {
+	dependencies.NewContent = func(_ bootstrap.Database, _ module.Authorizer, provider module.CurrentAuthorProvider, _ *blobstorage.Filesystem, _ module.ArticleImagePolicy) (*module.Module, error) {
 		captured = provider
 		return &module.Module{}, nil
 	}

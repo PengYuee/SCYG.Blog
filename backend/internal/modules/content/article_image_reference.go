@@ -50,7 +50,7 @@ func (module *Module) imageIdentity(ctx context.Context, keys []domain.StorageKe
 	return articleImageIdentity{owner: owner}, nil
 }
 
-func bindArticleImages(ctx context.Context, repo application.ArticleImageRepository, articleID domain.ArticleID, keys []domain.StorageKey, identity articleImageIdentity, now time.Time) error {
+func (module *Module) bindArticleImages(ctx context.Context, repo application.ArticleImageRepository, articleID domain.ArticleID, keys []domain.StorageKey, identity articleImageIdentity, now time.Time) error {
 	oldIDs, err := repo.FindArticleReferences(ctx, articleID)
 	if err != nil {
 		return err
@@ -111,7 +111,7 @@ func bindArticleImages(ctx context.Context, repo application.ArticleImageReposit
 		}
 		removedImage := byID[id.String()]
 		if removedImage.Status() == domain.ArticleImageStatusCommitted {
-			if orphanErr := removedImage.Orphan(now); orphanErr != nil {
+			if orphanErr := removedImage.OrphanWithGrace(now, module.imagePolicy.orDefault().OrphanGrace()); orphanErr != nil {
 				return orphanErr
 			}
 			if saveErr := repo.Save(ctx, removedImage); saveErr != nil {

@@ -5,6 +5,8 @@ import (
 	"time"
 )
 
+const defaultArticleImageOrphanGrace = 24 * time.Hour
+
 // ArticleImageMetadata 是创建图片聚合所需的已解析元数据。
 type ArticleImageMetadata struct {
 	ID      ArticleImageID
@@ -36,7 +38,7 @@ func NewArticleImage(metadata ArticleImageMetadata, createdAt, expiresAt time.Ti
 	if metadata.MediaType != MediaTypeJPEG && metadata.MediaType != MediaTypePNG {
 		return nil, invalid("media_type")
 	}
-	if metadata.ByteSize < 1 || metadata.ByteSize > MaxArticleImageBytes || metadata.Width < 1 || metadata.Height < 1 || metadata.Width > MaxArticleImageDimension || metadata.Height > MaxArticleImageDimension || int64(metadata.Width)*int64(metadata.Height) > MaxArticleImagePixels {
+	if metadata.ByteSize < 1 || metadata.Width < 1 || metadata.Height < 1 {
 		return nil, invalid("image_dimensions")
 	}
 	if createdAt.IsZero() || !expiresAt.After(createdAt) {
@@ -70,24 +72,34 @@ func (image *ArticleImage) Commit(at time.Time) error {
 	return nil
 }
 
-// Orphan 将正式图片置入回收宽限期。
+// Orphan 使用既有默认宽限期将正式图片置入待回收状态。
 func (image *ArticleImage) Orphan(at time.Time) error {
+	return image.OrphanWithGrace(at, defaultArticleImageOrphanGrace)
+}
+
+// OrphanWithGrace 使用注入宽限期将正式图片置入待回收状态。
+func (image *ArticleImage) OrphanWithGrace(at time.Time, grace time.Duration) error {
 	if image.status != ArticleImageStatusCommitted || at.Before(image.committedAt) {
 		return fmt.Errorf("图片不能孤儿化：%w", ErrInvalidTransition)
 	}
-	image.status, image.orphanedAt, image.expiresAt = ArticleImageStatusOrphaned, at, at.Add(24*time.Hour)
+	image.status, image.orphanedAt, image.expiresAt = ArticleImageStatusOrphaned, at, at.Add(grace)
 	return nil
 }
 
-// Cancel 将所有者取消的待确认图片置为可由 TTL 回收的孤儿状态。
+// Cancel 使用既有默认宽限期取消待确认图片。
 func (image *ArticleImage) Cancel(at time.Time) error {
+	return image.CancelWithGrace(at, defaultArticleImageOrphanGrace)
+}
+
+// CancelWithGrace 使用注入宽限期将待确认图片置为可回收状态。
+func (image *ArticleImage) CancelWithGrace(at time.Time, grace time.Duration) error {
 	if image.status == ArticleImageStatusOrphaned {
 		return nil
 	}
 	if image.status != ArticleImageStatusPending || at.Before(image.createdAt) {
 		return fmt.Errorf("图片不能取消：%w", ErrInvalidTransition)
 	}
-	image.status, image.committedAt, image.orphanedAt, image.expiresAt = ArticleImageStatusOrphaned, at, at, at.Add(24*time.Hour)
+	image.status, image.committedAt, image.orphanedAt, image.expiresAt = ArticleImageStatusOrphaned, at, at, at.Add(grace)
 	return nil
 }
 

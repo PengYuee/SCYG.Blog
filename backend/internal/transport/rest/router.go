@@ -25,7 +25,7 @@ type Options struct {
 
 // New 构造一次性路由挂载函数；生成协议类型仅留在内容 REST 构造器内部。
 func New(options Options) (func(*gin.Engine) error, error) {
-	handler, err := contentrest.NewHandler(options.Content, options.Content)
+	handler, err := contentrest.NewHandler(options.Content, options.Content, options.Content.ArticleImagePolicy())
 	if err != nil {
 		return nil, err
 	}

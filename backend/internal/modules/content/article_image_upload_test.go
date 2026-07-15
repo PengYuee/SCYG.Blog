@@ -110,7 +110,7 @@ func jpegContent(t *testing.T) *imageTestContent {
 func imageModuleForTest(t *testing.T, repo *imageTestRepo, assets *imageTestAssets) *Module {
 	t.Helper()
 	author, _ := NewAuthorID("abcdef0123456789abcdef0123456789")
-	return &Module{clock: imageTestClock{now: time.Date(2026, 7, 13, 0, 0, 0, 0, time.UTC)}, authorizer: imageAllowAll{}, currentAuthor: NewFixedCurrentAuthorProvider(author), unit: imageTestUnit{repo: repo}, imageStager: assets, imagePublisher: assets, imageDiscarder: assets, imagePendingTTL: 24 * time.Hour}
+	return &Module{clock: imageTestClock{now: time.Date(2026, 7, 13, 0, 0, 0, 0, time.UTC)}, authorizer: imageAllowAll{}, currentAuthor: NewFixedCurrentAuthorProvider(author), unit: imageTestUnit{repo: repo}, imageStager: assets, imagePublisher: assets, imageDiscarder: assets, imagePendingTTL: 24 * time.Hour, imagePolicy: DefaultArticleImagePolicy()}
 }
 
 func Test_UploadArticleImage_keeps_pending_metadata_when_commit_reports_committed(t *testing.T) {

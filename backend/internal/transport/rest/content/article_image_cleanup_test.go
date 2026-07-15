@@ -99,7 +99,7 @@ func cleanupMultipartRequest(t *testing.T, name string, payload []byte) *http.Re
 func cleanupRouter(t *testing.T, operations requestTempOperations) http.Handler {
 	t.Helper()
 	service := &cleanupImageService{}
-	handler := &Handler{queries: service, commands: service, tempFiles: operations}
+	handler := &Handler{queries: service, commands: service, imagePolicy: module.DefaultArticleImagePolicy(), tempFiles: operations}
 	router := gin.New()
 	if err := handler.Register(router); err != nil {
 		t.Fatal(err)
@@ -131,7 +131,7 @@ func Test_CreateArticleImage_cleanup_failure_returns_stable_problem_before_201(t
 
 func Test_SpoolUniqueImagePart_early_error_does_not_create_temp(t *testing.T) {
 	operations := &cleanupFaultOperations{}
-	handler := &Handler{tempFiles: operations}
+	handler := &Handler{imagePolicy: module.DefaultArticleImagePolicy(), tempFiles: operations}
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	part, err := writer.CreateFormField("unknown")
@@ -148,7 +148,7 @@ func Test_SpoolUniqueImagePart_early_error_does_not_create_temp(t *testing.T) {
 
 func Test_SpoolUniqueImagePart_cancel_attempts_close_and_remove(t *testing.T) {
 	operations := &cleanupFaultOperations{}
-	handler := &Handler{tempFiles: operations}
+	handler := &Handler{imagePolicy: module.DefaultArticleImagePolicy(), tempFiles: operations}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, err := handler.spoolUniqueImagePart(ctx, multipartReaderForSpool(t, bytes.Repeat([]byte{'x'}, 1024)))

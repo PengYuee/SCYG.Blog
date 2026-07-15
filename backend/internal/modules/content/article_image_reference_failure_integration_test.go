@@ -18,7 +18,7 @@ func serviceForReferenceOwner(t *testing.T, fixture articleReferenceFixture, own
 	if err != nil {
 		t.Fatal(err)
 	}
-	service, err := contentpostgres.New(contentpostgres.Dependencies{Database: fixture.database, Authorizer: integrationAuthorizer{}, CurrentAuthor: module.NewFixedCurrentAuthorProvider(authorID), ImageFilesystem: fixture.storage, ImagePendingTTL: 24 * time.Hour})
+	service, err := contentpostgres.New(contentpostgres.Dependencies{Database: fixture.database, Authorizer: integrationAuthorizer{}, CurrentAuthor: module.NewFixedCurrentAuthorProvider(authorID), ImageFilesystem: fixture.storage, ImagePolicy: module.DefaultArticleImagePolicy()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -28,7 +28,7 @@ func serviceForReferenceOwner(t *testing.T, fixture articleReferenceFixture, own
 func Test_CreateAndPatch_without_managed_images_do_not_require_current_author(t *testing.T) {
 	// Given
 	fixture := openArticleReferenceFixture(t)
-	service, err := contentpostgres.New(contentpostgres.Dependencies{Database: fixture.database, Authorizer: integrationAuthorizer{}, ImageFilesystem: fixture.storage, ImagePendingTTL: 24 * time.Hour})
+	service, err := contentpostgres.New(contentpostgres.Dependencies{Database: fixture.database, Authorizer: integrationAuthorizer{}, ImageFilesystem: fixture.storage, ImagePolicy: module.DefaultArticleImagePolicy()})
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -8,6 +8,8 @@ import (
 	"os"
 	"runtime"
 	"testing"
+
+	module "github.com/PengYuee/SCYG.Blog/backend/internal/modules/content"
 )
 
 func multipartReaderForSpool(t *testing.T, payload []byte) *multipart.Reader {
@@ -28,7 +30,7 @@ func multipartReaderForSpool(t *testing.T, payload []byte) *multipart.Reader {
 }
 
 func Test_SpoolUniqueImagePart_removes_transport_temp_after_close(t *testing.T) {
-	source, err := (&Handler{tempFiles: osRequestTempOperations{}}).spoolUniqueImagePart(context.Background(), multipartReaderForSpool(t, []byte("payload")))
+	source, err := (&Handler{imagePolicy: module.DefaultArticleImagePolicy(), tempFiles: osRequestTempOperations{}}).spoolUniqueImagePart(context.Background(), multipartReaderForSpool(t, []byte("payload")))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +53,7 @@ func Test_SpoolUniqueImagePart_cancellation_leaves_no_request_temp(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = (&Handler{tempFiles: osRequestTempOperations{}}).spoolUniqueImagePart(ctx, multipartReaderForSpool(t, bytes.Repeat([]byte{'x'}, 1024)))
+	_, err = (&Handler{imagePolicy: module.DefaultArticleImagePolicy(), tempFiles: osRequestTempOperations{}}).spoolUniqueImagePart(ctx, multipartReaderForSpool(t, bytes.Repeat([]byte{'x'}, 1024)))
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("error=%v", err)
 	}

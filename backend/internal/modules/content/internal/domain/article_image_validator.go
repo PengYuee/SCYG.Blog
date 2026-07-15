@@ -21,8 +21,25 @@ const (
 	MaxArticleImageDimension = 8192
 )
 
+// ArticleImageValidationLimits 是不可变的图片内容安全限制。
+type ArticleImageValidationLimits struct {
+	maxFileBytes int64
+	maxPixels    int64
+	maxDimension int
+}
+
+// NewArticleImageValidationLimits 从已验证配置构造图片内容安全限制。
+func NewArticleImageValidationLimits(maxFileBytes, maxPixels int64, maxDimension int) ArticleImageValidationLimits {
+	return ArticleImageValidationLimits{maxFileBytes: maxFileBytes, maxPixels: maxPixels, maxDimension: maxDimension}
+}
+
+// DefaultArticleImageValidationLimits 返回兼容既有行为的默认安全限制。
+func DefaultArticleImageValidationLimits() ArticleImageValidationLimits {
+	return NewArticleImageValidationLimits(MaxArticleImageBytes, MaxArticleImagePixels, MaxArticleImageDimension)
+}
+
 var (
-	ErrArticleImageTooLarge    = errors.New("图片超过 5MiB 限制")
+	ErrArticleImageTooLarge    = errors.New("图片超过文件大小限制")
 	ErrArticleImageDimensions  = errors.New("图片尺寸超过限制")
 	ErrUnsupportedArticleImage = errors.New("仅支持 JPEG 和 PNG 图片")
 	ErrInvalidArticleImage     = errors.New("图片内容损坏或包含尾随数据")
@@ -38,14 +55,19 @@ type ValidatedArticleImage struct {
 	Height    int
 }
 
-// ValidateArticleImage 从流读取、完整解码并重新编码 JPEG 或 PNG。
+// ValidateArticleImage 使用既有默认限制读取、完整解码并重新编码 JPEG 或 PNG。
 func ValidateArticleImage(reader io.Reader) (ValidatedArticleImage, error) {
-	limited := io.LimitReader(reader, MaxArticleImageBytes+1)
+	return ValidateArticleImageWithLimits(reader, DefaultArticleImageValidationLimits())
+}
+
+// ValidateArticleImageWithLimits 使用注入限制读取、完整解码并重新编码 JPEG 或 PNG。
+func ValidateArticleImageWithLimits(reader io.Reader, limits ArticleImageValidationLimits) (ValidatedArticleImage, error) {
+	limited := io.LimitReader(reader, limits.maxFileBytes+1)
 	source, err := io.ReadAll(limited)
 	if err != nil {
 		return ValidatedArticleImage{}, fmt.Errorf("读取图片：%w", err)
 	}
-	if len(source) > MaxArticleImageBytes {
+	if int64(len(source)) > limits.maxFileBytes {
 		return ValidatedArticleImage{}, ErrArticleImageTooLarge
 	}
 	config, format, err := image.DecodeConfig(bytes.NewReader(source))
@@ -59,7 +81,7 @@ func ValidateArticleImage(reader io.Reader) (ValidatedArticleImage, error) {
 		return ValidatedArticleImage{}, ErrUnsupportedArticleImage
 	}
 	pixels := int64(config.Width) * int64(config.Height)
-	if config.Width < 1 || config.Height < 1 || config.Width > MaxArticleImageDimension || config.Height > MaxArticleImageDimension || pixels > MaxArticleImagePixels {
+	if config.Width < 1 || config.Height < 1 || config.Width > limits.maxDimension || config.Height > limits.maxDimension || pixels > limits.maxPixels {
 		return ValidatedArticleImage{}, ErrArticleImageDimensions
 	}
 	if !hasExactImageEnding(source, format) {

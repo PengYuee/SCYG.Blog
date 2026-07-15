@@ -60,7 +60,7 @@ func (module *Module) PatchArticle(ctx context.Context, command PatchArticle) (A
 		if saveErr := transaction.Articles().Save(transactionContext, article); saveErr != nil {
 			return saveErr
 		}
-		if bindErr := bindArticleImages(transactionContext, transaction.ArticleImages(), article.ID(), keys, identity, module.clock.Now().UTC()); bindErr != nil {
+		if bindErr := module.bindArticleImages(transactionContext, transaction.ArticleImages(), article.ID(), keys, identity, module.clock.Now().UTC()); bindErr != nil {
 			return bindErr
 		}
 		result = articleResult(article)

@@ -146,8 +146,8 @@ func Test_ContentREST_NewHandler_rejects_typed_nil_services(t *testing.T) {
 	nonNil := &testService{}
 
 	// When
-	_, queryErr := restcontent.NewHandler(typedNil, nonNil)
-	_, commandErr := restcontent.NewHandler(nonNil, typedNil)
+	_, queryErr := restcontent.NewHandler(typedNil, nonNil, module.DefaultArticleImagePolicy())
+	_, commandErr := restcontent.NewHandler(nonNil, typedNil, module.DefaultArticleImagePolicy())
 
 	// Then
 	if queryErr == nil || commandErr == nil {
@@ -165,7 +165,7 @@ func testRouter(t *testing.T) (*gin.Engine, *testService) {
 func routerForService(t *testing.T, service *testService) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	handler, err := restcontent.NewHandler(service, service)
+	handler, err := restcontent.NewHandler(service, service, module.DefaultArticleImagePolicy())
 	if err != nil {
 		t.Fatalf("NewHandler: %v", err)
 	}

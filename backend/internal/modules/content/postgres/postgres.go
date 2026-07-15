@@ -21,8 +21,8 @@ type Dependencies struct {
 	CurrentAuthor module.CurrentAuthorProvider
 	// ImageFilesystem 是由 bootstrap 持有生命周期的固定根存储。
 	ImageFilesystem *blobstorage.Filesystem
-	// ImagePendingTTL 是图片等待文章确认的期限。
-	ImagePendingTTL time.Duration
+	// ImagePolicy 是图片安全与生命周期共享的不可变策略。
+	ImagePolicy module.ArticleImagePolicy
 }
 
 // New 构造私有持久化适配器并调用 content.NewModule。
@@ -44,9 +44,9 @@ func New(dependencies Dependencies) (*module.Module, error) {
 	}
 	var storage *ImageStorage
 	if dependencies.ImageFilesystem != nil {
-		storage = NewImageStorage(dependencies.ImageFilesystem)
+		storage = NewImageStorage(dependencies.ImageFilesystem, dependencies.ImagePolicy)
 	}
-	return module.NewModule(module.Dependencies{Clock: systemClock{}, Authorizer: dependencies.Authorizer, CurrentAuthor: dependencies.CurrentAuthor, UnitOfWork: unit, Articles: read, Taxonomies: read, ArticleImageStager: storage, ArticleImagePublisher: storage, ArticleImageDiscarder: storage, ArticleImageLoader: storage, ArticleImagePendingTTL: dependencies.ImagePendingTTL})
+	return module.NewModule(module.Dependencies{Clock: systemClock{}, Authorizer: dependencies.Authorizer, CurrentAuthor: dependencies.CurrentAuthor, UnitOfWork: unit, Articles: read, Taxonomies: read, ArticleImageStager: storage, ArticleImagePublisher: storage, ArticleImageDiscarder: storage, ArticleImageLoader: storage, ArticleImagePolicy: dependencies.ImagePolicy})
 }
 
 type systemClock struct{}

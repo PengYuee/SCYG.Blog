@@ -94,7 +94,7 @@ func openArticleReferenceFixture(t *testing.T) articleReferenceFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	service, err := contentpostgres.New(contentpostgres.Dependencies{Database: db, Authorizer: integrationAuthorizer{}, CurrentAuthor: module.NewFixedCurrentAuthorProvider(authorID), ImageFilesystem: storage, ImagePendingTTL: 24 * time.Hour})
+	service, err := contentpostgres.New(contentpostgres.Dependencies{Database: db, Authorizer: integrationAuthorizer{}, CurrentAuthor: module.NewFixedCurrentAuthorProvider(authorID), ImageFilesystem: storage, ImagePolicy: module.DefaultArticleImagePolicy()})
 	if err != nil {
 		t.Fatal(err)
 	}

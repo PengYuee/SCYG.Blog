@@ -41,8 +41,8 @@ type Dependencies struct {
 	ArticleImageDiscarder ArticleImageDiscarder
 	// ArticleImageLoader 提供最终图片有界读取。
 	ArticleImageLoader ArticleImageLoader
-	// ArticleImagePendingTTL 是上传图片等待文章确认的期限；零值使用 24 小时。
-	ArticleImagePendingTTL time.Duration
+	// ArticleImagePolicy 是图片上传、读取与生命周期共享的不可变策略。
+	ArticleImagePolicy ArticleImagePolicy
 }
 
 // Module 是具体的协议无关内容门面。
@@ -58,6 +58,8 @@ type Module struct {
 	imageDiscarder  ArticleImageDiscarder
 	imageLoader     ArticleImageLoader
 	imagePendingTTL time.Duration
+	// imagePolicy 是上传校验与 orphan 生命周期共享的不可变策略。
+	imagePolicy ArticleImagePolicy
 }
 
 // NewModule 安全组装全部内容用例；可选依赖均按最小权限安全降级。
@@ -74,11 +76,13 @@ func NewModule(dependencies Dependencies) (*Module, error) {
 	if nilLike(dependencies.Taxonomies) {
 		return nil, errors.New("内容分类读模型为空")
 	}
-	ttl := dependencies.ArticleImagePendingTTL
-	if ttl <= 0 {
-		ttl = 24 * time.Hour
-	}
-	return &Module{clock: dependencies.Clock, authorizer: AuthorizerOrDeny(dependencies.Authorizer), currentAuthor: CurrentAuthorProviderOrUnavailable(dependencies.CurrentAuthor), unit: dependencies.UnitOfWork, articles: dependencies.Articles, taxonomies: dependencies.Taxonomies, imageStager: articleImageStagerOrUnavailable(dependencies.ArticleImageStager), imagePublisher: articleImagePublisherOrUnavailable(dependencies.ArticleImagePublisher), imageDiscarder: articleImageDiscarderOrUnavailable(dependencies.ArticleImageDiscarder), imageLoader: articleImageLoaderOrUnavailable(dependencies.ArticleImageLoader), imagePendingTTL: ttl}, nil
+	policy := dependencies.ArticleImagePolicy.orDefault()
+	return &Module{clock: dependencies.Clock, authorizer: AuthorizerOrDeny(dependencies.Authorizer), currentAuthor: CurrentAuthorProviderOrUnavailable(dependencies.CurrentAuthor), unit: dependencies.UnitOfWork, articles: dependencies.Articles, taxonomies: dependencies.Taxonomies, imageStager: articleImageStagerOrUnavailable(dependencies.ArticleImageStager), imagePublisher: articleImagePublisherOrUnavailable(dependencies.ArticleImagePublisher), imageDiscarder: articleImageDiscarderOrUnavailable(dependencies.ArticleImageDiscarder), imageLoader: articleImageLoaderOrUnavailable(dependencies.ArticleImageLoader), imagePendingTTL: policy.PendingTTL(), imagePolicy: policy}, nil
+}
+
+// ArticleImagePolicy 返回 REST 与存储必须共享的不可变图片策略。
+func (module *Module) ArticleImagePolicy() ArticleImagePolicy {
+	return module.imagePolicy.orDefault()
 }
 
 func nilLike(value any) bool {

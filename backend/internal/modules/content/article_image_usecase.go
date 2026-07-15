@@ -90,7 +90,7 @@ func (module *Module) UploadArticleImage(ctx context.Context, command UploadArti
 	if command.Content == nil {
 		return ArticleImageResult{}, validation(errors.New("缺少图片文件"))
 	}
-	validated, err := domain.ValidateArticleImage(articleImageContentReader{source: command.Content})
+	validated, err := domain.ValidateArticleImageWithLimits(articleImageContentReader{source: command.Content}, module.imagePolicy.orDefault().validationLimits())
 	if err != nil {
 		return ArticleImageResult{}, validation(err)
 	}
@@ -161,7 +161,7 @@ func (module *Module) CancelArticleImage(ctx context.Context, command DeleteArti
 		if len(images) != 1 || images[0].Metadata().OwnerID.String() != author.String() {
 			return stable(ErrNotFound)
 		}
-		if cancelErr := images[0].Cancel(module.clock.Now().UTC()); cancelErr != nil {
+		if cancelErr := images[0].CancelWithGrace(module.clock.Now().UTC(), module.imagePolicy.orDefault().OrphanGrace()); cancelErr != nil {
 			return stable(cancelErr)
 		}
 		return tx.ArticleImages().Save(txctx, images[0])

@@ -1,0 +1,42 @@
+F2 图片安全配置与 development 写入授权阻塞修复证据
+日期：2026-07-15
+
+一、根因与修复
+- 根因 1：ArticleImages getter 已解析 MaxFileBytes/MaxPixels/MaxDimension/OrphanGrace，但 REST multipart、domain validator、最终文件读取和 orphan 生命周期仍使用 5MiB/25MP/8192/24h 常量。
+- 修复 1：新增不可变 ArticleImagePolicy，由 bootstrap 从已验证 config 构造一次，并显式传入 content postgres/module；REST 从同一 module 取得策略，handler、validator、storage loader、pending/orphan 生命周期共享同源值。
+- 根因 2：bootstrap 只注入 FixedCurrentAuthorProvider，cmd/api 的 nil Authorizer 在 content 中安全降级 DenyAll，development 真实写入仍返回 403。
+- 修复 2：仅当 app.env=development 且 development_author_id 已通过 config validation 时构造 DevelopmentAuthorizer；production/test/缺 ID 仍保持 nil -> DenyAll，不新增生产认证。
+
+二、characterization 与 failing-first
+- PASS（改动前）：go test -count=1 ./internal/platform/config -run Test_ArticleImages_defaults_are_immutable_and_safe
+- PASS（改动前）：go test -count=1 ./internal/modules/content/internal/domain -run "Test_ValidateArticleImage_accepts_exact_input_and_dimension_boundaries|Test_ArticleImage_orphan_restore_requires_monotonic_grace_time"
+- PASS（改动前）：go test -count=1 ./internal/transport/rest/content -run Test_ArticleImageHTTP_rejects_invalid_multipart_without_calling_usecase
+- RED：自定义限制/orphan grace 测试因 ArticleImageValidationLimits、ValidateArticleImageWithLimits、OrphanWithGrace 尚不存在而编译失败。
+- RED：REST 自定义 multipart 文件上限测试因 NewHandler 无 policy 参数而编译失败。
+- RED：bootstrap development 组合根测试暴露固定作者存在但 Authorizer 未注入。
+
+三、最终验证
+- PASS：go test -count=1 ./internal/platform/config
+- PASS：go test -count=1 ./internal/modules/content/internal/domain ./internal/modules/content ./internal/modules/content/postgres
+- PASS：go test -count=1 ./internal/transport/rest/content ./internal/transport/rest
+- PASS：go test -count=1 ./internal/bootstrap ./cmd/api
+- PASS：go test -count=1 ./internal/platform/httpserver
+- PASS：go test -race -shuffle=on -count=1 ./internal/platform/config ./internal/platform/httpserver ./internal/modules/content/internal/domain ./internal/modules/content ./internal/modules/content/postgres ./internal/transport/rest/content ./internal/transport/rest ./internal/bootstrap ./cmd/api
+- PASS：go build ./cmd/api
+- PASS：所有本修复修改 Go 文件逐文件 lsp_diagnostics 零 error；integration build-tag 文件仅报告未启用 tag 的 go list warning。
+- PASS：targeted gofumpt -l 无输出。
+- PASS：真实 Gin strict router 用自定义 2 字节上限拒绝 3 字节 multipart 且未调用上传用例；默认 5MiB 既有 HTTP 用例继续通过。
+- PASS：bootstrap 组合根在 development + 已验证 fixed author 下允许 article create 与 image upload 两个真实 content action；production、test、development 缺 ID 均验证 DenyAll。
+- PASS：自定义 orphan grace 同时覆盖最后引用移除后的 expires_at 与宽限期后恢复拒绝。
+- PASS：自定义 MaxFileBytes 同时覆盖 REST spool、domain validator 与最终 storage loader；MaxPixels/MaxDimension 覆盖 domain 解码前校验。
+
+四、已知无关门禁
+- go test -count=1 ./internal/architecture ./internal/contracttest ./internal/reviewtest 中 contracttest/reviewtest PASS；architecture 因工作树既有 internal/contracttest/documentation_test.go 与 internal/reviewtest/review_test.go mutable singleton dirty 报错，与本修复无关，未修改或纳入提交。
+- 从 staged index tree 导出的隔离副本确认未包含 Todo 8；该副本在编译 blobstorage 时命中 HEAD 已提交的 filesystem.go:164 缺失右花括号，无法独立完成 race/build。当前工作树含他人未提交的一行语法修复，因此上面的 targeted/race/build 均真实 PASS；本提交未越界暂存该修复。
+
+五、cleanup receipt
+- 未启动常驻 API、未占用端口、未创建后台进程。
+- go build 生成的 backend/api.exe 已删除。
+- 测试临时目录均由 t.TempDir/t.Cleanup 回收；未创建真实 QA 数据库、未启动 Docker、未留下图片存储目录。
+- 未 reset/stash/clean，未覆盖他人 dirty；现有 .debug-journal.md 保持未修改。
+- 提交将通过自定义 index blob/hunk 级暂存排除 Todo 8 worker/cleanup、迁移、架构、前端及其他 dirty。

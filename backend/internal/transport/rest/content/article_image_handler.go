@@ -15,8 +15,6 @@ import (
 	module "github.com/PengYuee/SCYG.Blog/backend/internal/modules/content"
 )
 
-const maxArticleImageFileBytes int64 = 5 << 20
-
 type (
 	articleImageService interface {
 		UploadArticleImage(context.Context, module.UploadArticleImage) (module.ArticleImageResult, error)
@@ -169,14 +167,14 @@ func (handler *Handler) spoolUniqueImagePart(ctx context.Context, reader *multip
 		return nil, fmt.Errorf("限制请求临时文件权限：%w", err)
 	}
 	cleanup := func() { _ = temporary.Close(); _ = handler.tempFiles.Remove(path) }
-	written, copyErr := io.Copy(temporary, io.LimitReader(contextPartReader{ctx: ctx, reader: part}, maxArticleImageFileBytes+1))
+	written, copyErr := io.Copy(temporary, io.LimitReader(contextPartReader{ctx: ctx, reader: part}, handler.imagePolicy.MaxFileBytes()+1))
 	if copyErr != nil {
 		cleanup()
 		return nil, fmt.Errorf("暂存图片请求：%w", copyErr)
 	}
-	if written > maxArticleImageFileBytes {
+	if written > handler.imagePolicy.MaxFileBytes() {
 		cleanup()
-		return nil, errors.New("图片超过 5MiB 限制")
+		return nil, fmt.Errorf("图片超过 %d 字节限制", handler.imagePolicy.MaxFileBytes())
 	}
 	if err = temporary.Sync(); err != nil {
 		cleanup()

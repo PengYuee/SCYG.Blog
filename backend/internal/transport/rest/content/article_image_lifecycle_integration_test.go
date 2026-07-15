@@ -56,11 +56,11 @@ func integrationRouter(t *testing.T, db *database.Database, store *blobstorage.F
 	if err != nil {
 		t.Fatal(err)
 	}
-	service, err := contentpostgres.New(contentpostgres.Dependencies{Database: db, Authorizer: integrationAllowAll{}, CurrentAuthor: module.NewFixedCurrentAuthorProvider(authorID), ImageFilesystem: store, ImagePendingTTL: 24 * time.Hour})
+	service, err := contentpostgres.New(contentpostgres.Dependencies{Database: db, Authorizer: integrationAllowAll{}, CurrentAuthor: module.NewFixedCurrentAuthorProvider(authorID), ImageFilesystem: store, ImagePolicy: module.DefaultArticleImagePolicy()})
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler, err := restcontent.NewHandler(service, service)
+	handler, err := restcontent.NewHandler(service, service, module.DefaultArticleImagePolicy())
 	if err != nil {
 		t.Fatal(err)
 	}

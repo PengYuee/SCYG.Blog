@@ -42,7 +42,7 @@ func (module *Module) CreateArticle(ctx context.Context, command CreateArticle) 
 			return saveErr
 		}
 		if len(keys) > 0 {
-			if bindErr := bindArticleImages(transactionContext, transaction.ArticleImages(), article.ID(), keys, identity, module.clock.Now().UTC()); bindErr != nil {
+			if bindErr := module.bindArticleImages(transactionContext, transaction.ArticleImages(), article.ID(), keys, identity, module.clock.Now().UTC()); bindErr != nil {
 				return bindErr
 			}
 		}

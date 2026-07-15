@@ -6,7 +6,6 @@ import (
 	"io"
 	"log/slog"
 	"net"
-	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -52,7 +51,7 @@ type Dependencies struct {
 	// NewMigration 使用独立连接构造迁移检查器。
 	NewMigration func(config.DSN) (Migration, error)
 	// NewContent 构造内容模块。
-	NewContent func(Database, module.Authorizer, module.CurrentAuthorProvider, *blobstorage.Filesystem, time.Duration) (*module.Module, error)
+	NewContent func(Database, module.Authorizer, module.CurrentAuthorProvider, *blobstorage.Filesystem, module.ArticleImagePolicy) (*module.Module, error)
 	// NewREST 构造路由挂载函数。
 	NewREST func(*module.Module, *observability.Health, bool) (func(*gin.Engine) error, error)
 	// NewHTTP 构造通用 HTTP 服务器。

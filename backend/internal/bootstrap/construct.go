@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/jackc/pgx/v5/stdlib"
@@ -44,12 +43,12 @@ func DefaultDependencies() Dependencies {
 			}
 			return runner, nil
 		},
-		NewContent: func(resource Database, authorizer module.Authorizer, currentAuthor module.CurrentAuthorProvider, filesystem *blobstorage.Filesystem, pendingTTL time.Duration) (*module.Module, error) {
+		NewContent: func(resource Database, authorizer module.Authorizer, currentAuthor module.CurrentAuthorProvider, filesystem *blobstorage.Filesystem, imagePolicy module.ArticleImagePolicy) (*module.Module, error) {
 			db, ok := resource.(*database.Database)
 			if !ok {
 				return nil, errors.New("数据库资源类型不正确")
 			}
-			return contentpostgres.New(contentpostgres.Dependencies{Database: db, Authorizer: authorizer, CurrentAuthor: currentAuthor, ImageFilesystem: filesystem, ImagePendingTTL: pendingTTL})
+			return contentpostgres.New(contentpostgres.Dependencies{Database: db, Authorizer: authorizer, CurrentAuthor: currentAuthor, ImageFilesystem: filesystem, ImagePolicy: imagePolicy})
 		},
 		NewREST: func(content *module.Module, health *observability.Health, docs bool) (func(*gin.Engine) error, error) {
 			return rest.New(rest.Options{Content: content, Health: health, DocsEnabled: docs})
@@ -122,15 +121,22 @@ func New(ctx context.Context, options Options, dependencies Dependencies) (*App,
 		return nil, fail(fmt.Errorf("关闭迁移检查器: %w", closeErr))
 	}
 	stack = stack[:len(stack)-1]
+	authorizer := options.Authorizer
 	var currentAuthor module.CurrentAuthorProvider
-	if configuredAuthorID := cfg.ArticleImages().DevelopmentAuthorID(); configuredAuthorID != "" {
+	configuredAuthorID := cfg.ArticleImages().DevelopmentAuthorID()
+	if cfg.App().Environment() == config.EnvironmentDevelopment && configuredAuthorID != "" {
 		authorID, parseErr := module.NewAuthorID(configuredAuthorID)
 		if parseErr != nil {
 			return nil, fail(fmt.Errorf("构造开发作者身份: %w", parseErr))
 		}
 		fixed := module.NewFixedCurrentAuthorProvider(authorID)
 		currentAuthor = fixed
+		if authorizer == nil {
+			authorizer = module.NewDevelopmentAuthorizer(authorID)
+		}
 	}
+	imageConfig := cfg.ArticleImages()
+	imagePolicy := module.NewArticleImagePolicy(module.ArticleImagePolicyOptions{MaxFileBytes: imageConfig.MaxFileBytes(), MaxPixels: imageConfig.MaxPixels(), MaxDimension: imageConfig.MaxDimension(), PendingTTL: imageConfig.PendingTTL(), OrphanGrace: imageConfig.OrphanGrace()})
 	storageDirectory, pathErr := filepath.Abs(cfg.ArticleImages().Directory())
 	if pathErr != nil {
 		return nil, fail(fmt.Errorf("解析图片存储目录: %w", pathErr))
@@ -140,7 +146,7 @@ func New(ctx context.Context, options Options, dependencies Dependencies) (*App,
 		return nil, fail(fmt.Errorf("构造图片存储: %w", storageErr))
 	}
 	stack = append(stack, cleanupStep{name: "图片存储", close: func(context.Context) error { return imageFilesystem.Close() }})
-	content, err := dependencies.NewContent(db, options.Authorizer, currentAuthor, imageFilesystem, cfg.ArticleImages().PendingTTL())
+	content, err := dependencies.NewContent(db, authorizer, currentAuthor, imageFilesystem, imagePolicy)
 	if err != nil {
 		return nil, fail(fmt.Errorf("构造内容模块: %w", err))
 	}

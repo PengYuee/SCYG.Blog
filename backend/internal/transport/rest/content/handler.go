@@ -43,17 +43,18 @@ type CommandService interface {
 
 // Handler 将生成 DTO 适配为协议无关的内容服务。
 type Handler struct {
-	queries   QueryService
-	commands  CommandService
-	tempFiles requestTempOperations
+	queries     QueryService
+	commands    CommandService
+	imagePolicy module.ArticleImagePolicy
+	tempFiles   requestTempOperations
 }
 
 // NewHandler 构造严格的生成式传输适配器；读写服务均不得为 nil。
-func NewHandler(queries QueryService, commands CommandService) (*Handler, error) {
+func NewHandler(queries QueryService, commands CommandService, imagePolicy module.ArticleImagePolicy) (*Handler, error) {
 	if nilService(queries) || nilService(commands) {
 		return nil, errors.New("内容 REST 服务为空")
 	}
-	return &Handler{queries: queries, commands: commands, tempFiles: osRequestTempOperations{}}, nil
+	return &Handler{queries: queries, commands: commands, imagePolicy: imagePolicy, tempFiles: osRequestTempOperations{}}, nil
 }
 
 // Register 挂载契约校验和全部生成式严格内容路由。

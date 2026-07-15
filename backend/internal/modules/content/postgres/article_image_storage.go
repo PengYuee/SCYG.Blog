@@ -10,11 +10,14 @@ import (
 )
 
 // ImageStorage 将固定根文件系统适配为内容模块的领域图片能力。
-type ImageStorage struct{ filesystem *blobstorage.Filesystem }
+type ImageStorage struct {
+	filesystem   *blobstorage.Filesystem
+	maxFileBytes int64
+}
 
 // NewImageStorage 构造图片存储适配器。
-func NewImageStorage(filesystem *blobstorage.Filesystem) *ImageStorage {
-	return &ImageStorage{filesystem: filesystem}
+func NewImageStorage(filesystem *blobstorage.Filesystem, policy module.ArticleImagePolicy) *ImageStorage {
+	return &ImageStorage{filesystem: filesystem, maxFileBytes: policy.MaxFileBytes()}
 }
 
 type imageContentReader struct{ content module.ArticleImageContent }
@@ -39,17 +42,17 @@ func (storage *ImageStorage) DiscardArticleImage(ctx context.Context, token stri
 	return storage.filesystem.DeleteTemp(ctx, token)
 }
 
-// LoadArticleImage 打开、读取并关闭最大 5MiB 的最终图片。
+// LoadArticleImage 使用注入上限打开、读取并关闭最终图片。
 func (storage *ImageStorage) LoadArticleImage(key string) (content []byte, err error) {
 	file, info, err := storage.filesystem.Open(key)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { err = errors.Join(err, file.Close()) }()
-	if info.Size() < 1 || info.Size() > 5<<20 {
+	if info.Size() < 1 || info.Size() > storage.maxFileBytes {
 		return nil, errors.New("图片文件大小不合法")
 	}
-	content, err = io.ReadAll(io.LimitReader(file, 5<<20+1))
+	content, err = io.ReadAll(io.LimitReader(file, storage.maxFileBytes+1))
 	if err != nil {
 		return nil, err
 	}

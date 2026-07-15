@@ -64,7 +64,7 @@ func (service *imageHTTPService) GetArticleImageMedia(context.Context, module.Ge
 func imageRouter(t *testing.T, service *imageHTTPService) http.Handler {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	handler, err := restcontent.NewHandler(service, service)
+	handler, err := restcontent.NewHandler(service, service, module.DefaultArticleImagePolicy())
 	if err != nil {
 		t.Fatal(err)
 	}
