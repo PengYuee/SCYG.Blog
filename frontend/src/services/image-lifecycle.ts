@@ -1,5 +1,5 @@
 import type { MutationGuard } from "@/services/mutation-guard"
-import type { AuthorArticleRepository } from "@/services/author-contracts"
+import type { AuthorArticleRepository, UploadedArticleImage } from "@/services/author-contracts"
 
 /** 编辑器图片上传失败。 */
 export class ImageUploadError extends Error {
@@ -11,8 +11,9 @@ export class ImageUploadError extends Error {
 /** 编辑器图片资源生命周期。 */
 export type ImageLifecycle = {
   /** 上传成功后返回可插入 Markdown 的远程地址。 */ readonly upload: (file: File) => Promise<string>
+  /** 标记失败批次中的成功地址，使文章提交后仍可取消。 */ readonly retainForCancel: (urls: readonly string[]) => void
   /** 保存成功后将临时远程地址标记为已提交。 */ readonly commit: () => void
-  /** 取消编辑并释放全部本地及未提交远程资源。 */ readonly cancel: () => Promise<void>
+  /** 取消编辑并返回全部远程资源是否已释放。 */ readonly cancel: () => Promise<boolean>
   /** 创建受跟踪的本地预览地址。 */ readonly preview: (file: File) => string
 }
 
@@ -22,8 +23,10 @@ export function createImageLifecycle(repository: AuthorArticleRepository, guard:
   const localUrls = new Set<string>()
   /** 每个文件独占的本地预览地址，上传成功只释放自己的预览。 */
   const previewByFile = new WeakMap<File, string>()
-  /** 已上传但尚未随文章提交的远程地址集合。 */
-  const temporaryRemoteUrls = new Set<string>()
+  /** 已上传但尚未随文章提交的结构化远程资源。 */
+  const pendingImages = new Map<string, UploadedArticleImage>()
+  /** 未插入 Markdown 的部分成功资源，文章提交后仍等待取消。 */
+  const retainedImageIds = new Set<string>()
   /** 释放当前编辑会话创建的全部本地对象地址。 */
   const revokeLocalUrls = (): void => {
     for (const url of localUrls) URL.revokeObjectURL(url)
@@ -48,25 +51,29 @@ export function createImageLifecycle(repository: AuthorArticleRepository, guard:
       try {
         const result = await guard.execute("image", () => repository.uploadImage(file))
         if (!result.ok) throw new ImageUploadError(result.error)
-        if (result.value.startsWith("data:")) throw new ImageUploadError("data URL rejected")
+        if (result.value.url.startsWith("data:")) throw new ImageUploadError("data URL rejected")
         revokeFilePreview(file)
-        temporaryRemoteUrls.add(result.value)
-        return result.value
+        pendingImages.set(result.value.id, result.value)
+        return result.value.url
       } catch (error) {
         if (error instanceof ImageUploadError) throw error
         throw new ImageUploadError(error)
       }
     },
-    commit() { temporaryRemoteUrls.clear() },
+    retainForCancel(urls) {
+      const retainedUrls = new Set(urls)
+      for (const image of pendingImages.values()) if (retainedUrls.has(image.url)) retainedImageIds.add(image.id)
+    },
+    commit() {
+      for (const id of pendingImages.keys()) if (!retainedImageIds.has(id)) pendingImages.delete(id)
+    },
     async cancel() {
       revokeLocalUrls()
-      const pendingUrls = [...temporaryRemoteUrls]
-      temporaryRemoteUrls.clear()
-      await Promise.allSettled(pendingUrls.map(async (url) => {
-        const path = url.split(/[?#]/, 1)[0] ?? ""
-        const imageName = path.split("/").filter(Boolean).at(-1)
-        if (imageName !== undefined) await guard.execute("image", () => repository.deleteImage(imageName))
-      }))
+      const pending = [...pendingImages.values()]
+      pendingImages.clear()
+      retainedImageIds.clear()
+      const outcomes = await Promise.allSettled(pending.map((image) => guard.execute("image", () => repository.deleteImage(image.id))))
+      return outcomes.every((outcome) => outcome.status === "fulfilled" && outcome.value.ok && outcome.value.value)
     },
   }
 }

@@ -10,7 +10,22 @@ const emit = defineEmits<{ "update:modelValue": [value: string]; uploadFailure: 
 
 /** 上传图片成功后才把远程地址交给编辑器插入。 */
 async function uploadImages(files: File[], callback: (urls: string[]) => void): Promise<void> {
-  await Promise.all(files.map((file) => props.images.upload(file))).then(callback, () => emit("uploadFailure"))
+  const results = await Promise.allSettled(files.map((file) => props.images.upload(file)))
+  const urls: string[] = []
+  let uploadSucceeded = true
+  for (const result of results) {
+    if (result.status === "rejected") {
+      uploadSucceeded = false
+    } else {
+      urls.push(result.value)
+    }
+  }
+  if (!uploadSucceeded) {
+    props.images.retainForCancel(urls)
+    emit("uploadFailure")
+    return
+  }
+  callback(urls)
 }
 </script>
 

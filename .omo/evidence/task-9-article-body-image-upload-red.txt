@@ -1,0 +1,12 @@
+Todo 9 RED evidence
+===================
+
+Command: pnpm exec vitest run --project unit tests/unit/api-adapters.test.ts
+Phase: before createArticleImageApi implementation
+Expected result: failing-first
+Observed result: FAIL
+
+TypeError: createArticleImageApi is not a function
+Location: tests/unit/api-adapters.test.ts:34
+
+The failure occurred at the intended missing adapter boundary, before product implementation.

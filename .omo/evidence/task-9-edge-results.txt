@@ -1,0 +1,9 @@
+
+Running 4 tests using 1 worker
+
+  ✓  1 [edge-1440x900] › tests\e2e\task-9-article-image.spec.ts:75:1 › Edge 上传 JPEG 后写入远程 URL，保存成功不删除 (1.4s)
+  ✓  2 [edge-1440x900] › tests\e2e\task-9-article-image.spec.ts:104:1 › Edge 上传失败保持正文不变 (744ms)
+  ✓  3 [edge-1440x900] › tests\e2e\task-9-article-image.spec.ts:119:1 › Edge 保存失败与离页均按 id 取消，DELETE 失败由 TTL 兜底 (994ms)
+  ✓  4 [edge-1440x900] › tests\e2e\task-9-article-image.spec.ts:137:1 › Edge 未保存离页按 id 取消待提交图片 (1.4s)
+
+  4 passed (37.4s)

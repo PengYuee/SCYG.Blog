@@ -8,7 +8,7 @@ import RichMarkdownEditor from "@/components/editor/RichMarkdownEditor.vue"
 import { createFakeAuthorRuntime } from "@/services/author-runtime"
 import { ImageUploadError, type ImageLifecycle } from "@/services/image-lifecycle"
 
-vi.mock("md-editor-v3", () => ({ MdEditor: { props: ["modelValue", "onUploadImg"], data: () => ({ uploadFile: new globalThis.File(["x"], "failed.png") }), template: "<div><textarea data-testid='markdown-editor' :value='modelValue' @input='$emit(\"update:modelValue\", $event.target.value)' /><button data-testid='upload-image' @click='onUploadImg([uploadFile], (urls) => $emit(\"update:modelValue\", modelValue + urls[0]))'>上传</button></div>" }, MdPreview: { props: ["modelValue"], template: "<div data-testid='safe-preview'>{{ modelValue }}</div>" }, MdCatalog: { template: "<nav />" } }))
+vi.mock("md-editor-v3", () => ({ MdEditor: { props: ["modelValue", "onUploadImg"], data: () => ({ uploadFile: new globalThis.File(["x"], "failed.png"), secondFile: new globalThis.File(["y"], "second.png") }), template: "<div><textarea data-testid='markdown-editor' :value='modelValue' @input='$emit(\"update:modelValue\", $event.target.value)' /><button data-testid='upload-image' @click='onUploadImg([uploadFile], (urls) => $emit(\"update:modelValue\", modelValue + urls[0]))'>上传</button><button data-testid='upload-two-images' @click='onUploadImg([uploadFile, secondFile], (urls) => $emit(\"update:modelValue\", modelValue + urls[0] + urls[1]))'>上传两张</button></div>" }, MdPreview: { props: ["modelValue"], template: "<div data-testid='safe-preview'>{{ modelValue }}</div>" }, MdCatalog: { template: "<nav />" } }))
 
 /** Headless UI 弹窗在浏览器中依赖的尺寸观察器测试替身。 */
 class TestResizeObserver { observe(): void {} unobserve(): void {} disconnect(): void {} }
@@ -76,6 +76,54 @@ describe("T11 author views", () => {
     expect(wrapper.text()).toContain("文章已保存")
   })
 
+  it("cancels an uploaded image by id when article saving rejects", async () => {
+    // Given: 图片上传成功、文章保存失败的真实生命周期形状。
+    const router = await authorRouter("/author/articles/new")
+    const base = createFakeAuthorRuntime()
+    const create = vi.fn(base.articles.create).mockRejectedValueOnce(new TypeError("save rejected"))
+    const deleteImage = vi.fn(base.articles.deleteImage)
+    const runtime = { ...base, articles: { ...base.articles, create, deleteImage } }
+    const wrapper = mount(ArticleEditorView, { props: { runtime }, global: { plugins: [createPinia(), router] } })
+    await flushPromises()
+    // When: 编辑器先插入远程 URL，再尝试保存文章。
+    await wrapper.get("[data-testid='upload-image']").trigger("click"); await flushPromises()
+    await wrapper.get("[data-testid='save-article']").trigger("click"); await flushPromises()
+    // Then: 失败保存保留正文反馈，并严格取消上传返回的 id。
+    expect(deleteImage).toHaveBeenCalledWith("fake-image-1")
+    expect(wrapper.text()).toContain("保存失败")
+  })
+
+  it("commits uploaded images locally after save without issuing delete on unmount", async () => {
+    // Given: 图片与文章均保存成功的编辑会话。
+    const router = await authorRouter("/author/articles/new")
+    const base = createFakeAuthorRuntime()
+    const deleteImage = vi.fn(base.articles.deleteImage)
+    const runtime = { ...base, articles: { ...base.articles, deleteImage } }
+    const wrapper = mount(ArticleEditorView, { props: { runtime }, global: { plugins: [createPinia(), router] } })
+    await flushPromises()
+    // When: 上传图片、保存文章并离开页面。
+    await wrapper.get("[data-testid='upload-image']").trigger("click"); await flushPromises()
+    await wrapper.get("[data-testid='save-article']").trigger("click"); await flushPromises()
+    wrapper.unmount(); await flushPromises()
+    // Then: commit 只清除本地 pending，卸载不再删除已提交图片。
+    expect(deleteImage).not.toHaveBeenCalled()
+  })
+
+  it("cancels a pending image by id when the editor unmounts", async () => {
+    // Given: 已上传但尚未保存文章的编辑会话。
+    const router = await authorRouter("/author/articles/new")
+    const base = createFakeAuthorRuntime()
+    const deleteImage = vi.fn(base.articles.deleteImage)
+    const runtime = { ...base, articles: { ...base.articles, deleteImage } }
+    const wrapper = mount(ArticleEditorView, { props: { runtime }, global: { plugins: [createPinia(), router] } })
+    await flushPromises()
+    await wrapper.get("[data-testid='upload-image']").trigger("click"); await flushPromises()
+    // When: 用户未保存就离开编辑器。
+    wrapper.unmount(); await flushPromises()
+    // Then: 生命周期严格使用上传返回的 id 取消待提交图片。
+    expect(deleteImage).toHaveBeenCalledWith("fake-image-1")
+  })
+
   it("converges editor initialization failure to a retryable state", async () => {
     // Given: 详情首次失败、重试成功的编辑运行时。
     const router = await authorRouter("/author/articles/42/edit")
@@ -108,12 +156,31 @@ describe("T11 author views", () => {
 
   it("does not emit a markdown update when image upload rejects", async () => {
     // Given: 保持原文且上传失败的受控编辑器。
-    const images: ImageLifecycle = { preview: () => "blob:failed", async upload() { throw new ImageUploadError("upload rejected") }, commit() {}, async cancel() {} }
+    const images: ImageLifecycle = { preview: () => "blob:failed", async upload() { throw new ImageUploadError("upload rejected") }, retainForCancel() {}, commit() {}, async cancel() { return true } }
     const wrapper = mount(RichMarkdownEditor, { props: { modelValue: "原始正文", images } })
     // When: md-editor 发起图片上传。
     await wrapper.get("[data-testid='upload-image']").trigger("click"); await flushPromises()
     // Then: 失败事件可见，但受控 Markdown 从未更新。
     expect(wrapper.emitted("uploadFailure")).toHaveLength(1)
+    expect(wrapper.emitted("update:modelValue")).toBeUndefined()
+  })
+
+  it("retains successful URLs for cancellation when a sibling upload fails", async () => {
+    // Given: 同批第一张成功、第二张失败的受控编辑器。
+    const retainForCancel = vi.fn()
+    let uploadCount = 0
+    const images: ImageLifecycle = {
+      preview: () => "blob:partial",
+      async upload() { uploadCount += 1; if (uploadCount === 2) throw new ImageUploadError("second rejected"); return "https://api.test/first.png" },
+      retainForCancel,
+      commit() {},
+      async cancel() { return true },
+    }
+    const wrapper = mount(RichMarkdownEditor, { props: { modelValue: "原始正文", images } })
+    // When: md-editor 发起两张图片上传。
+    await wrapper.get("[data-testid='upload-two-images']").trigger("click"); await flushPromises()
+    // Then: 正文不更新，成功 URL 被标记为提交后仍可取消。
+    expect(retainForCancel).toHaveBeenCalledWith(["https://api.test/first.png"])
     expect(wrapper.emitted("update:modelValue")).toBeUndefined()
   })
 })

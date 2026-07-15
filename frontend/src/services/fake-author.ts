@@ -15,7 +15,10 @@ export function createFakeAuthorRepositories(): { readonly articles: AuthorArtic
     async detail() { return detail },
     async create(_request: ArticleWrite) { calls.articleWrites += 1; return true },
     async update(_request: ArticleUpdate) { calls.articleWrites += 1; return true },
-    async uploadImage(file) { calls.uploads += 1; return `https://fake.local/images/${encodeURIComponent(file.name)}` },
+    async uploadImage(file) {
+      calls.uploads += 1
+      return { id: `fake-image-${calls.uploads}`, url: `https://fake.local/images/${encodeURIComponent(file.name)}`, expiresAt: "2026-07-14T00:00:00Z" }
+    },
     async deleteImage() { calls.imageDeletes += 1; return true },
   }
   const taxonomy: AuthorTaxonomyRepository = {

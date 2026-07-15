@@ -1,0 +1,57 @@
+Todo 9 DoneClaim
+=================
+
+范围
+- 仅修改 frontend transport、正文图片 API adapter、作者 contracts/runtime、ImageLifecycle、RichMarkdownEditor、ArticleEditorView 与对应测试。
+- 未修改 backend、OpenAPI/generated、Todo 8 或 Todo 10 文件。
+
+实现证据
+- HttpTransport 请求体显式支持 FormData；adapter 调用 POST 时仅传 FormData，不设置 Content-Type，Edge 捕获到 multipart/form-data; boundary=...。
+- createArticleImageApi 将外部响应解析为 {id,url,expiresAt}，DELETE 路径严格使用响应 id。
+- ImageLifecycle 以 Map<id, UploadedArticleImage> 跟踪 pending；失败批次成功 URL 标记为 retainForCancel，文章 commit 后仍能在离页时取消。
+- commit 仅清本地 pending；保存失败和组件卸载调用 cancel；DELETE 失败由后端 expiresAt/TTL 收敛。
+- blob preview 保留；data URL 单测继续拒绝。
+- 仅 import.meta.env.MODE=development 且 VITE_FAKE_AUTHOR=true 时 createAuthorRuntime 可创建真实文章/图片 runtime；production 不构造固定作者。
+- create/update 继续发送现有 Markdown body 合同，未增加 images 字段。
+
+TDD
+- Characterization（产品代码未改）：pnpm test:unit -- image-lifecycle.test.ts，7/7 通过。
+- RED：.omo/evidence/task-9-article-body-image-upload-red.txt，目标失败为 createArticleImageApi is not a function。
+- GREEN targeted 重复两轮及最终新鲜轮：unit 11/11，component 13/13。
+
+Edge 手工/自动化 QA
+- 命令：set VITE_FAKE_AUTHOR=true && pnpm exec playwright test tests/e2e/task-9-article-image.spec.ts --project=edge-1440x900
+- 结果：4/4 通过，见 .omo/evidence/task-9-edge-results.txt。
+- JPEG：真实文件输入 -> 远程 URL 写入 Markdown -> 保存成功 -> 无 DELETE。
+- 媒体夹具按上传 URL 的 `.jpg`/`.png` 返回真实可解码字节与正确 Content-Type；成功场景确认 `complete=true`、`naturalWidth>0`。
+- 成功代表场景监听 console error、pageerror、requestfailed，结果均为空。
+- PNG：上传 500 -> 中文“图片上传失败” -> 正文保持不变。
+- 保存失败：按响应 id DELETE；DELETE 500 后显示中文“临时图片将由服务端过期清理”，本地集合收敛并由 TTL 兜底。
+- 未保存离页：通过 SPA RouterLink 卸载，按响应 id DELETE。
+- 截图：task-9-edge-upload-save.png、task-9-edge-upload-failure.png、task-9-edge-save-failure-cleanup.png。
+
+完整门禁
+- pnpm test:unit：本任务测试通过；完整套件 102 passed / 3 failed / 3 skipped。3 个失败来自并行 dirty 基线：api-boundary 页码预期、已删除 searchLoadedArticles、T12 旧文案扫描。
+- pnpm test:component：本任务测试通过；完整套件 58 passed / 15 failed，均位于并行公共 UI/Todo 8 文件（Home、T6、T9、IntersectionObserver 测试环境）。
+- pnpm typecheck：仅失败于并行文件 src/theme/theme.ts:49 TS4111。
+- pnpm build：同一 src/theme/theme.ts:49 TS4111 在 vite build 前阻断。
+- lsp_diagnostics：已逐文件调用；本机 TypeScript/Vue LSP 未安装且用户此前已拒绝安装。vue-tsc 未报告任何 Todo 9 文件错误。
+- git diff --check：Todo 9 文件通过。
+- 纯 LOC：所有修改/新增文件均低于 250，最高 t11-author-view.test.ts 为 126。
+
+风险探测
+- malformed_input：Zod 严格解析图片响应，data URL 拒绝测试通过。
+- stale_state：结构化 pending、commit、保存失败、卸载与部分成功测试通过。
+- dirty_worktree：开始前记录大量 backend 与 Todo 8 frontend 修改；未回滚、覆盖或格式化这些文件。
+- hung_commands：全部命令设置 120-180 秒上限；Playwright webServer 自动终止。
+- flaky_tests：targeted 重复两轮及修复后新鲜轮通过；最终 Edge 新鲜运行 4/4 通过。
+- misleading_success_output：同时断言 multipart header、文章请求 body、DELETE id、DOM/Toast 与截图。
+- cancel_resume：保存失败释放 saving 锁，组件测试验证可重试；cancel 使用 allSettled。
+- repeated_interruptions：不适用，本任务未使用 continuation/后台恢复机制。
+
+Cleanup receipt
+- Playwright 受控 API 仅使用 page.route，无数据库、临时媒体或后端进程。
+- Edge context 与 Vite webServer 由 Playwright 正常关闭。
+- 最终端口检查：4173 clean；8080 clean。
+- Playwright 使用自管临时 Edge profile，测试结束后 context/profile 随 runner 释放。
+- 未创建容器、数据库、后端进程或持久化上传对象。

@@ -1,5 +1,6 @@
 import { inject, type InjectionKey } from "vue"
 import { createArticleApi } from "@/request/api/article"
+import { createArticleImageApi } from "@/request/api/article-image"
 import { createArticleTypeApi } from "@/request/api/article-type"
 import { createTagApi } from "@/request/api/tag"
 import type { HttpTransport } from "@/request/transport"
@@ -7,6 +8,7 @@ import type { HttpTransport } from "@/request/transport"
 /** 应用范围内复用的类型化 API 服务容器。 */
 export type ApiServices = {
   /** 文章 API 适配器。 */ readonly article: ReturnType<typeof createArticleApi>
+  /** 正文图片 API 适配器。 */ readonly articleImage: ReturnType<typeof createArticleImageApi>
   /** 文章分类 API 适配器。 */ readonly articleType: ReturnType<typeof createArticleTypeApi>
   /** 标签 API 适配器。 */ readonly tag: ReturnType<typeof createTagApi>
 }
@@ -18,6 +20,7 @@ export const apiServicesKey: InjectionKey<ApiServices> = Symbol("api-services")
 export function createApiServices(client: HttpTransport, serverUrl: string): ApiServices {
   return {
     article: createArticleApi(client, serverUrl),
+    articleImage: createArticleImageApi(client, serverUrl),
     articleType: createArticleTypeApi(client, serverUrl),
     tag: createTagApi(client),
   }

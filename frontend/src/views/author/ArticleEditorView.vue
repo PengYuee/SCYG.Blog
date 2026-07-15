@@ -5,7 +5,8 @@ import ArticleSettings from "@/components/editor/ArticleSettings.vue"
 import RichMarkdownEditor from "@/components/editor/RichMarkdownEditor.vue"
 import MarkdownRenderer from "@/components/article/MarkdownRenderer.vue"
 import AppToast from "@/components/shared/AppToast.vue"
-import { createFakeAuthorRuntime, type AuthorRuntime } from "@/services/author-runtime"
+import { useApiServices } from "@/request/api-services"
+import { createAuthorRuntime, createFakeAuthorRuntime, type AuthorRuntime } from "@/services/author-runtime"
 import { createImageLifecycle } from "@/services/image-lifecycle"
 import { useEditorDraftStore } from "@/stores/editor-draft"
 import { useUiStore } from "@/stores/ui"
@@ -13,7 +14,8 @@ import type { ArticleType, Tag } from "@/types/taxonomy"
 
 /** 测试可注入的作者运行时；路由页面默认使用显式 Fake。 */
 const props = defineProps<{ readonly runtime?: AuthorRuntime }>()
-/** 当前作者运行时。 */ const runtime = props.runtime ?? createFakeAuthorRuntime()
+/** 当前作者运行时；测试保持隔离 Fake，开发可信作者页面使用真实 API。 */
+const runtime = props.runtime ?? (import.meta.env.MODE === "test" ? createFakeAuthorRuntime() : createAuthorRuntime(useApiServices()))
 /** 当前编辑草稿。 */ const draftStore = useEditorDraftStore()
 /** 全局反馈。 */ const ui = useUiStore()
 /** 路由参数。 */ const route = useRoute()
@@ -39,8 +41,10 @@ async function initialize(): Promise<void> {
   )
 }
 onMounted(initialize)
+/** 图片取消失败时告知用户由服务端 TTL 继续兜底。 */
+const showImageCleanupFallback = (): void => { ui.showToast("error", "图片取消失败", "临时图片将由服务端过期清理") }
 /** 离开未保存编辑器时清理临时图片。 */
-onBeforeUnmount(() => { void images.cancel() })
+onBeforeUnmount(() => { void images.cancel().then((cleaned) => { if (!cleaned) showImageCleanupFallback() }) })
 
 /** 保存文章并阻止重复提交。 */
 async function save(): Promise<void> {
@@ -49,10 +53,10 @@ async function save(): Promise<void> {
   const write = draftStore.toWrite()
   const result = await Promise.resolve().then(() => runtime.guard.execute("article", () => Number.isInteger(id) && id > 0 ? runtime.articles.update({ id, ...write }) : runtime.articles.create(write))).then(
     (value) => value,
-    () => { draftStore.failSave(); ui.showToast("error", "保存失败", "草稿仍在，请重试保存"); return null },
+    async () => { draftStore.failSave(); const cleaned = await images.cancel(); if (!cleaned) showImageCleanupFallback(); ui.showToast("error", "保存失败", "草稿仍在，请重试保存"); return null },
   )
   if (result === null) return
-  if (!result.ok) { draftStore.failSave(); ui.showToast("error", "保存被阻止", result.error.reason); return }
+  if (!result.ok) { draftStore.failSave(); const cleaned = await images.cancel(); if (!cleaned) showImageCleanupFallback(); ui.showToast("error", "保存被阻止", result.error.reason); return }
   images.commit(); draftStore.finishSave(); ui.showToast("success", "文章已保存")
 }
 </script>

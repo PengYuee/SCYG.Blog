@@ -45,11 +45,12 @@ describe("API services provider", () => {
     // When: 父组件挂载。
     mount(Parent, { global: { provide: { [apiServicesKey]: services } } })
 
-    // Then: 容器及三个适配器均保持引用身份。
+    // Then: 容器及四个适配器均保持引用身份。
     expect(observedServices).toHaveLength(2)
     expect(observedServices[0]).toBe(services)
     expect(observedServices[1]).toBe(services)
     expect(observedServices[0]?.article).toBe(observedServices[1]?.article)
+    expect(observedServices[0]?.articleImage).toBe(observedServices[1]?.articleImage)
     expect(observedServices[0]?.articleType).toBe(observedServices[1]?.articleType)
     expect(observedServices[0]?.tag).toBe(observedServices[1]?.tag)
   })
