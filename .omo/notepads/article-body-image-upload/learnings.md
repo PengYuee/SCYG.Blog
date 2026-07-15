@@ -25,3 +25,9 @@
 - 固定开发作者身份与开发授权必须成对注入：仅有 CurrentAuthorProvider 仍会被 nil Authorizer 的 DenyAll 阻断；启用条件必须同时是 development 环境和已验证固定作者 ID。
 - production/test/缺 ID 的组合根测试必须直接观察传入 content 的 Authorizer，并经 AuthorizerOrDeny 验证 permission_denied，避免只测配置解析而漏掉真实执行链。
 - 混合 dirty 文件不能整文件暂存；应从 HEAD 重建仅含 F2 的目标 blob 写入 index。导出 index tree 后还要区分 F2 回归与 HEAD 已提交语法缺陷，不能为追求绿灯越界带入 Todo 8 的修复 hunk。
+
+## 2026-07-15 OpenAPI 中文文档正式恢复
+
+- 914ec8d^ 与 13ba4f9 的权威规范及全量文档门禁完全一致，可作为中文原文；当前图片 path、multipart、ETag/304 与 DTO 也未发生后续结构漂移。
+- 文档恢复必须先恢复全量遍历与精确枚举门禁做红测，再恢复权威 YAML，最后只用 task api:generate 和 task api:docs:sync 派生产物。
+- source/apidocs SHA256 一致、generate/docs freshness、contracttest 与 StrictServerInterface 三图片操作共同证明合同和生成结果未回退。

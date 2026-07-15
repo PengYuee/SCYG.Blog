@@ -198,41 +198,73 @@ func (e ListTagsParamsSort) Valid() bool {
 	}
 }
 
-// Article defines model for Article.
+// Article 文章资源，包含所属类型、标签关系、状态、计数、版本和 UTC 时间。
 type Article struct {
+	// ArticleTypeID 资源正整数标识，示例 `1`。
 	ArticleTypeID PositiveID `json:"article_type_id"`
-	Comment       int64      `json:"comment"`
-	Content       string     `json:"content"`
 
-	// CreatedAt UTC timestamp.
-	CreatedAt time.Time  `json:"created_at"`
-	Digest    string     `json:"digest"`
-	ID        PositiveID `json:"id"`
-	Slug      string     `json:"slug"`
+	// Comment 评论次数，非负。
+	Comment int64 `json:"comment"`
 
-	// Status Draft=1, Published=2, Archived=3.
-	Status  ArticleStatus `json:"status"`
-	Support int64         `json:"support"`
-	TagIds  []PositiveID  `json:"tag_ids"`
-	Title   string        `json:"title"`
+	// Content 文章正文。
+	Content string `json:"content"`
 
-	// UpdatedAt UTC timestamp when present.
+	// CreatedAt UTC 创建时间，例如 `2026-01-01T00:00:00Z`。
+	CreatedAt time.Time `json:"created_at"`
+
+	// Digest 文章摘要。
+	Digest string `json:"digest"`
+
+	// ID 资源正整数标识，示例 `1`。
+	ID PositiveID `json:"id"`
+
+	// Slug 规范短标识，例如 `hello-world`。
+	Slug string `json:"slug"`
+
+	// Status 文章状态：`1` 草稿，`2` 已发布，`3` 已归档。
+	Status ArticleStatus `json:"status"`
+
+	// Support 获赞次数，非负。
+	Support int64 `json:"support"`
+
+	// TagIds 关联标签正整数标识数组，值不重复。
+	TagIds []PositiveID `json:"tag_ids"`
+
+	// Title 标题。
+	Title string `json:"title"`
+
+	// UpdatedAt UTC 更新时间，从未更新时为 `null`。
 	UpdatedAt *time.Time `json:"updated_at"`
-	Version   Version    `json:"version"`
-	Visited   int64      `json:"visited"`
+
+	// Version 资源当前正整数版本，用于并发控制，示例 `1`。
+	Version Version `json:"version"`
+
+	// Visited 访问次数，非负。
+	Visited int64 `json:"visited"`
 }
 
-// ArticleCreate defines model for ArticleCreate.
+// ArticleCreate 创建文章的完整输入。
 type ArticleCreate struct {
+	// ArticleTypeID 资源正整数标识，示例 `1`。
 	ArticleTypeID PositiveID `json:"article_type_id"`
-	Content       string     `json:"content"`
-	Digest        string     `json:"digest"`
-	Slug          string     `json:"slug"`
 
-	// Status Draft=1, Published=2, Archived=3.
+	// Content 文章正文。
+	Content string `json:"content"`
+
+	// Digest 文章摘要。
+	Digest string `json:"digest"`
+
+	// Slug 规范短标识，例如 `hello-world`。
+	Slug string `json:"slug"`
+
+	// Status 文章状态：`1` 草稿，`2` 已发布，`3` 已归档。
 	Status ArticleStatus `json:"status"`
-	TagIds []PositiveID  `json:"tag_ids"`
-	Title  string        `json:"title"`
+
+	// TagIds 关联标签正整数标识数组，值不重复。
+	TagIds []PositiveID `json:"tag_ids"`
+
+	// Title 标题。
+	Title string `json:"title"`
 }
 
 // ArticleImage 新上传的待提交正文图片资源。
@@ -277,124 +309,190 @@ type ArticleImageStatus string
 // ArticleImageStorageKey 受控存储键，由 32 位小写十六进制字符串和 `.jpg` 或 `.png` 扩展名组成。
 type ArticleImageStorageKey = string
 
-// ArticleList defines model for ArticleList.
+// ArticleList 文章分页响应信封。
 type ArticleList struct {
+	// Items 当前页资源数组。
 	Items []Article `json:"items"`
-	Page  PageInfo  `json:"page"`
+
+	// Page 分页页码、每页数量和总量信息。
+	Page PageInfo `json:"page"`
 }
 
-// ArticlePatch defines model for ArticlePatch.
+// ArticlePatch 文章局部更新输入，至少提供一个字段，其他字段保持不变。
 type ArticlePatch struct {
+	// ArticleTypeID 资源正整数标识，示例 `1`。
 	ArticleTypeID *PositiveID `json:"article_type_id,omitempty"`
-	Content       *string     `json:"content,omitempty"`
-	Digest        *string     `json:"digest,omitempty"`
-	Slug          *string     `json:"slug,omitempty"`
 
-	// Status Draft=1, Published=2, Archived=3.
+	// Content 文章正文。
+	Content *string `json:"content,omitempty"`
+
+	// Digest 文章摘要。
+	Digest *string `json:"digest,omitempty"`
+
+	// Slug 规范短标识，例如 `hello-world`。
+	Slug *string `json:"slug,omitempty"`
+
+	// Status 文章状态：`1` 草稿，`2` 已发布，`3` 已归档。
 	Status *ArticleStatus `json:"status,omitempty"`
-	TagIds *[]PositiveID  `json:"tag_ids,omitempty"`
-	Title  *string        `json:"title,omitempty"`
+
+	// TagIds 关联标签正整数标识数组，值不重复。
+	TagIds *[]PositiveID `json:"tag_ids,omitempty"`
+
+	// Title 标题。
+	Title *string `json:"title,omitempty"`
 }
 
-// ArticleStatus Draft=1, Published=2, Archived=3.
+// ArticleStatus 文章状态：`1` 草稿，`2` 已发布，`3` 已归档。
 type ArticleStatus int32
 
-// ArticleType defines model for ArticleType.
+// ArticleType 文章类型资源，包含可空图片、非负菜单排序值、版本和 UTC 时间。
 type ArticleType struct {
-	// CreatedAt UTC timestamp.
-	CreatedAt time.Time  `json:"created_at"`
-	ID        PositiveID `json:"id"`
-	Image     *string    `json:"image"`
-	Meun      int32      `json:"meun"`
-	Name      string     `json:"name"`
+	// CreatedAt UTC 创建时间，例如 `2026-01-01T00:00:00Z`。
+	CreatedAt time.Time `json:"created_at"`
 
-	// UpdatedAt UTC timestamp when present.
+	// ID 资源正整数标识，示例 `1`。
+	ID PositiveID `json:"id"`
+
+	// Image 图片地址，未设置时为 `null`，例如 `https://example.com/type.png`。
+	Image *string `json:"image"`
+
+	// Meun 非负菜单排序值，不约定排序方向。
+	Meun int32 `json:"meun"`
+
+	// Name 资源名称。
+	Name string `json:"name"`
+
+	// UpdatedAt UTC 更新时间，从未更新时为 `null`。
 	UpdatedAt *time.Time `json:"updated_at"`
-	Version   Version    `json:"version"`
+
+	// Version 资源当前正整数版本，用于并发控制，示例 `1`。
+	Version Version `json:"version"`
 }
 
-// ArticleTypeCreate defines model for ArticleTypeCreate.
+// ArticleTypeCreate 创建文章类型的输入。
 type ArticleTypeCreate struct {
+	// Image 图片地址，未设置时为 `null`，例如 `https://example.com/type.png`。
 	Image *string `json:"image,omitempty"`
-	Meun  int32   `json:"meun"`
-	Name  string  `json:"name"`
-}
 
-// ArticleTypeList defines model for ArticleTypeList.
-type ArticleTypeList struct {
-	Items []ArticleType `json:"items"`
-	Page  PageInfo      `json:"page"`
-}
+	// Meun 非负菜单排序值，不约定排序方向。
+	Meun int32 `json:"meun"`
 
-// ArticleTypePatch defines model for ArticleTypePatch.
-type ArticleTypePatch struct {
-	Image *string `json:"image,omitempty"`
-	Meun  *int32  `json:"meun,omitempty"`
-	Name  *string `json:"name,omitempty"`
-}
-
-// PageInfo defines model for PageInfo.
-type PageInfo struct {
-	Number     int32 `json:"number"`
-	Size       int32 `json:"size"`
-	TotalItems int64 `json:"total_items"`
-	TotalPages int64 `json:"total_pages"`
-}
-
-// PositiveID defines model for PositiveID.
-type PositiveID = int64
-
-// Problem defines model for Problem.
-type Problem struct {
-	Detail string `json:"detail"`
-
-	// Errors Field-specific validation details; empty for non-validation problems.
-	Errors    map[string][]string `json:"errors"`
-	Instance  string              `json:"instance"`
-	RequestID string              `json:"request_id"`
-	Status    int32               `json:"status"`
-	Title     string              `json:"title"`
-	Type      string              `json:"type"`
-}
-
-// Tag defines model for Tag.
-type Tag struct {
-	// CreatedAt UTC timestamp.
-	CreatedAt time.Time  `json:"created_at"`
-	ID        PositiveID `json:"id"`
-	Name      string     `json:"name"`
-
-	// UpdatedAt UTC timestamp when present.
-	UpdatedAt *time.Time `json:"updated_at"`
-	Version   Version    `json:"version"`
-}
-
-// TagCreate defines model for TagCreate.
-type TagCreate struct {
+	// Name 资源名称。
 	Name string `json:"name"`
 }
 
-// TagList defines model for TagList.
-type TagList struct {
-	Items []Tag    `json:"items"`
-	Page  PageInfo `json:"page"`
+// ArticleTypeList 文章类型分页响应信封。
+type ArticleTypeList struct {
+	// Items 当前页资源数组。
+	Items []ArticleType `json:"items"`
+
+	// Page 分页页码、每页数量和总量信息。
+	Page PageInfo `json:"page"`
 }
 
-// TagPatch defines model for TagPatch.
-type TagPatch struct {
+// ArticleTypePatch 文章类型局部更新输入，至少提供一个字段。
+type ArticleTypePatch struct {
+	// Image 图片地址，未设置时为 `null`，例如 `https://example.com/type.png`。
+	Image *string `json:"image,omitempty"`
+
+	// Meun 非负菜单排序值，不约定排序方向。
+	Meun *int32 `json:"meun,omitempty"`
+
+	// Name 资源名称。
 	Name *string `json:"name,omitempty"`
 }
 
-// Version defines model for Version.
+// PageInfo 分页页码、每页数量和总量信息。
+type PageInfo struct {
+	// Number 从 `1` 开始的当前页码。
+	Number int32 `json:"number"`
+
+	// Size 每页数量，范围 `1` 至 `100`。
+	Size int32 `json:"size"`
+
+	// TotalItems 符合条件的资源总数，可为 `0`。
+	TotalItems int64 `json:"total_items"`
+
+	// TotalPages 总页数，无结果时为 `0`。
+	TotalPages int64 `json:"total_pages"`
+}
+
+// PositiveID 资源正整数标识，示例 `1`。
+type PositiveID = int64
+
+// Problem 错误响应信封，描述请求失败原因。
+type Problem struct {
+	// Detail 具体错误说明。
+	Detail string `json:"detail"`
+
+	// Errors 字段校验错误明细，非校验错误时为空。
+	Errors map[string][]string `json:"errors"`
+
+	// Instance 发生错误的请求 URI。
+	Instance string `json:"instance"`
+
+	// RequestID 请求追踪标识。
+	RequestID string `json:"request_id"`
+
+	// Status 文章状态或问题的 HTTP 状态码。
+	Status int32 `json:"status"`
+
+	// Title 标题。
+	Title string `json:"title"`
+
+	// Type 问题类型 URI。
+	Type string `json:"type"`
+}
+
+// Tag 标签资源，包含版本和 UTC 时间。
+type Tag struct {
+	// CreatedAt UTC 创建时间，例如 `2026-01-01T00:00:00Z`。
+	CreatedAt time.Time `json:"created_at"`
+
+	// ID 资源正整数标识，示例 `1`。
+	ID PositiveID `json:"id"`
+
+	// Name 资源名称。
+	Name string `json:"name"`
+
+	// UpdatedAt UTC 更新时间，从未更新时为 `null`。
+	UpdatedAt *time.Time `json:"updated_at"`
+
+	// Version 资源当前正整数版本，用于并发控制，示例 `1`。
+	Version Version `json:"version"`
+}
+
+// TagCreate 创建标签的输入。
+type TagCreate struct {
+	// Name 资源名称。
+	Name string `json:"name"`
+}
+
+// TagList 标签分页响应信封。
+type TagList struct {
+	// Items 当前页资源数组。
+	Items []Tag `json:"items"`
+
+	// Page 分页页码、每页数量和总量信息。
+	Page PageInfo `json:"page"`
+}
+
+// TagPatch 标签局部更新输入。
+type TagPatch struct {
+	// Name 资源名称。
+	Name *string `json:"name,omitempty"`
+}
+
+// Version 资源当前正整数版本，用于并发控制，示例 `1`。
 type Version = int64
 
-// ArticleID defines model for ArticleID.
+// ArticleID 资源正整数标识，示例 `1`。
 type ArticleID = PositiveID
 
-// ArticleTypeFilter defines model for ArticleTypeFilter.
+// ArticleTypeFilter 资源正整数标识，示例 `1`。
 type ArticleTypeFilter = PositiveID
 
-// ArticleTypeID defines model for ArticleTypeID.
+// ArticleTypeID 资源正整数标识，示例 `1`。
 type ArticleTypeID = PositiveID
 
 // IfMatch defines model for IfMatch.
@@ -409,34 +507,34 @@ type PageSize = int32
 // SearchFilter defines model for SearchFilter.
 type SearchFilter = string
 
-// Sort defines model for Sort.
+// Sort `created_at` 创建时间升序，`-created_at` 创建时间降序，`updated_at` 更新时间升序，`-updated_at` 更新时间降序，`title` 标题升序，`-title` 标题降序。
 type Sort string
 
-// TagFilter defines model for TagFilter.
+// TagFilter 资源正整数标识，示例 `1`。
 type TagFilter = PositiveID
 
-// TagID defines model for TagID.
+// TagID 资源正整数标识，示例 `1`。
 type TagID = PositiveID
 
-// BadRequest defines model for BadRequest.
+// BadRequest 错误响应信封，描述请求失败原因。
 type BadRequest = Problem
 
-// Conflict defines model for Conflict.
+// Conflict 错误响应信封，描述请求失败原因。
 type Conflict = Problem
 
-// Forbidden defines model for Forbidden.
+// Forbidden 错误响应信封，描述请求失败原因。
 type Forbidden = Problem
 
-// InternalError defines model for InternalError.
+// InternalError 错误响应信封，描述请求失败原因。
 type InternalError = Problem
 
-// NotFound defines model for NotFound.
+// NotFound 错误响应信封，描述请求失败原因。
 type NotFound = Problem
 
-// PreconditionFailed defines model for PreconditionFailed.
+// PreconditionFailed 错误响应信封，描述请求失败原因。
 type PreconditionFailed = Problem
 
-// PreconditionRequired defines model for PreconditionRequired.
+// PreconditionRequired 错误响应信封，描述请求失败原因。
 type PreconditionRequired = Problem
 
 // CreateArticleImageMultipartBody defines parameters for CreateArticleImage.
@@ -447,10 +545,17 @@ type CreateArticleImageMultipartBody struct {
 
 // ListArticleTypesParams defines parameters for ListArticleTypes.
 type ListArticleTypesParams struct {
-	Page     *Page                       `form:"page,omitempty" json:"page,omitempty"`
-	PageSize *PageSize                   `form:"page_size,omitempty" json:"page_size,omitempty"`
-	Sort     *ListArticleTypesParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
-	Q        *SearchFilter               `form:"q,omitempty" json:"q,omitempty"`
+	// Page 从 `1` 开始的页码，默认 `1`。
+	Page *Page `form:"page,omitempty" json:"page,omitempty"`
+
+	// PageSize 每页数量，默认 `20`，范围 `1` 至 `100`。
+	PageSize *PageSize `form:"page_size,omitempty" json:"page_size,omitempty"`
+
+	// Sort 排序：`created_at` 创建时间升序，`-created_at` 降序，`updated_at` 更新时间升序，`-updated_at` 降序，`title` 标题升序，`-title` 降序。
+	Sort *ListArticleTypesParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
+
+	// Q 按关键词筛选可搜索文本，例如 `Go`。
+	Q *SearchFilter `form:"q,omitempty" json:"q,omitempty"`
 }
 
 // ListArticleTypesParamsSort defines parameters for ListArticleTypes.
@@ -458,24 +563,35 @@ type ListArticleTypesParamsSort string
 
 // DeleteArticleTypeParams defines parameters for DeleteArticleType.
 type DeleteArticleTypeParams struct {
-	// IfMatch Strong entity tag containing the current positive Version.
+	// IfMatch 强实体标签，内容为当前正整数版本，必须原样提交，例如 `"1"`。
 	IfMatch IfMatch `json:"If-Match"`
 }
 
 // PatchArticleTypeParams defines parameters for PatchArticleType.
 type PatchArticleTypeParams struct {
-	// IfMatch Strong entity tag containing the current positive Version.
+	// IfMatch 强实体标签，内容为当前正整数版本，必须原样提交，例如 `"1"`。
 	IfMatch IfMatch `json:"If-Match"`
 }
 
 // ListArticlesParams defines parameters for ListArticles.
 type ListArticlesParams struct {
-	Page          *Page                   `form:"page,omitempty" json:"page,omitempty"`
-	PageSize      *PageSize               `form:"page_size,omitempty" json:"page_size,omitempty"`
-	Sort          *ListArticlesParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
-	ArticleTypeID *ArticleTypeFilter      `form:"article_type_id,omitempty" json:"article_type_id,omitempty"`
-	TagID         *TagFilter              `form:"tag_id,omitempty" json:"tag_id,omitempty"`
-	Q             *SearchFilter           `form:"q,omitempty" json:"q,omitempty"`
+	// Page 从 `1` 开始的页码，默认 `1`。
+	Page *Page `form:"page,omitempty" json:"page,omitempty"`
+
+	// PageSize 每页数量，默认 `20`，范围 `1` 至 `100`。
+	PageSize *PageSize `form:"page_size,omitempty" json:"page_size,omitempty"`
+
+	// Sort 排序：`created_at` 创建时间升序，`-created_at` 降序，`updated_at` 更新时间升序，`-updated_at` 降序，`title` 标题升序，`-title` 降序。
+	Sort *ListArticlesParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
+
+	// ArticleTypeID 按文章类型标识筛选文章，例如 `1`。
+	ArticleTypeID *ArticleTypeFilter `form:"article_type_id,omitempty" json:"article_type_id,omitempty"`
+
+	// TagID 按标签标识筛选文章，例如 `1`。
+	TagID *TagFilter `form:"tag_id,omitempty" json:"tag_id,omitempty"`
+
+	// Q 按关键词筛选可搜索文本，例如 `Go`。
+	Q *SearchFilter `form:"q,omitempty" json:"q,omitempty"`
 }
 
 // ListArticlesParamsSort defines parameters for ListArticles.
@@ -483,22 +599,29 @@ type ListArticlesParamsSort string
 
 // DeleteArticleParams defines parameters for DeleteArticle.
 type DeleteArticleParams struct {
-	// IfMatch Strong entity tag containing the current positive Version.
+	// IfMatch 强实体标签，内容为当前正整数版本，必须原样提交，例如 `"1"`。
 	IfMatch IfMatch `json:"If-Match"`
 }
 
 // PatchArticleParams defines parameters for PatchArticle.
 type PatchArticleParams struct {
-	// IfMatch Strong entity tag containing the current positive Version.
+	// IfMatch 强实体标签，内容为当前正整数版本，必须原样提交，例如 `"1"`。
 	IfMatch IfMatch `json:"If-Match"`
 }
 
 // ListTagsParams defines parameters for ListTags.
 type ListTagsParams struct {
-	Page     *Page               `form:"page,omitempty" json:"page,omitempty"`
-	PageSize *PageSize           `form:"page_size,omitempty" json:"page_size,omitempty"`
-	Sort     *ListTagsParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
-	Q        *SearchFilter       `form:"q,omitempty" json:"q,omitempty"`
+	// Page 从 `1` 开始的页码，默认 `1`。
+	Page *Page `form:"page,omitempty" json:"page,omitempty"`
+
+	// PageSize 每页数量，默认 `20`，范围 `1` 至 `100`。
+	PageSize *PageSize `form:"page_size,omitempty" json:"page_size,omitempty"`
+
+	// Sort 排序：`created_at` 创建时间升序，`-created_at` 降序，`updated_at` 更新时间升序，`-updated_at` 降序，`title` 标题升序，`-title` 降序。
+	Sort *ListTagsParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
+
+	// Q 按关键词筛选可搜索文本，例如 `Go`。
+	Q *SearchFilter `form:"q,omitempty" json:"q,omitempty"`
 }
 
 // ListTagsParamsSort defines parameters for ListTags.
@@ -506,13 +629,13 @@ type ListTagsParamsSort string
 
 // DeleteTagParams defines parameters for DeleteTag.
 type DeleteTagParams struct {
-	// IfMatch Strong entity tag containing the current positive Version.
+	// IfMatch 强实体标签，内容为当前正整数版本，必须原样提交，例如 `"1"`。
 	IfMatch IfMatch `json:"If-Match"`
 }
 
 // PatchTagParams defines parameters for PatchTag.
 type PatchTagParams struct {
-	// IfMatch Strong entity tag containing the current positive Version.
+	// IfMatch 强实体标签，内容为当前正整数版本，必须原样提交，例如 `"1"`。
 	IfMatch IfMatch `json:"If-Match"`
 }
 
@@ -545,49 +668,49 @@ type ServerInterface interface {
 	// 取消正文图片
 	// (DELETE /api/v1/article-images/{image_id})
 	DeleteArticleImage(c *gin.Context, imageID ArticleImageID)
-	// List nondeleted article types
+	// 查询文章类型
 	// (GET /api/v1/article-types)
 	ListArticleTypes(c *gin.Context, params ListArticleTypesParams)
-	// Create an article type
+	// 创建文章类型
 	// (POST /api/v1/article-types)
 	CreateArticleType(c *gin.Context)
-	// Delete an unreferenced article type
+	// 删除文章类型
 	// (DELETE /api/v1/article-types/{article_type_id})
 	DeleteArticleType(c *gin.Context, articleTypeID ArticleTypeID, params DeleteArticleTypeParams)
-	// Get a nondeleted article type
+	// 获取文章类型
 	// (GET /api/v1/article-types/{article_type_id})
 	GetArticleType(c *gin.Context, articleTypeID ArticleTypeID)
-	// Patch an article type
+	// 更新文章类型
 	// (PATCH /api/v1/article-types/{article_type_id})
 	PatchArticleType(c *gin.Context, articleTypeID ArticleTypeID, params PatchArticleTypeParams)
-	// List published articles
+	// 查询已发布文章
 	// (GET /api/v1/articles)
 	ListArticles(c *gin.Context, params ListArticlesParams)
-	// Create an article
+	// 创建文章
 	// (POST /api/v1/articles)
 	CreateArticle(c *gin.Context)
-	// Delete an article
+	// 删除文章
 	// (DELETE /api/v1/articles/{article_id})
 	DeleteArticle(c *gin.Context, articleID ArticleID, params DeleteArticleParams)
-	// Get a published article
+	// 获取已发布文章
 	// (GET /api/v1/articles/{article_id})
 	GetArticle(c *gin.Context, articleID ArticleID)
-	// Patch an article
+	// 更新文章
 	// (PATCH /api/v1/articles/{article_id})
 	PatchArticle(c *gin.Context, articleID ArticleID, params PatchArticleParams)
-	// List nondeleted tags
+	// 查询标签
 	// (GET /api/v1/tags)
 	ListTags(c *gin.Context, params ListTagsParams)
-	// Create a tag
+	// 创建标签
 	// (POST /api/v1/tags)
 	CreateTag(c *gin.Context)
-	// Delete an unreferenced tag
+	// 删除标签
 	// (DELETE /api/v1/tags/{tag_id})
 	DeleteTag(c *gin.Context, tagID TagID, params DeleteTagParams)
-	// Get a nondeleted tag
+	// 获取标签
 	// (GET /api/v1/tags/{tag_id})
 	GetTag(c *gin.Context, tagID TagID)
-	// Patch a tag
+	// 更新标签
 	// (PATCH /api/v1/tags/{tag_id})
 	PatchTag(c *gin.Context, tagID TagID, params PatchTagParams)
 	// 读取正文图片媒体
@@ -3030,49 +3153,49 @@ type StrictServerInterface interface {
 	// 取消正文图片
 	// (DELETE /api/v1/article-images/{image_id})
 	DeleteArticleImage(ctx context.Context, request DeleteArticleImageRequestObject) (DeleteArticleImageResponseObject, error)
-	// List nondeleted article types
+	// 查询文章类型
 	// (GET /api/v1/article-types)
 	ListArticleTypes(ctx context.Context, request ListArticleTypesRequestObject) (ListArticleTypesResponseObject, error)
-	// Create an article type
+	// 创建文章类型
 	// (POST /api/v1/article-types)
 	CreateArticleType(ctx context.Context, request CreateArticleTypeRequestObject) (CreateArticleTypeResponseObject, error)
-	// Delete an unreferenced article type
+	// 删除文章类型
 	// (DELETE /api/v1/article-types/{article_type_id})
 	DeleteArticleType(ctx context.Context, request DeleteArticleTypeRequestObject) (DeleteArticleTypeResponseObject, error)
-	// Get a nondeleted article type
+	// 获取文章类型
 	// (GET /api/v1/article-types/{article_type_id})
 	GetArticleType(ctx context.Context, request GetArticleTypeRequestObject) (GetArticleTypeResponseObject, error)
-	// Patch an article type
+	// 更新文章类型
 	// (PATCH /api/v1/article-types/{article_type_id})
 	PatchArticleType(ctx context.Context, request PatchArticleTypeRequestObject) (PatchArticleTypeResponseObject, error)
-	// List published articles
+	// 查询已发布文章
 	// (GET /api/v1/articles)
 	ListArticles(ctx context.Context, request ListArticlesRequestObject) (ListArticlesResponseObject, error)
-	// Create an article
+	// 创建文章
 	// (POST /api/v1/articles)
 	CreateArticle(ctx context.Context, request CreateArticleRequestObject) (CreateArticleResponseObject, error)
-	// Delete an article
+	// 删除文章
 	// (DELETE /api/v1/articles/{article_id})
 	DeleteArticle(ctx context.Context, request DeleteArticleRequestObject) (DeleteArticleResponseObject, error)
-	// Get a published article
+	// 获取已发布文章
 	// (GET /api/v1/articles/{article_id})
 	GetArticle(ctx context.Context, request GetArticleRequestObject) (GetArticleResponseObject, error)
-	// Patch an article
+	// 更新文章
 	// (PATCH /api/v1/articles/{article_id})
 	PatchArticle(ctx context.Context, request PatchArticleRequestObject) (PatchArticleResponseObject, error)
-	// List nondeleted tags
+	// 查询标签
 	// (GET /api/v1/tags)
 	ListTags(ctx context.Context, request ListTagsRequestObject) (ListTagsResponseObject, error)
-	// Create a tag
+	// 创建标签
 	// (POST /api/v1/tags)
 	CreateTag(ctx context.Context, request CreateTagRequestObject) (CreateTagResponseObject, error)
-	// Delete an unreferenced tag
+	// 删除标签
 	// (DELETE /api/v1/tags/{tag_id})
 	DeleteTag(ctx context.Context, request DeleteTagRequestObject) (DeleteTagResponseObject, error)
-	// Get a nondeleted tag
+	// 获取标签
 	// (GET /api/v1/tags/{tag_id})
 	GetTag(ctx context.Context, request GetTagRequestObject) (GetTagResponseObject, error)
-	// Patch a tag
+	// 更新标签
 	// (PATCH /api/v1/tags/{tag_id})
 	PatchTag(ctx context.Context, request PatchTagRequestObject) (PatchTagResponseObject, error)
 	// 读取正文图片媒体
@@ -3657,70 +3780,92 @@ func (sh *strictHandler) GetArticleImageMedia(ctx *gin.Context, storageKey Artic
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"/nb5Cp+OLK/d5IfnQuG69NOyhVAcKv5fAAAA//8=",
+	"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",
+	"ZpBGlLYLib7E/wcAAP//",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

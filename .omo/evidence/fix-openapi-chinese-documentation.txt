@@ -1,0 +1,32 @@
+OpenAPI 中文文档恢复证据
+日期: 2026-07-15
+
+历史依据
+- git diff --exit-code 13ba4f9 914ec8d^ -- backend/api/openapi.yaml backend/internal/contracttest/documentation_test.go => exit 0
+- git diff --exit-code 914ec8d HEAD -- 四个 OpenAPI 产物 => exit 0
+- 恢复后 git diff --exit-code 914ec8d^ -- 权威 YAML、generated binding、apidocs 副本 => exit 0
+- 结论: 以 914ec8d^ 的全量中文为原文，且图片合同与当前 HEAD 一致。
+
+TDD
+- 仅恢复 documentation_test.go 后运行目标测试 => 按预期失败，报告 259 项中文缺失与 18 项枚举说明缺失。
+- 恢复权威 YAML 后运行同一目标测试 => exit 0。
+
+权威命令
+- task api:lint => exit 0，0 errors（45 warnings、40 info 为既有规范质量提示）。
+- task api:generate => exit 0。
+- task api:docs:sync => exit 0。
+- task api:generate:check => exit 0。
+- task api:docs:check => exit 0。
+- go test ./internal/contracttest -count=1 => exit 0。
+
+一致性与合同
+- source SHA256: 0723C0878248E9F7DB14679FC6AEF55C78736E3336B93E6A020DDDF914127D45
+- apidocs SHA256: 0723C0878248E9F7DB14679FC6AEF55C78736E3336B93E6A020DDDF914127D45
+- StrictServerInterface 保留 CreateArticleImage、DeleteArticleImage、GetArticleImageMedia。
+- ArticleImages POST/DELETE/GET、multipart、ETag/304、ArticleImage DTO 均由 contracttest 与历史等价检查覆盖。
+- documentation_test.go 纯 LOC: 115，低于 250。
+- LSP: documentation_test.go 无诊断；generated 文件无错误，仅代码生成器既有 interface{} 可替换为 any 提示。
+
+额外检查
+- task lint 已执行但 exit 1；420 项均来自本任务范围外的既有 dirty/HEAD 文件（复杂度、格式、gosec、fieldalignment 等），本次四个 OpenAPI 文件与 documentation_test.go 未产生对应 lint 错误。
+- 按范围约束未修改这些无关文件。
