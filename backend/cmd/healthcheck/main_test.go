@@ -16,7 +16,6 @@ func Test_probe_succeeds_when_live_and_ready_are_healthy(t *testing.T) {
 
 	// When
 	err := probe(context.Background(), server.Client(), server.URL)
-
 	// Then
 	if err != nil {
 		t.Fatalf("健康端点均正常时不应失败：%v", err)

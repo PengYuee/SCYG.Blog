@@ -13,13 +13,21 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	"github.com/PengYuee/SCYG.Blog/backend/internal/bootstrap"
 	module "github.com/PengYuee/SCYG.Blog/backend/internal/modules/content"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/blobstorage"
+
+	"gorm.io/gorm"
+
+	"github.com/PengYuee/SCYG.Blog/backend/internal/bootstrap"
+	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/application"
+	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/article"
+	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/image"
+	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/taxonomy"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/config"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/database"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/httpserver"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/observability"
+	rest "github.com/PengYuee/SCYG.Blog/backend/internal/transport/rest"
 	"github.com/PengYuee/SCYG.Blog/backend/migrations"
 )
 
@@ -37,6 +45,8 @@ type fakeDatabase struct {
 
 func (fake *fakeDatabase) Ping(context.Context) error { return fake.pingErr }
 func (fake *fakeDatabase) Close() error               { fake.closes++; return nil }
+
+func (*fakeDatabase) GORM() *gorm.DB { return nil }
 
 type fakeMigration struct {
 	version    uint
@@ -78,13 +88,25 @@ func validDependencies(telemetry *fakeTelemetry, db *fakeDatabase, migration *fa
 		NewTelemetry: func(config.Telemetry) (bootstrap.Telemetry, error) { return telemetry, nil },
 		NewDatabase:  func(context.Context, database.Options) (bootstrap.Database, error) { return db, nil },
 		NewMigration: func(config.DSN) (bootstrap.Migration, error) { return migration, nil },
-		NewContent: func(bootstrap.Database, module.Authorizer, module.CurrentAuthorProvider, *blobstorage.Filesystem, module.ArticleImagePolicy) (*module.Module, error) {
-			return &module.Module{}, nil
+		NewArticle: func(bootstrap.Database, module.Authorizer, module.Clock) (*article.Service, error) {
+			return &article.Service{}, nil
+		},
+		NewTaxonomy: func(bootstrap.Database, module.Authorizer, module.Clock) (*taxonomy.Service, error) {
+			return &taxonomy.Service{}, nil
+		},
+		NewImage: func(bootstrap.Database, module.Authorizer, module.CurrentAuthorProvider, *blobstorage.Filesystem, image.Policy, module.Clock) (*image.Service, error) {
+			return &image.Service{}, nil
+		},
+		NewArticleImages: func(bootstrap.Database, module.Authorizer, module.CurrentAuthorProvider, module.Clock, *article.Service, *image.Service) (*application.ArticleImages, error) {
+			return &application.ArticleImages{}, nil
+		},
+		NewImageCleanup: func(bootstrap.Database, *blobstorage.Filesystem, image.Policy, module.Clock) (bootstrap.CleanupRunner, error) {
+			return fakeCleanupRunner{}, nil
 		},
 		NewCleanupWorker: func(bootstrap.CleanupRunner, time.Duration, *slog.Logger) (bootstrap.CleanupWorker, error) {
 			return &fakeCleanupWorker{}, nil
 		},
-		NewREST: func(*module.Module, *observability.Health, bool) (func(*gin.Engine) error, error) {
+		NewREST: func(rest.Options) (func(*gin.Engine) error, error) {
 			return func(*gin.Engine) error { return nil }, nil
 		},
 		NewHTTP: func(httpserver.Options) (bootstrap.HTTPServer, error) { return server, nil },
@@ -94,7 +116,11 @@ func validDependencies(telemetry *fakeTelemetry, db *fakeDatabase, migration *fa
 type fakeCleanupWorker struct{ starts, stops int }
 
 func (worker *fakeCleanupWorker) Start(context.Context) error { worker.starts++; return nil }
-func (worker *fakeCleanupWorker) Stop(context.Context) error  { worker.stops++; return nil }
+
+type fakeCleanupRunner struct{}
+
+func (fakeCleanupRunner) CleanupArticleImages(context.Context) error { return nil }
+func (worker *fakeCleanupWorker) Stop(context.Context) error         { worker.stops++; return nil }
 
 func Test_Application_RejectsPendingMigration_and_closes_prior_resources_once(t *testing.T) {
 	// Given
@@ -139,7 +165,7 @@ func Test_Application_CleansOnBindFailure_in_reverse_once(t *testing.T) {
 	}
 
 	// When
-	startErr := app.Start()
+	startErr := app.Start(context.Background())
 
 	// Then
 	if startErr == nil || telemetry.closes != 1 || db.closes != 1 {
@@ -169,7 +195,7 @@ func Test_Application_RejectsContentConstruction_and_closes_prior_resources_once
 	telemetry, db := &fakeTelemetry{}, &fakeDatabase{}
 	migration := &fakeMigration{version: migrations.CurrentVersion}
 	dependencies := validDependencies(telemetry, db, migration, &fakeServer{})
-	dependencies.NewContent = func(bootstrap.Database, module.Authorizer, module.CurrentAuthorProvider, *blobstorage.Filesystem, module.ArticleImagePolicy) (*module.Module, error) {
+	dependencies.NewArticle = func(bootstrap.Database, module.Authorizer, module.Clock) (*article.Service, error) {
 		return nil, errors.New("内容构造失败")
 	}
 
@@ -187,7 +213,7 @@ func Test_Application_RejectsRESTConstruction_and_closes_prior_resources_once(t 
 	telemetry, db := &fakeTelemetry{}, &fakeDatabase{}
 	migration := &fakeMigration{version: migrations.CurrentVersion}
 	dependencies := validDependencies(telemetry, db, migration, &fakeServer{})
-	dependencies.NewREST = func(*module.Module, *observability.Health, bool) (func(*gin.Engine) error, error) {
+	dependencies.NewREST = func(rest.Options) (func(*gin.Engine) error, error) {
 		return nil, errors.New("REST 构造失败")
 	}
 
@@ -251,11 +277,12 @@ func Test_Application_injects_stable_development_author_from_validated_config(t 
 	server := &fakeServer{}
 	dependencies := validDependencies(telemetry, db, migration, server)
 	var captured module.CurrentAuthorProvider
-	dependencies.NewContent = func(_ bootstrap.Database, _ module.Authorizer, provider module.CurrentAuthorProvider, _ *blobstorage.Filesystem, _ module.ArticleImagePolicy) (*module.Module, error) {
+	dependencies.NewImage = func(_ bootstrap.Database, _ module.Authorizer, provider module.CurrentAuthorProvider, _ *blobstorage.Filesystem, _ image.Policy, _ module.Clock) (*image.Service, error) {
 		captured = provider
-		return &module.Module{}, nil
+		return &image.Service{}, nil
 	}
 	path := filepath.Join(t.TempDir(), "config.yaml")
+	//nolint:gosec // synthetic DSN used only to exercise development bootstrap wiring.
 	yaml := "database:\n  dsn: postgres://postgres:postgres@localhost:5432/scyg?sslmode=disable\narticle_images:\n  development_author_id: 0123456789abcdef0123456789abcdef\n"
 	if err := os.WriteFile(path, []byte(yaml), 0o600); err != nil {
 		t.Fatal(err)

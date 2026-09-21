@@ -26,7 +26,7 @@ const sanitizedMarkdown = computed(
 </script>
 
 <template>
-  <div data-testid="markdown-layout" class="grid gap-8 lg:grid-cols-[minmax(0,var(--layout-reading-measure))_16rem] lg:justify-center">
+  <div data-testid="markdown-layout" class="blog-markdown grid gap-8 lg:grid-cols-[minmax(0,var(--layout-reading-measure))_16rem] lg:justify-center">
     <MdPreview
       :id="previewId"
       :model-value="sanitizedMarkdown"

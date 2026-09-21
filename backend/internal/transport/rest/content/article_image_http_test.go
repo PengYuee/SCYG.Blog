@@ -14,7 +14,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	module "github.com/PengYuee/SCYG.Blog/backend/internal/modules/content"
+	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/image"
 	restcontent "github.com/PengYuee/SCYG.Blog/backend/internal/transport/rest/content"
 )
 
@@ -24,10 +24,12 @@ const (
 )
 
 type imageHTTPService struct {
-	restcontent.QueryService
-	restcontent.CommandService
-	upload      module.ArticleImageResult
-	media       module.ArticleImageMedia
+	restcontent.ArticleQueryService
+	restcontent.ArticleCommandService
+	restcontent.ArticleDeleteService
+	restcontent.TaxonomyService
+	upload      image.Result
+	media       image.Media
 	uploadErr   error
 	deleteErr   error
 	mediaErr    error
@@ -36,40 +38,40 @@ type imageHTTPService struct {
 	deleteCalls int
 }
 
-func (service *imageHTTPService) UploadArticleImage(_ context.Context, command module.UploadArticleImage) (module.ArticleImageResult, error) {
+func (service *imageHTTPService) Upload(_ context.Context, command image.Upload) (image.Result, error) {
 	service.uploadCalls++
 	buffer := make([]byte, 32*1024)
 	for {
-		count, err := command.Content.ReadArticleImage(buffer)
+		count, err := command.Content.Read(buffer)
 		service.uploaded = append(service.uploaded, buffer[:count]...)
 		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
-			return module.ArticleImageResult{}, err
+			return image.Result{}, err
 		}
 	}
 	return service.upload, service.uploadErr
 }
 
-func (service *imageHTTPService) CancelArticleImage(context.Context, module.DeleteArticleImage) error {
+func (service *imageHTTPService) Cancel(context.Context, image.Delete) error {
 	service.deleteCalls++
 	return service.deleteErr
 }
 
-func (service *imageHTTPService) GetArticleImageMedia(context.Context, module.GetArticleImage) (module.ArticleImageMedia, error) {
+func (service *imageHTTPService) GetMedia(context.Context, image.Get) (image.Media, error) {
 	return service.media, service.mediaErr
 }
 
 func imageRouter(t *testing.T, service *imageHTTPService) http.Handler {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	handler, err := restcontent.NewHandler(service, service, module.DefaultArticleImagePolicy())
+	handler, err := restcontent.NewHandler(service, service, service, service, service, image.DefaultPolicy())
 	if err != nil {
 		t.Fatal(err)
 	}
 	router := gin.New()
-	if err = handler.Register(router); err != nil {
+	if err = handler.Register(router, testLoginHandler{}); err != nil {
 		t.Fatal(err)
 	}
 	return router
@@ -95,13 +97,13 @@ func multipartRequest(t *testing.T, parts []struct {
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/article-images", &body)
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/manage/article-images", &body)
 	request.Header.Set("Content-Type", writer.FormDataContentType())
 	return request
 }
 
 func Test_ArticleImageHTTP_uploads_one_file_through_real_strict_router(t *testing.T) {
-	service := &imageHTTPService{upload: module.ArticleImageResult{ID: testImageID, StorageKey: testImageKey, URL: "/media/article-images/" + testImageKey, MediaType: "image/jpeg", ByteSize: 3, Width: 1, Height: 1, Status: "pending", ExpiresAt: time.Date(2026, 7, 14, 0, 0, 0, 0, time.UTC)}}
+	service := &imageHTTPService{upload: image.Result{ID: testImageID, StorageKey: testImageKey, URL: "/media/article-images/" + testImageKey, MediaType: "image/jpeg", ByteSize: 3, Width: 1, Height: 1, Status: "pending", ExpiresAt: time.Date(2026, 7, 14, 0, 0, 0, 0, time.UTC)}}
 	recorder := httptest.NewRecorder()
 	imageRouter(t, service).ServeHTTP(recorder, multipartRequest(t, []struct {
 		name    string
@@ -152,7 +154,7 @@ func Test_ArticleImageHTTP_rejects_invalid_multipart_without_calling_usecase(t *
 
 func Test_ArticleImageHTTP_get_uses_cache_and_security_headers(t *testing.T) {
 	digest := strings.Repeat("a", 64)
-	service := &imageHTTPService{media: module.ArticleImageMedia{Content: []byte("jpeg"), MediaType: "image/jpeg", ByteSize: 4, SHA256: digest}}
+	service := &imageHTTPService{media: image.Media{Content: []byte("jpeg"), MediaType: "image/jpeg", ByteSize: 4, SHA256: digest}}
 	router := imageRouter(t, service)
 	first := httptest.NewRecorder()
 	router.ServeHTTP(first, httptest.NewRequest(http.MethodGet, "/media/article-images/"+testImageKey, nil))
@@ -173,7 +175,7 @@ func Test_ArticleImageHTTP_get_uses_cache_and_security_headers(t *testing.T) {
 
 func Test_ArticleImageHTTP_malformed_if_none_match_returns_bytes(t *testing.T) {
 	digest := strings.Repeat("b", 64)
-	service := &imageHTTPService{media: module.ArticleImageMedia{Content: []byte("png"), MediaType: "image/png", ByteSize: 3, SHA256: digest, Pending: true}}
+	service := &imageHTTPService{media: image.Media{Content: []byte("png"), MediaType: "image/png", ByteSize: 3, SHA256: digest, Pending: true}}
 	request := httptest.NewRequest(http.MethodGet, "/media/article-images/"+testImageID+".png", nil)
 	request.Header.Set("If-None-Match", `W/invalid, "`+digest+`"`)
 	recorder := httptest.NewRecorder()
@@ -190,8 +192,8 @@ func Test_ArticleImageHTTP_delete_maps_idempotent_not_found_and_committed_confli
 		status  int
 	}{
 		{"pending or orphaned owner", nil, http.StatusNoContent},
-		{"cross owner", &module.ApplicationError{Code: module.CodeNotFound, Kind: module.KindMissing, Cause: module.ErrNotFound}, http.StatusNotFound},
-		{"committed", &module.ApplicationError{Code: module.CodeFailedPrecondition, Kind: module.KindConflict, Cause: module.ErrFailedPrecondition}, http.StatusConflict},
+		{"cross owner", &image.Error{Code: image.CodeNotFound}, http.StatusNotFound},
+		{"committed", &image.Error{Code: image.CodeConflict}, http.StatusConflict},
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
@@ -206,7 +208,7 @@ func Test_ArticleImageHTTP_delete_maps_idempotent_not_found_and_committed_confli
 }
 
 func Test_ArticleImageHTTP_get_maps_orphan_and_missing_file_to_not_found(t *testing.T) {
-	service := &imageHTTPService{mediaErr: &module.ApplicationError{Code: module.CodeNotFound, Kind: module.KindMissing, Cause: module.ErrNotFound}}
+	service := &imageHTTPService{mediaErr: &image.Error{Code: image.CodeNotFound}}
 	recorder := httptest.NewRecorder()
 	imageRouter(t, service).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/media/article-images/"+testImageKey, nil))
 	if recorder.Code != http.StatusNotFound {

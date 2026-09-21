@@ -11,8 +11,12 @@ import (
 	"github.com/gin-gonic/gin"
 
 	generated "github.com/PengYuee/SCYG.Blog/backend/internal/generated/openapi"
-	module "github.com/PengYuee/SCYG.Blog/backend/internal/modules/content"
 )
+
+type problemFailure string
+
+func (failure problemFailure) Error() string      { return string(failure) }
+func (failure problemFailure) StableCode() string { return string(failure) }
 
 func TestWriteApplicationProblem_usesChineseProblemTitlesAndDetails(t *testing.T) {
 	gin.SetMode(gin.TestMode)
@@ -23,12 +27,13 @@ func TestWriteApplicationProblem_usesChineseProblemTitlesAndDetails(t *testing.T
 		title  string
 		detail string
 	}{
-		{"校验失败", &module.ApplicationError{Code: module.CodeValidation}, http.StatusBadRequest, "请求参数错误", "请求参数不合法"},
-		{"权限不足", &module.ApplicationError{Code: module.CodePermissionDenied}, http.StatusForbidden, "禁止访问", "没有执行该操作的权限"},
-		{"资源不存在", &module.ApplicationError{Code: module.CodeNotFound}, http.StatusNotFound, "资源不存在", "请求的资源不存在"},
-		{"状态冲突", &module.ApplicationError{Code: module.CodeAlreadyExists}, http.StatusConflict, "资源状态冲突", "操作与当前资源状态冲突"},
-		{"版本过期", &module.ApplicationError{Code: module.CodeStaleVersion}, http.StatusPreconditionFailed, "前置条件不满足", "提供的实体版本已过期"},
-		{"缺少版本", &module.ApplicationError{Code: module.CodeVersionRequired}, http.StatusPreconditionRequired, "缺少前置条件", "必须提供强 If-Match 实体标签"},
+		{"校验失败", problemFailure(codeValidation), http.StatusBadRequest, "请求参数错误", "请求参数不合法"},
+		{"身份认证失败", problemFailure(codeUnauthenticated), http.StatusUnauthorized, "身份认证失败", "用户名或密码错误"},
+		{"权限不足", problemFailure(codePermissionDenied), http.StatusForbidden, "禁止访问", "没有执行该操作的权限"},
+		{"资源不存在", problemFailure(codeNotFound), http.StatusNotFound, "资源不存在", "请求的资源不存在"},
+		{"状态冲突", problemFailure(codeAlreadyExists), http.StatusConflict, "资源状态冲突", "操作与当前资源状态冲突"},
+		{"版本过期", problemFailure(codeStaleVersion), http.StatusPreconditionFailed, "前置条件不满足", "提供的实体版本已过期"},
+		{"缺少版本", problemFailure(codeVersionRequired), http.StatusPreconditionRequired, "缺少前置条件", "必须提供强 If-Match 实体标签"},
 		{"未知错误", errors.New("数据库连接失败"), http.StatusInternalServerError, "服务器内部错误", "服务器处理请求时发生内部错误"},
 	}
 

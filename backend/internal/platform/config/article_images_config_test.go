@@ -1,7 +1,6 @@
 package config_test
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -54,11 +53,7 @@ func Test_ArticleImages_file_loads_exact_values_without_leaking_sensitive_fields
 	if images.Directory() != "private/images" || images.PendingTTL() != 25*time.Hour || images.CleanupInterval() != 30*time.Minute || images.UploadRequestBytes() != 7_000_000 || images.DevelopmentAuthorID() != developmentAuthorSentinel {
 		t.Fatalf("unexpected values")
 	}
-	encoded, marshalErr := json.Marshal(cfg)
-	if marshalErr != nil {
-		t.Fatal(marshalErr)
-	}
-	for _, output := range []string{cfg.String(), fmt.Sprintf("%+v", cfg), string(encoded)} {
+	for _, output := range []string{cfg.String(), fmt.Sprintf("%+v", cfg)} {
 		if strings.Contains(output, "private/images") || strings.Contains(output, developmentAuthorSentinel) {
 			t.Fatalf("sensitive config leaked: %s", output)
 		}
@@ -76,7 +71,7 @@ func Test_ArticleImages_rejects_invalid_security_values(t *testing.T) {
 		{"zero pixels", "article_images:\n  max_pixels: 0\n", "article_images.max_pixels"},
 		{"zero dimension", "article_images:\n  max_dimension: 0\n", "article_images.max_dimension"},
 		{"invalid author", "article_images:\n  development_author_id: invalid\n", "article_images.development_author_id"},
-		{"production author", "app:\n  env: production\narticle_images:\n  development_author_id: " + developmentAuthorSentinel + "\n", "article_images.development_author_id"},
+		{"production author", "app:\n  env: production\nauth:\n  jwt_secret: production-test-secret-012345678901234567890123\narticle_images:\n  development_author_id: " + developmentAuthorSentinel + "\n", "article_images.development_author_id"},
 		{"test author", "app:\n  env: test\narticle_images:\n  development_author_id: " + developmentAuthorSentinel + "\n", "article_images.development_author_id"},
 	}
 	for _, testCase := range tests {

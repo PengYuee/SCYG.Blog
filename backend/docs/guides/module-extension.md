@@ -1,83 +1,80 @@
 # 业务模块扩展指南
 
-新增模块只应发生在已有业务需求出现后，不提前创建空目录。模块组织遵循一个可机械检查的原则：**目录 = 技术层，前缀 = 业务主体，后缀 = 职责**。
+新增模块只应发生在真实业务需求出现后，不提前创建空目录。交付门禁按变更风险选择，组织形式、命名和文件拆分用于 review 沟通，不是把未来能力预先挡在目录名或依赖名之外的扫描器合同。
 
-## 固定结构
+## 三条交付路径
 
-1. 在 `internal/modules/<module>/module.go` 定义具体 façade 与手工构造函数；禁止通用服务接口、DI 框架和服务定位器。
-2. 在 `api.go` 定义协议中立的公共契约；不得出现 Gin、HTTP 状态、OpenAPI、GORM、Proto 或 WebSocket 类型。
-3. `internal/domain` 只拥有聚合、实体、值对象、不变量和领域错误。
-4. `internal/application` 只拥有用例及其消费的 repository/read model/UoW/Clock 等窄端口。接口由消费者拥有。
-5. `internal/postgres` 私有实现 application 端口，显式表名/列名，使用 SQL migration，禁止 `AutoMigrate` 与跨模块表访问。
-6. 每个 transport 在自身目录声明最小消费接口，将自身 DTO、状态、Header 和错误映射到模块根类型。
+### 1. 现有模块中的简单功能
 
-模块 Go package 只允许五个固定位置：模块根、`internal/domain`、`internal/application`、`internal/postgres`、`postgres`。这些目录表达技术层；所有位置下都禁止任何 Go 子 package，因此也禁止实体 Go 子包；根级 `article/`、`internal/domain/article/`、`internal/application/article/`、`internal/postgres/article/` 均被拒绝。技术性子目录也需要独立架构决策，不得绕过当前扁平层契约；业务主体必须体现在文件名前缀中。
+没有改变公开契约、数据结构、启动接线或跨边界依赖时，沿用最近的现有 feature/application 层和该层的聚焦测试，并运行 `qa:feature`。不要求迁移、OpenAPI、bootstrap、架构夹具、真实 integration 或 E2E；只有相应边界实际发生变化时才增加这些门禁。
 
-## 文件命名契约
+### 2. 契约或数据功能
 
-### 强制机械底线
+改变 REST、消息或其他外部契约，或改变领域持久化数据时，运行 `qa:contract`。涉及 schema 的变更还必须通过 migration roundtrip，并用真实数据库 integration 或 E2E 验证迁移后的可观察行为。OpenAPI 变更必须以源契约为准，完成生成和文档副本同步。
 
-生产文件的 stem 不能为空，必须使用小写 snake_case。名称只能由小写字母 token 和单个下划线组成，不得连续使用下划线，也不得在开头或结尾使用下划线。
+### 3. 生命周期、新模块或边界功能
 
-任何文件名 token 都不得使用 generic token：`common`、`shared`、`utils`、`utility`、`helpers`、`models`、`usecases`、`results`。这些词不能充当业务主体、职责或补充说明。`api.go`、`module.go` 是模块根专属 anchors，不得放入 `internal/domain`、`internal/application`、`internal/postgres` 或 `postgres`。
+新增业务模块、改变模块间边界、bootstrap、readiness、资源生命周期、数据库连接、容器交付或新的协议边界时，保留架构 import checks，并执行相关的 bootstrap、数据库、container 和 E2E 门禁。只运行实际受影响的门禁，但不得绕过已改变边界的验证。
 
-PostgreSQL 行结构统一称为“数据库数据模型”，文件必须使用 `<subject>_model.go`。禁止 `*_record.go`，也禁止 `models.go` 等泛名。
+## 不因组织形式预先阻塞
 
-模块 Go package 仍只允许五个固定位置：模块根、`internal/domain`、`internal/application`、`internal/postgres`、`postgres`。所有位置都禁止任何 Go 子 package，因此也禁止实体 Go 子包。技术性子目录也需要独立架构决策，不得绕过当前扁平层契约。
+命名、文件大小、常见模块层、generic token 用词和未来技术名称属于 review guidance：它们帮助读者定位责任、发现模糊抽象和控制变更规模，review 可以要求更清晰的命名或拆分，但不应被描述为所有未来实现都必须满足的扫描器规则。文件拆分采用“业务边界优先、技术职责其次”：先按业务主体、生命周期、不变量、事务边界或独立变更原因确定归属，再在该业务边界内区分 Service、Repository、持久化 Record、Projection 和 Mapper。文件名优先使用 `<business>_<role>.go`；`api.go`、`security.go`、`clock.go` 作为导航 anchor。数据库行结构优先使用 `<business>_record.go` 或 `<business>_gorm.go`，不使用含义不清的通用 `model.go`。
 
-### 推荐职责命名
+新的未来能力在真正实现时 review。不会仅因为目录名、文件名或依赖名称包含新的协议、集成或技术词汇，就提前禁止该能力。评审关注实际的依赖方向、契约、资源生命周期和测试证据。
 
-“层级用目录、主体用前缀、职责用名称表达”是推荐原则。优先使用 `<subject>_<role>.go`，职责需要进一步说明时可使用 `<subject>_<role>_<subrole>.go`。例如 `article_policy.go`、`article_query_usecase.go`、`article_result_mapper.go` 都能让读者直接看出业务主体与职责。
+## 领域边界与应用协作
 
-这些格式是可读性示例，不是职责白名单。Scanner 不枚举职责后缀，也不判断某个职责只能出现在哪一层；只要名称满足强制机械底线并准确表达内容，合理的新职责无需修改 Scanner。目录仍决定技术层，代码依赖与声明继续由其他架构规则约束。
-## 完整示例树
+目录按业务领域划分。独立的业务概念、数据所有权、不变量、生命周期或变更原因构成领域边界；Service、Repository、Record、Mapper 等技术职责在该边界内组织。
 
+应用用例负责协调一个或多个领域能力，并由用例所有者定义事务边界。用例名称、单个接口动作或一次请求不单独构成领域模块。
+
+协议、框架、存储和传输机制属于适配层，不构成业务领域边界。只有在具备独立状态、持久化、生命周期和业务规则时，相关能力才提升为独立领域。
+
+领域之间通过公共 API 或消费方定义的窄接口协作；应用层不得代替领域持有数据或业务不变量。未来能力在实际实现时创建，不预先创建占位目录或抽象层。
+
+## 保留的硬规则
+
+以下边界是实现约束：
+
+1. `internal/modules/content/article/`、`taxonomy/`、`image/` 分别拥有本 feature 的业务实现、查询、Repository、持久化 Record、校验和稳定错误；先按业务主体或生命周期拆分，再按技术职责拆分。不得创建跨业务的通用 `query.go`、`write.go` 或大而全的业务文件；Service、Repository、Record、Mapper 不得混在同一文件中。
+2. `internal/modules/content/application/` 只放具名跨 feature 协作。它可以持有 bootstrap 注入的事务句柄并调用 feature 的显式 `InTx` 方法，但不得写 SQL、访问持久化 Record/Repository 或承载 HTTP DTO。
+3. `content/security.go` 与 `content/clock.go` 只提供共享安全、作者身份和时间协作者，不承载业务方法；根 package 不导入 feature、application、GORM、transport 或 platform/database。
+4. feature 的 Service、校验与 application 不得出现 Gin、HTTP、OpenAPI generated 或 platform/database 类型；feature Repository 可以使用 GORM 和 platform/database 的错误适配，但只能访问本 feature 所有的表。
+5. 每个 REST transport 在自身目录声明最小消费接口，将 DTO、状态、Header、multipart 和错误映射到 feature/application 类型。REST 不接收 `*gorm.DB`、Repository、Blob filesystem 或完整业务聚合对象。
+6. 跨顶层业务模块调用只经过对方公共 API 或消费方定义的窄接口，禁止导入对方 `internal/**`。
+7. OpenAPI 是 REST 源契约的唯一权威。公开行为变更必须同步生成 bindings 和文档副本，不手工编辑生成代码。
+8. bootstrap 独占运行时构造，启动必须检查 migration 和 readiness 条件；构造失败与关闭必须按逆序、有界地清理已创建资源。
+9. 跨 feature 复用的数据库字段约定放在 `internal/platform/persistence`；采用审计/软删除契约的 Record 在 `*_record.go` 中匿名嵌入 `persistence.AuditFields`。该类型只包含 `created_at`、`updated_at`、`deleted_at`、`is_deleted`，不承载 ID、版本、用户身份或业务状态转换。
+10. `AuditFields` 的写入统一通过 `persistence.NewAuditFields`，读取通过 `Validate` 检查 `deleted_at` 与 `is_deleted`，Mapper 对 `updated_at` 为 NULL 的遗留行使用 `EffectiveUpdatedAt` 回退到 `created_at`。显式关闭 GORM 自动时间回调，不使用 `gorm.Model` 或 `gorm.DeletedAt`。
+11. 图片状态表、关联表和 claim 表不因存在时间字段而套用 `AuditFields`；它们按自身生命周期保存 Record。软删除仍由 feature Repository 显式写入状态、版本和条件，并检查 `RowsAffected`。
 ```text
 internal/modules/content/
-├── api.go
-├── module.go
-├── article_command.go
-├── article_command_usecase.go
-├── article_query.go
-├── article_query_usecase.go
-├── article_result.go
-├── article_result_mapper.go
-├── authorization.go
-├── application_error.go
-├── internal/
-│   ├── domain/
-│   │   ├── article.go
-│   │   ├── article_validation.go
-│   │   ├── article_reconstitute.go
-│   │   ├── article_type.go
-│   │   ├── tag.go
-│   │   ├── taxonomy_rule.go
-│   │   ├── clock.go
-│   │   └── status.go
-│   ├── application/
-│   │   ├── article_repository_port.go
-│   │   ├── article_read_model_port.go
-│   │   ├── article_view.go
-│   │   └── transaction_port.go
-│   └── postgres/
-│       ├── article_model.go
-│       ├── article_mapper.go
-│       ├── article_repository.go
-│       ├── article_read_model.go
-│       ├── unit_of_work.go
-│       └── error_translator.go
-└── postgres/
-    └── postgres.go
+├── security.go                    # Action、Resource、Authorizer、CurrentAuthor
+├── clock.go                       # 共享 Clock
+├── article/                       # Article feature；按文章业务边界与职责命名文件
+├── taxonomy/                      # ArticleType、Tag；按业务主体与职责命名文件
+├── image/                         # 图片、Blob、引用与清理；按生命周期与职责命名文件
+└── application/
+    └── article_images.go          # 文章正文图片跨 feature 协作
+
+internal/platform/persistence/
+└── audit_fields.go                # 跨 feature 的审计字段持久化约定
 ```
 
-## 测试命名
+各 feature 的具体文件清单随实现演进维护，不能把不带业务主体的技术泛桶当作默认模板。文件应使用 `<business>_<role>.go` 导航；没有独立职责时，不为满足树形示例创建空文件。
 
-测试跟随行为和职责，而不是机械跟随文件。测试使用业务主体与可观察行为命名，例如 `article_creation_validation_test.go`、`article_mutation_atomicity_test.go`、`article_repository_integration_test.go`。不要求与生产文件一对一；同一叙事可以覆盖多个协作者，但测试 stem 的任何职责 token 都不得使用 `helpers`、`utils` 或 `common`，因此 `helpers_test.go`、`utils_test.go`、`integration_helpers_test.go` 均被禁止。测试函数继续采用 Given/When/Then 结构，并由名称表达条件和可观察结果。
+文件名是导航规则，不是逐文件扫描合同。文件大小只是 review 触发条件；当多个业务主体、状态不变量、授权规则、事务边界、数据表或独立变更原因混在一个文件中时，应优先按业务边界拆分，再在每个业务边界内保留清晰的技术职责文件。没有独立职责时，不为满足树形示例创建空文件。
 
-## 实施顺序
+## 扩展现有 content
 
-先以 Given/When/Then 单元测试锁定领域行为，再实现 application；随后用真实 PostgreSQL 验证 adapter，用 transport 测试验证映射，最后在 bootstrap 显式手工注入。跨模块调用只经过对方 façade；不得导入对方 `internal/**`。
+先判断行为归属：文章规则进入 `article`，分类与标签进入 `taxonomy`，图片与 Blob 生命周期进入 `image`；只有必须在一个数据库事务中同时修改多个 feature 时，才在 `application/` 新增具名动作。feature 的 Service 不直接调用 sibling feature。
 
-每个变更必须补充架构失败夹具、单元测试、真实 adapter 集成测试和至少一个用户可观察 E2E 叙事。手写 Go 文件纯 LOC 不超过 250，`cmd/api/main.go` 不超过 50；导出标识符、方法签名、字段和关键逻辑使用中文注释。禁止 mutable global、通用 utility 包、反射 generic repository、协议万能 envelope 和超过三个无关参数的函数。
+实现顺序通常是：先用 Given/When/Then 锁定规则，再实现 feature Service 与 Repository，随后补充 REST、真实数据库和生命周期验证。跨 feature 动作必须明确事务 owner，并把同一个 transaction handle 传给各 feature 的 `InTx` 方法；Blob I/O 不得跨越数据库事务。
 
-新模块应更新 bootstrap 的正向构造与反向清理、readiness 条件、OpenAPI（若暴露 REST）、migration、scope/review 门禁及 README。构造失败和关闭必须有 timeout，并证明已创建资源按相反顺序恰好清理一次。
+简单功能使用聚焦测试和 `qa:feature`。改变 REST 或数据契约时使用 `qa:contract`；schema 变更还必须通过 migration roundtrip，并用真实 PostgreSQL integration 或 E2E 验证。改变边界、bootstrap、资源生命周期、容器交付或新增顶层模块时，保留架构 import checks 以及受影响的 bootstrap、database、container 和 E2E 门禁。
+
+## 新增顶层模块
+
+只有出现真实且独立的业务领域时才创建 `internal/modules/<module>/`。先定义该模块的公共 API 和数据所有权，再由 bootstrap 构造具体实现；其他模块只能通过公共 API 或窄接口协作，不得共享内部 Repository、Persistence Record 或表。新增模块不复制一套空的 domain/ports/workflow/contract/generic repository 层。
+
+新增能力时同步更新受影响的架构文档、source of truth 和验证命令；不要把未来协议、集成或技术名称仅因目录名预先加入禁止规则。

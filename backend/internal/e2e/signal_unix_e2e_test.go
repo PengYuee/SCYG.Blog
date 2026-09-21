@@ -10,6 +10,7 @@ import (
 )
 
 func requestGracefulStop(process *os.Process, _ string) error { return process.Signal(syscall.SIGTERM) }
+
 func signalContext(parent context.Context, _ string) (context.Context, context.CancelFunc) {
 	return signal.NotifyContext(parent, syscall.SIGTERM, os.Interrupt)
 }

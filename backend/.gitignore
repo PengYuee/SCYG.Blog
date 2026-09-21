@@ -11,3 +11,5 @@ coverage.html
 *.swp
 /config.local.yaml
 /config.*.local.yaml
+/config.qa.yaml
+/config.*.qa.yaml

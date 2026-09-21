@@ -4,12 +4,12 @@ import (
 	"time"
 
 	generated "github.com/PengYuee/SCYG.Blog/backend/internal/generated/openapi"
-	module "github.com/PengYuee/SCYG.Blog/backend/internal/modules/content"
+	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/taxonomy"
 )
 
-func tagDTO(item module.TagResult) (generated.Tag, error) {
+func tagDTO(item taxonomy.TagResult) (generated.Tag, error) {
 	version, err := generatedVersion(item.Version)
-	if err != nil || module.ValidateTagResponseText(item) != nil || item.ID <= 0 || invalidTimes(item.CreatedAt, item.ModifiedAt) {
+	if err != nil || taxonomyTagResponseTextInvalid(item) || item.ID <= 0 || invalidTimes(item.CreatedAt, item.ModifiedAt) {
 		return generated.Tag{}, responseMappingError()
 	}
 	var updated *time.Time
@@ -18,6 +18,10 @@ func tagDTO(item module.TagResult) (generated.Tag, error) {
 		updated = &value
 	}
 	return generated.Tag{ID: item.ID, Name: item.Name, Version: version, CreatedAt: item.CreatedAt, UpdatedAt: updated}, nil
+}
+
+func taxonomyTagResponseTextInvalid(item taxonomy.TagResult) bool {
+	return item.Name == "" || len([]rune(item.Name)) > 60
 }
 
 func tagSort(value *generated.ListTagsParamsSort) string {

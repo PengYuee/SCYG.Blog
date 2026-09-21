@@ -30,7 +30,7 @@ func Test_CommitTemp_retry_cleans_same_file_after_remove_failure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 	fault := &removeOnceFaultRoot{rootOperations: store.root}
 	store.root = fault
 	id := "0123456789abcdef0123456789abcdef"
@@ -47,7 +47,11 @@ func Test_CommitTemp_retry_cleans_same_file_after_remove_failure(t *testing.T) {
 	if _, err = os.Stat(filepath.Join(root, token.Name())); err != nil {
 		t.Fatal("temp应保留")
 	}
-	payload, _ := os.ReadFile(filepath.Join(root, key))
+	//nolint:gosec // test paths are fixed descendants of t.TempDir.
+	payload, readErr := os.ReadFile(filepath.Join(root, key))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
 	if string(payload) != "payload" {
 		t.Fatal("final字节错误")
 	}
@@ -65,15 +69,21 @@ func Test_CommitTemp_retry_rejects_different_existing_target(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 	id := "0123456789abcdef0123456789abcdef"
 	token, _, _ := store.WriteTemp(context.Background(), id, strings.NewReader("temp"))
 	key := id + ".jpg"
-	os.WriteFile(filepath.Join(root, key), []byte("attacker"), 0600)
+	if err := os.WriteFile(filepath.Join(root, key), []byte("attacker"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	if err = store.CommitTemp(token, key); !errors.Is(err, fs.ErrExist) {
 		t.Fatalf("错误=%v", err)
 	}
-	payload, _ := os.ReadFile(filepath.Join(root, key))
+	//nolint:gosec // test paths are fixed descendants of t.TempDir.
+	payload, readErr := os.ReadFile(filepath.Join(root, key))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
 	if string(payload) != "attacker" {
 		t.Fatal("覆盖攻击者目标")
 	}
@@ -89,7 +99,7 @@ func Test_DeleteTemp_is_strict_idempotent_and_context_aware(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 	id := "0123456789abcdef0123456789abcdef"
 	token, _, _ := store.WriteTemp(context.Background(), id, strings.NewReader("x"))
 	if err = store.DeleteTemp(context.Background(), token.Name()); err != nil {
@@ -117,13 +127,17 @@ func Test_DeleteTemp_propagates_fault_and_closes_enumeration_loop(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 	id := "0123456789abcdef0123456789abcdef"
 	token, _, _ := store.WriteTemp(context.Background(), id, strings.NewReader("x"))
 	outside := filepath.Join(parent, "outside")
-	os.WriteFile(outside, []byte("safe"), 0600)
+	if err := os.WriteFile(outside, []byte("safe"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	old := time.Now().Add(-time.Hour)
-	os.Chtimes(filepath.Join(root, token.Name()), old, old)
+	if err := os.Chtimes(filepath.Join(root, token.Name()), old, old); err != nil {
+		t.Fatal(err)
+	}
 	entries, err := store.ListExpiredTemps(context.Background(), time.Now(), 10)
 	if err != nil || len(entries) != 1 {
 		t.Fatalf("entries=%v err=%v", entries, err)
@@ -138,7 +152,11 @@ func Test_DeleteTemp_propagates_fault_and_closes_enumeration_loop(t *testing.T) 
 	if err = store.DeleteTemp(context.Background(), entries[0].Name()); err != nil {
 		t.Fatal(err)
 	}
-	content, _ := os.ReadFile(outside)
+	//nolint:gosec // test path is a fixed t.TempDir sentinel.
+	content, readErr := os.ReadFile(outside)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
 	if string(content) != "safe" {
 		t.Fatal("根外哨兵被修改")
 	}

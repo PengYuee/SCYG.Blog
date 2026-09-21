@@ -33,7 +33,7 @@ async function installApi(page: Page, scenario: ApiScenario): Promise<void> {
       await route.fulfill({ json: { items: [{ id: 1, name: "Vue", version: 1, created_at: "2026-07-13T00:00:00Z", updated_at: null }], page: { number: 1, size: 100, total_items: 1, total_pages: 1 } } })
       return
     }
-    if (url.pathname === "/api/v1/article-images" && request.method() === "POST") {
+    if (url.pathname === "/api/v1/manage/article-images" && request.method() === "POST") {
       scenario.requests.uploads += 1
       scenario.requests.multipartHeaders.push(request.headers()["content-type"] ?? "")
       if (scenario.uploadFails) {
@@ -43,9 +43,29 @@ async function installApi(page: Page, scenario: ApiScenario): Promise<void> {
       await route.fulfill({ status: 201, json: { id: IMAGE_ID, storageKey: `${IMAGE_ID}.png`, url: IMAGE_PATH, mediaType: "png", byteSize: 4, width: 1, height: 1, status: "pending", expiresAt: "2026-07-14T00:00:00Z" } })
       return
     }
-    if (url.pathname === "/Article/CreateArticle" && request.method() === "POST") {
-      scenario.requests.articleBodies.push(request.postDataJSON())
-      await route.fulfill(scenario.saveFails ? { status: 500, json: { detail: "受控文章保存失败" } } : { status: 200, json: true })
+    if (url.pathname === "/api/v1/manage/articles" && request.method() === "POST") {
+      const body = request.postDataJSON() as Record<string, unknown>
+      scenario.requests.articleBodies.push(body)
+      if (scenario.saveFails) {
+        await route.fulfill({ status: 500, json: { detail: "受控文章保存失败" } })
+        return
+      }
+      await route.fulfill({ status: 201, json: {
+        id: 101,
+        title: typeof body["title"] === "string" && body["title"].length > 0 ? body["title"] : "Edge 测试文章",
+        slug: typeof body["slug"] === "string" && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(body["slug"]) ? body["slug"] : "edge-test-article",
+        digest: typeof body["digest"] === "string" && body["digest"].length > 0 ? body["digest"] : "Edge 测试摘要",
+        content: typeof body["content"] === "string" && body["content"].length > 0 ? body["content"] : "Edge 测试正文",
+        article_type_id: 1,
+        tag_ids: [1],
+        status: body["status"] === 2 ? 2 : 1,
+        support: 0,
+        comment: 0,
+        visited: 0,
+        version: 1,
+        created_at: "2026-07-14T00:00:00Z",
+        updated_at: null,
+      } })
       return
     }
     if (url.pathname === `/api/v1/article-images/${IMAGE_ID}` && request.method() === "DELETE") {
@@ -81,6 +101,10 @@ test("Edge 上传 JPEG 后写入远程 URL，保存成功不删除", async ({ pa
   page.on("requestfailed", (request) => { browserErrors.push(`requestfailed: ${request.method()} ${request.url()}`) })
   await installApi(page, api)
   await page.goto("/author/articles/new")
+  await page.getByTestId("article-slug").fill("edge-test-article")
+  await page.getByRole("combobox").click()
+  await page.getByRole("option", { name: "工程笔记", exact: true }).click()
+  await page.getByRole("checkbox", { name: "Vue", exact: true }).check()
   const editor = page.getByRole("textbox").last()
   const original = await editor.textContent()
 
@@ -95,7 +119,7 @@ test("Edge 上传 JPEG 后写入远程 URL，保存成功不删除", async ({ pa
   // Then: 浏览器生成 multipart boundary，Markdown 合同不增加图片字段。
   expect(original).not.toContain(IMAGE_PATH)
   expect(api.requests.multipartHeaders[0]).toMatch(/^multipart\/form-data; boundary=/)
-  expect(api.requests.articleBodies[0]).toMatchObject({ body: expect.stringContaining(`${API_ROOT}${IMAGE_PATH}`) })
+  expect(api.requests.articleBodies[0]).toMatchObject({ content: expect.stringContaining(`${API_ROOT}${IMAGE_PATH}`), article_type_id: 1, tag_ids: [1], slug: "edge-test-article", status: 1 })
   expect(api.requests.articleBodies[0]).not.toHaveProperty("images")
   expect(api.requests.deletes).toEqual([])
   expect(browserErrors).toEqual([])

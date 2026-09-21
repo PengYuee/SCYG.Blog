@@ -1,17 +1,19 @@
 # Go Backend Architecture
 
+> **Historical decision record.** This architecture document describes the superseded pre-Feature-first target. The implemented runtime is documented in [`current-state-architecture.zh-CN.md`](current-state-architecture.zh-CN.md); the adopted rationale is [`feature-first-backend-refactoring-plan.zh-CN.md`](feature-first-backend-refactoring-plan.zh-CN.md), and the completed execution record is [`feature-first-backend-refactoring-implementation-plan.zh-CN.md`](feature-first-backend-refactoring-implementation-plan.zh-CN.md). Do not use this document as the current directory or dependency contract.
+
 **Status:** Binding Gate A architecture decision
 **Scope:** `backend/` Go service foundation
 **Current runtime:** REST over HTTP only
 
-This document freezes the backend architecture before code or configuration is created. Statements marked **MUST**, **MUST NOT**, and **ONLY** are binding for later implementation. Future gRPC, WebSocket, broker, identity, media, search, and AI capabilities are design decisions only; this gate creates no runtime module, dependency, listener, schema, or placeholder for them.
+This document records the backend architecture and its hard boundaries. Statements marked **MUST**, **MUST NOT**, and **ONLY** are binding for implementation. Naming, file size, the common five-layer module shape, generic-token wording, and future-technology names are review guidance, not a prose-only scanner contract. Future gRPC, WebSocket, broker, identity, media, search, and AI capabilities are design decisions only until a real feature is implemented and reviewed.
 
 ## Goals
 
 - Build one independently deployable Go modular monolith rooted at `backend/`, while the repository root remains a future monorepo container without a root `go.mod`.
 - Implement one `content` vertical slice with stable domain names `Article`, `ArticleType`, `Tag`, and `TagArticle`; `ArticleType` MUST NOT be renamed to Category.
 - Keep domain and application behavior protocol-neutral and framework-neutral through explicit dependency direction and consumer-owned interfaces.
-- Make OpenAPI 3.0.3 the binding REST contract, generate Gin interfaces with oapi-codegen/v2, and serve embedded self-hosted Scalar assets without a runtime CDN or network fetch.
+- Make OpenAPI 3.0.3 the binding REST contract, generate Gin interfaces with oapi-codegen/v2, and serve embedded self-hosted Scalar assets without a runtime CDN dependency.
 - Use PostgreSQL with explicit SQL migrations, GORM as a private persistence adapter, Viper for immutable startup configuration, manual constructor injection, and `log/slog`-based observability.
 - Define extension rules now for independent future gRPC, Protobuf WebSocket, and external-service collaboration without implementing them.
 - Prove boundaries with unit, HTTP, integration, end-to-end, architecture, generation-drift, migration, race, static-analysis, and container tests.
@@ -20,7 +22,7 @@ This document freezes the backend architecture before code or configuration is c
 
 - No legacy data migration, old-route compatibility, or modification of the external C# project.
 - No identity implementation, authentication middleware, user/token model, Redis, worker, scheduler, broker, Outbox implementation, object storage, search, frontend, AI, or Kubernetes.
-- No future identity/media/search/AI/gRPC/WebSocket/integration directories or empty modules in this phase.
+- No unimplemented runtime capability, listener, schema, dependency, or placeholder is created in this phase. A future capability is reviewed when it is implemented, rather than pre-blocked by its directory or dependency name.
 - No `gorm.AutoMigrate`, reflection-based generic repository, dependency-injection framework, service locator, mutable global dependency container, or cross-module persistence access.
 - No universal `ContentAPI`, no cross-protocol envelope, and no generated service interface shared by REST, gRPC, WebSocket, or broker transports.
 - No CDN runtime dependency, `swaggo` annotations, or speculative Runner framework.
@@ -93,7 +95,7 @@ Binding rules:
 3. Generated OpenAPI DTOs and private GORM records never become domain models.
 4. Each transport owns the smallest interface it consumes. A use case may exist for only one protocol; artificial parity is prohibited.
 5. Cross-module work uses public module façades. A module never imports another module's internals or reads its tables.
-6. No mutable singleton, generic utility dumping ground, generic repository, or handwritten Go file above 250 pure LOC.
+6. Avoid mutable singletons, generic utility dumping grounds, and generic repositories. File size and naming are review guidance, with the current 250 pure LOC target used to surface files that need discussion or splitting.
 
 ## Manual Dependency Injection
 
@@ -133,17 +135,18 @@ Use cases remain transport-neutral: no protocol types in use cases. Protocol par
 
 Current implementation is REST only. OpenAPI 3.0.3 is authoritative for:
 
-- `/api/v1/articles`
+- `/api/v1/articles`（公开读取）
+- `/api/v1/manage/articles` 与 `/api/v1/manage/articles/{id}`（管理端创建、读取、修改、状态迁移和删除）
 - `/api/v1/article-types`
 - `/api/v1/tags`
 
-Public reads expose only `Published` and nondeleted articles. Write routes are registered, but every write calls `Authorizer.Authorize(ctx, action, resource) error` before UnitOfWork or repository access. Production injects `DenyAll`; syntactically valid writes return 403 with zero repository/UnitOfWork calls. Malformed transport input returns 400 before invoking a use case. Tests may inject `AllowAll`. This phase declares 403 responses but no OpenAPI security scheme and creates no identity or authorization middleware.
+Public reads expose only `Published` and nondeleted articles. Article creation and all article writes use the protected management routes and call `Authorizer.Authorize(ctx, action, resource)` before UnitOfWork or repository access. Production injects `DenyAll`; syntactically valid writes return 403 with zero repository/UnitOfWork calls. Malformed transport input returns 400 before invoking a use case. Tests may inject `AllowAll`. This phase declares 403 responses but no OpenAPI security scheme and creates no identity or authorization middleware.
 
 Pagination uses `page` default/minimum 1 and `page_size` default 20, minimum 1, maximum 100. Sort accepts only `created_at`, `updated_at`, and `title`, with `-` for descending. Filters are `article_type_id`, `tag_id`, and `q`.
 
 Strong optimistic concurrency uses `ETag: "<Version>"`. PATCH and DELETE require a strong matching `If-Match`; missing is 428 and stale is 412. Create returns 201 with `Location`, `ETag`, and resource; detail/list return 200; delete returns 204.
 
-Scalar's pinned standalone browser asset will be embedded and self-hosted with its OpenAPI document. Runtime MUST NOT fetch a CDN or any network asset. Documentation can be disabled by configuration.
+The OpenAPI contract is maintained in `api/openapi.yaml`; runtime serves `/docs`, `/openapi.yaml`, and `/docs/assets/scalar.js` from embedded self-hosted Scalar assets. Runtime MUST NOT fetch a CDN or any network asset.
 
 ```mermaid
 sequenceDiagram
@@ -153,13 +156,13 @@ sequenceDiagram
     participant Auth as Authorizer
     participant UoW as UnitOfWork
     participant PG as PostgreSQL
-    Client->>Gin: PATCH /api/v1/articles/{id} + If-Match
+    Client->>Gin: POST /api/v1/manage/articles 或 PATCH /api/v1/manage/articles/{id} + If-Match
     Gin->>Gin: Validate and map OpenAPI DTO
-    Gin->>UC: PatchArticle command
+    Gin->>UC: CreateArticle 或 PatchArticle command
     UC->>Auth: Authorize(action, resource)
     Auth-->>UC: allowed or typed denial
     UC->>UoW: begin local transaction
-    UoW->>PG: atomic update by Id, Version, IsDeleted=false
+    UoW->>PG: atomic update by id, version, is_deleted=false
     PG-->>UoW: affected row count
     UoW-->>UC: commit or typed error
     UC-->>Gin: protocol-neutral result
@@ -290,11 +293,11 @@ When enabled later, the business row and Outbox row commit in one PostgreSQL tra
 
 ## Persistence
 
-PostgreSQL is authoritative. GORM is a private adapter and runtime MUST NOT call `AutoMigrate`; versioned SQL migrations own schema changes. Every persistence field uses an explicit `gorm:"column:ExactName"` tag and every model has an explicit `TableName()`. `gorm.DeletedAt` is prohibited.
+PostgreSQL is authoritative. GORM is a private adapter and runtime MUST NOT call `AutoMigrate`; versioned SQL migrations own schema changes. Every persistence field uses an explicit `gorm:"column:snake_case_name"` tag and every model has an explicit `TableName()`. `gorm.DeletedAt` is prohibited.
 
-Names remain exact: `Article`, `ArticleType`, `Tag`, and `TagArticle`. `TagArticle` has the composite key (`ArticleId`, `TagId`). `Article` references `ArticleType` with delete restriction; tag links cascade when an Article is deleted and restrict Tag deletion while referenced.
+The physical tables use lower snake_case names: `article_types`, `tags`, `articles`, and `article_tags`. Their key columns are `id`, `article_type_id`, `article_id`, and `tag_id`; lifecycle columns are `created_at`, `updated_at`, `deleted_at`, and `is_deleted`. The Go domain names remain `Article`, `ArticleType`, `Tag`, and `TagArticle`; they are not physical table names. `article_tags` has the composite key (`article_id`, `tag_id`). `articles` references `article_types` with delete restriction; tag links cascade when an article is deleted and restrict tag deletion while referenced.
 
-Article status values are Draft=1, Published=2, Archived=3. Soft delete and version update are one atomic statement constrained by `Id`, `Version`, and `IsDeleted=false`, incrementing Version. `RowsAffected=0` is classified as stale versus not-found through a follow-up existence query. Command repositories participate in explicit UnitOfWork transactions; read projections are dedicated and bounded.
+Article status values are Draft=1, Published=2, Archived=3. Soft delete and version update are one atomic statement constrained by `id`, `version`, and `is_deleted=false`, incrementing `version`. `RowsAffected=0` is classified as stale versus not-found through a follow-up existence query. Command repositories participate in explicit UnitOfWork transactions; read projections are dedicated and bounded.
 
 ```mermaid
 erDiagram
@@ -302,29 +305,29 @@ erDiagram
     Article ||--o{ TagArticle : has
     Tag ||--o{ TagArticle : labels
     ArticleType {
-        bigint Id PK
-        string Name
-        bigint Version
-        boolean IsDeleted
+        bigint id PK
+        string name
+        bigint version
+        boolean is_deleted
     }
     Article {
-        bigint Id PK
-        bigint ArticleTypeId FK
-        string Title
-        string Slug
-        smallint Status
-        bigint Version
-        boolean IsDeleted
+        bigint id PK
+        bigint article_type_id FK
+        string title
+        string slug
+        smallint status
+        bigint version
+        boolean is_deleted
     }
     Tag {
-        bigint Id PK
-        string Name
-        bigint Version
-        boolean IsDeleted
+        bigint id PK
+        string name
+        bigint version
+        boolean is_deleted
     }
     TagArticle {
-        bigint ArticleId PK_FK
-        bigint TagId PK_FK
+        bigint article_id PK_FK
+        bigint tag_id PK_FK
     }
 ```
 
@@ -338,7 +341,7 @@ Within the monolith, only the owning module's persistence adapter accesses its t
 
 Use a local `viper.New()` instance during startup, bind defaults, optional YAML, and environment variables, then unmarshal and validate one immutable typed configuration value. Leaf packages receive typed fields and never read environment variables. No Viper globals or hot reload.
 
-Binding keys are `app.env`, `http.host`, `http.port`, `http.read_header_timeout`, `http.read_timeout`, `http.write_timeout`, `http.idle_timeout`, `http.shutdown_timeout`, `http.trusted_proxies`, `http.cors_allowed_origins`, `database.dsn`, `database.max_open_conns`, `database.max_idle_conns`, `database.conn_max_lifetime`, `docs.enabled`, and `telemetry.otlp_endpoint`. Environment prefix is `SCYG_`, replacing dots with underscores. Precedence is defaults, then file, then environment.
+Binding keys are `app.env`, `http.host`, `http.port`, `http.read_header_timeout`, `http.read_timeout`, `http.write_timeout`, `http.idle_timeout`, `http.shutdown_timeout`, `http.trusted_proxies`, `http.cors_allowed_origins`, `database.dsn`, `database.max_open_conns`, `database.max_idle_conns`, `database.conn_max_lifetime`, and `telemetry.otlp_endpoint`. Environment prefix is `SCYG_`, replacing dots with underscores. Precedence is defaults, then file, then environment.
 
 ## Observability
 
@@ -352,8 +355,18 @@ Prometheus uses a private registry and bounded-cardinality dimensions. OpenTelem
 - REST tests use `httptest` and generated interfaces; they verify bare resources, list pages, RFC 9457, 403 deny-all writes, ETags, and malformed-input short circuiting.
 - PostgreSQL adapter and migration tests use real PostgreSQL Testcontainers; SQL mocks are not substitutes.
 - Tagged end-to-end tests exercise migration, offline Scalar, public reads, test-authorized CRUD, production-denied writes, concurrency, readiness, restart persistence, and graceful shutdown.
-- Architecture tests reject forbidden imports, protocol types in use cases, universal `ContentAPI`, cross-protocol wrappers, persistence leakage, mutable globals, forbidden future directories, and oversized handwritten files.
+- Executable scanner protections cover import boundaries, module-layer dependency direction, and `init` side effects (`ARCH_INIT_SIDE_EFFECT`). Universal interfaces, mutable globals, future directories or dependencies, naming, and file size are organizational review guidance, not scanner-emitted violations.
 - Quality gates include deterministic OpenAPI generation, formatting, `go vet`, golangci-lint v2, nilaway, race/shuffle tests, govulncheck, migration round-trip, container checks, secret scan, and dependency/scope scans.
+
+## Risk-Based Feature Delivery
+
+交付门禁按变更风险选择，而不是按文件名或目录名一律升级：
+
+1. **现有模块中的简单功能**沿用最近的技术层，运行该层的聚焦测试和 `qa:feature`。只要没有改变迁移、OpenAPI、bootstrap、架构边界、数据库 integration 或用户可观察 E2E 边界，就不要求这些额外门禁。
+2. **契约或数据功能**运行 `qa:contract`。schema 变更还必须完成 migration roundtrip，并通过真实数据库 integration 或 E2E 验证。REST 契约仍以 OpenAPI 源文件为权威，生成 bindings 和文档副本必须同步。
+3. **生命周期、新模块或边界功能**保留架构 import checks，并执行受影响的 bootstrap、数据库、container 和 E2E 门禁。构造、migration、readiness 和逆序清理的硬约束不因功能规模较小而降低。
+
+命名、文件规模、五处常见模块层、generic token 用词和未来技术名称用于 review 中表达责任和风险。它们可以促成拆分或改名建议，但不能单独阻止一个尚未实现的未来能力。真正实现该能力时，再根据实际依赖方向、外部契约、生命周期和测试证据进行评审。
 
 ## Multi-Server Lifecycle
 
@@ -377,7 +390,7 @@ flowchart TB
 
 ## Deployment
 
-The deployable unit is a non-root, pinned, multi-stage container containing the Go binary, migrations, OpenAPI document, and self-hosted Scalar asset; the runtime image contains no Go toolchain. Local Docker Compose contains only API and PostgreSQL with health dependencies and secure development defaults. Production examples do not expose PostgreSQL publicly and never embed secrets.
+The deployable unit is a non-root, pinned, multi-stage container containing the Go binary, migrations, generated runtime artifacts, and self-hosted Scalar asset; the runtime image contains no Go toolchain. Local Docker Compose contains only API and PostgreSQL with health dependencies and secure development defaults. Production examples do not expose PostgreSQL publicly and never embed secrets.
 
 CI runs the same task entry points as local development and verifies generated-code freshness, tests, static analysis, migrations, vulnerability scanning, SBOM/image scanning, non-root execution, health, and graceful termination. Kubernetes is outside this foundation.
 
@@ -396,9 +409,9 @@ Later implementation records decision details without reopening this architectur
 | ADR-007 | Future Protobuf WebSocket direction and subprotocol |
 | ADR-008 | ACL boundaries, consistency, and Outbox activation criteria |
 | ADR-009 | Authorizer extension point with production deny-all writes |
-| ADR-010 | Scalar `1.62.5` 自托管资产取代不可解析的 `1.49.3` 绑定版本 |
+| ADR-010 | Versioned self-hosted Scalar browser asset |
 
-Toolchain/dependency baselines are Go 1.26.0, Gin 1.11.0, GORM 1.31.1, Viper 1.20.1, oapi-codegen 2.7.2, golang-migrate 4.19.0, and self-hosted Scalar 1.62.5 (ADR-010). A pin may change only when its exact version cannot resolve, with official release evidence and an ADR recorded before code uses the replacement.
+Toolchain/dependency baselines are Go 1.26.0, Gin 1.11.0, GORM 1.31.1, Viper 1.20.1, and oapi-codegen 2.7.2. A pin may change only when its exact version cannot resolve, with official release evidence and an ADR recorded before code uses the replacement.
 
 ## References and Provenance
 

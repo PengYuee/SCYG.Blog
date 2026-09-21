@@ -8,7 +8,10 @@ import (
 	"time"
 )
 
-const cleanupFailureMessage = "文章图片清理失败，将在下一轮重试"
+const (
+	cleanupFailureMessage = "文章图片清理失败，将在下一轮重试"
+	cleanupErrorKey       = "error"
+)
 
 // CleanupRunner 是 worker 调用的单轮图片清理能力。
 type CleanupRunner interface {
@@ -108,7 +111,7 @@ func (worker *articleImageCleanupWorker) run(ctx context.Context, done chan<- st
 				}
 			}
 			if err := worker.runner.CleanupArticleImages(ctx); err != nil && !errors.Is(err, context.Canceled) {
-				worker.logger.Warn(cleanupFailureMessage, slog.Any("error", err))
+				worker.logger.WarnContext(ctx, cleanupFailureMessage, slog.Any(cleanupErrorKey, err))
 			}
 		}
 	}

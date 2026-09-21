@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"gorm.io/gorm"
+
 	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/config"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/observability"
 )
@@ -36,6 +38,8 @@ type cleanupStartFailureDatabase struct{ closes int }
 
 func (*cleanupStartFailureDatabase) Ping(context.Context) error { return nil }
 func (database *cleanupStartFailureDatabase) Close() error      { database.closes++; return nil }
+
+func (*cleanupStartFailureDatabase) GORM() *gorm.DB { return nil }
 
 // cleanupStartFailureTelemetry 记录遥测关闭次数。
 type cleanupStartFailureTelemetry struct{ closes int }
@@ -111,8 +115,8 @@ func Test_CleanupWorker_start_failure_keeps_dependencies_until_stop_is_confirmed
 			app := newApp(context.Background(), cleanupStartFailureConfig(t), logger, health, server, worker, telemetry, database, nil)
 
 			// When
-			startErr := app.Start()
-			retryStartErr := app.Start()
+			startErr := app.Start(context.Background())
+			retryStartErr := app.Start(context.Background())
 			closesBeforeShutdown := database.closes + telemetry.closes
 			shutdownCtx, cancel := context.WithTimeout(context.Background(), time.Second)
 			defer cancel()
@@ -130,6 +134,7 @@ func Test_CleanupWorker_start_failure_keeps_dependencies_until_stop_is_confirmed
 func cleanupStartFailureConfig(t *testing.T) config.Config {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "config.yaml")
+	//nolint:gosec // synthetic DSN used only to exercise startup failure cleanup.
 	contents := "database:\n  dsn: postgres://postgres:postgres@localhost:5432/scyg?sslmode=disable\n"
 	if err := os.WriteFile(path, []byte(contents), 0o600); err != nil {
 		t.Fatal(err)

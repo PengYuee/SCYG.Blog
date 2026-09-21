@@ -3,7 +3,6 @@ package bootstrap
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"sync"
 	"testing"
@@ -87,7 +86,7 @@ func Test_CleanupWorker_coalesces_ticks_while_cleanup_is_running(t *testing.T) {
 	// Given
 	runner := &cleanupRunnerFake{started: make(chan struct{}, 2), release: make(chan struct{})}
 	ticker := &cleanupTickerFake{ticks: make(chan time.Time, 8)}
-	worker := newCleanupWorker(runner, ticker, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	worker := newCleanupWorker(runner, ticker, slog.New(slog.DiscardHandler))
 	if err := worker.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -116,7 +115,7 @@ func Test_CleanupWorker_recovers_on_next_tick_after_error(t *testing.T) {
 	// Given
 	runner := &cleanupRunnerFake{started: make(chan struct{}, 2), errors: []error{errors.New("本轮失败")}}
 	ticker := &cleanupTickerFake{ticks: make(chan time.Time, 2)}
-	worker := newCleanupWorker(runner, ticker, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	worker := newCleanupWorker(runner, ticker, slog.New(slog.DiscardHandler))
 	if err := worker.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -138,7 +137,7 @@ func Test_CleanupWorker_stop_cancels_inflight_cleanup(t *testing.T) {
 	// Given
 	runner := &cleanupRunnerFake{started: make(chan struct{}, 1), release: make(chan struct{})}
 	ticker := &cleanupTickerFake{ticks: make(chan time.Time, 1)}
-	worker := newCleanupWorker(runner, ticker, slog.New(slog.NewTextHandler(io.Discard, nil)))
+	worker := newCleanupWorker(runner, ticker, slog.New(slog.DiscardHandler))
 	if err := worker.Start(context.Background()); err != nil {
 		t.Fatal(err)
 	}

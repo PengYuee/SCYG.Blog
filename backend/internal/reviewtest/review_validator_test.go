@@ -53,6 +53,7 @@ func scenarioRequirements() []scenarioRequirement {
 		{Name: "Test_E2E_sigterm_closes_runtime", RequiredSymbols: []string{"assertSignalSubprocessShutdown"}},
 	}
 }
+
 func criticalScenarioRequirements() []scenarioRequirement {
 	return []scenarioRequirement{
 		{Name: "Test_E2E_scalar_is_offline_and_self_hosted", RequiredSymbols: []string{"assertLocalReferences", "StatusOK"}},

@@ -28,7 +28,7 @@ CREATE TABLE article_image_references (
   image_id VARCHAR(32) NOT NULL,
   created_at TIMESTAMPTZ NOT NULL,
   CONSTRAINT article_image_references_pkey PRIMARY KEY (article_id, image_id),
-  CONSTRAINT article_image_references_article_id_fkey FOREIGN KEY (article_id) REFERENCES "Article" ("Id") ON DELETE CASCADE,
+  CONSTRAINT article_image_references_article_id_fkey FOREIGN KEY (article_id) REFERENCES articles (id) ON DELETE CASCADE,
   CONSTRAINT article_image_references_image_id_fkey FOREIGN KEY (image_id) REFERENCES article_images (id) ON DELETE CASCADE
 );
 CREATE INDEX article_image_references_image_id_idx ON article_image_references (image_id);

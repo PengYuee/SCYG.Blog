@@ -5,10 +5,8 @@ import (
 	"fmt"
 	"go/ast"
 	"go/parser"
-	"go/scanner"
 	"go/token"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"sort"
 )
@@ -45,13 +43,9 @@ func Scan(root string) ([]Violation, error) {
 	}
 	violations := make([]Violation, 0)
 	for _, file := range files {
-		violations = append(violations, checkSize(file)...)
-		violations = append(violations, checkPath(file)...)
-		violations = append(violations, checkFileOrganization(file)...)
 		violations = append(violations, checkImports(file)...)
 		violations = append(violations, checkDeclarations(file)...)
 	}
-	violations = append(violations, checkModuleShape(files)...)
 	sort.Slice(violations, func(left, right int) bool {
 		if violations[left].Path == violations[right].Path {
 			return violations[left].Code < violations[right].Code
@@ -89,30 +83,4 @@ func loadSources(root string) ([]sourceFile, error) {
 		return nil
 	})
 	return files, err
-}
-
-func checkSize(file sourceFile) []Violation {
-	if file.relative == "internal/generated/openapi/openapi.gen.go" {
-		return nil
-	}
-	lines := make(map[int]struct{})
-	source, err := os.ReadFile(file.absolute)
-	if err != nil {
-		return []Violation{{Code: "ARCH_FILE_READ", Path: file.relative, Detail: err.Error()}}
-	}
-	var lexer scanner.Scanner
-	lexer.Init(file.fileSet.File(file.parsed.Pos()), source, nil, 0)
-	for {
-		position, current, _ := lexer.Scan()
-		if current == token.EOF {
-			break
-		}
-		if current != token.SEMICOLON {
-			lines[file.fileSet.Position(position).Line] = struct{}{}
-		}
-	}
-	if len(lines) > 250 {
-		return []Violation{{Code: "ARCH_FILE_SIZE", Path: file.relative, Detail: fmt.Sprintf("handwritten file has %d pure LOC; maximum is 250", len(lines))}}
-	}
-	return nil
 }

@@ -19,7 +19,7 @@ export const apiServicesKey: InjectionKey<ApiServices> = Symbol("api-services")
 /** 使用显式传入的传输层和服务地址创建一次 API 服务容器。 */
 export function createApiServices(client: HttpTransport, serverUrl: string): ApiServices {
   return {
-    article: createArticleApi(client, serverUrl),
+    article: createArticleApi(client),
     articleImage: createArticleImageApi(client, serverUrl),
     articleType: createArticleTypeApi(client, serverUrl),
     tag: createTagApi(client),

@@ -5,9 +5,7 @@ package content_test
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"image"
 	"image/color"
@@ -15,7 +13,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"os"
 	"strings"
 	"testing"
@@ -25,10 +22,13 @@ import (
 	_ "github.com/jackc/pgx/v5/stdlib"
 
 	module "github.com/PengYuee/SCYG.Blog/backend/internal/modules/content"
-	contentpostgres "github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/postgres"
+	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/application"
+	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/article"
+	featureimage "github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/image"
+	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/taxonomy"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/blobstorage"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/database"
-	qaconfig "github.com/PengYuee/SCYG.Blog/backend/internal/qa/config"
+	qadatabase "github.com/PengYuee/SCYG.Blog/backend/internal/qa/database"
 	restcontent "github.com/PengYuee/SCYG.Blog/backend/internal/transport/rest/content"
 	"github.com/PengYuee/SCYG.Blog/backend/migrations"
 )
@@ -50,22 +50,40 @@ func integrationImageBytes(t *testing.T) []byte {
 	return encoded.Bytes()
 }
 
+type integrationClock struct{}
+
+func (integrationClock) Now() time.Time { return time.Now().UTC() }
+
 func integrationRouter(t *testing.T, db *database.Database, store *blobstorage.Filesystem, author string) *gin.Engine {
 	t.Helper()
 	authorID, err := module.NewAuthorID(author)
 	if err != nil {
 		t.Fatal(err)
 	}
-	service, err := contentpostgres.New(contentpostgres.Dependencies{Database: db, Authorizer: integrationAllowAll{}, CurrentAuthor: module.NewFixedCurrentAuthorProvider(authorID), ImageFilesystem: store, ImagePolicy: module.DefaultArticleImagePolicy()})
+	clock := integrationClock{}
+	policy := featureimage.DefaultPolicy()
+	articleService, err := article.New(db.GORM(), article.Dependencies{Authorizer: integrationAllowAll{}, Clock: clock})
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler, err := restcontent.NewHandler(service, service, module.DefaultArticleImagePolicy())
+	taxonomyService, err := taxonomy.New(db.GORM(), taxonomy.Dependencies{Authorizer: integrationAllowAll{}, Clock: clock})
+	if err != nil {
+		t.Fatal(err)
+	}
+	imageService, err := featureimage.New(db.GORM(), featureimage.Dependencies{Authorizer: integrationAllowAll{}, CurrentAuthor: module.NewFixedCurrentAuthorProvider(authorID), Blob: featureimage.NewFilesystemBlob(store, policy), Clock: clock, Policy: policy})
+	if err != nil {
+		t.Fatal(err)
+	}
+	articleImages, err := application.NewArticleImages(application.Dependencies{DB: db.GORM(), Authorizer: integrationAllowAll{}, CurrentAuthor: module.NewFixedCurrentAuthorProvider(authorID), Clock: clock, Articles: articleService, Images: imageService})
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler, err := restcontent.NewHandler(articleService, articleImages, articleService, taxonomyService, imageService, policy)
 	if err != nil {
 		t.Fatal(err)
 	}
 	router := gin.New()
-	if err = handler.Register(router); err != nil {
+	if err := handler.Register(router, testLoginHandler{}); err != nil {
 		t.Fatal(err)
 	}
 	return router
@@ -73,53 +91,38 @@ func integrationRouter(t *testing.T, db *database.Database, store *blobstorage.F
 
 func integrationFixture(t *testing.T) (*database.Database, *blobstorage.Filesystem, string) {
 	t.Helper()
-	qa, err := qaconfig.LoadLocal()
-	if err != nil {
-		t.Fatal(err)
+	configPath := os.Getenv("QA_CONFIG")
+	if configPath == "" {
+		t.Fatal("QA_CONFIG is required")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), qa.CommandTimeout())
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	random := make([]byte, 8)
-	if _, err = rand.Read(random); err != nil {
-		t.Fatal(err)
-	}
-	name := qa.DatabasePrefix() + "todo6_" + hex.EncodeToString(random)
-	adminDSN := qa.AdminDSN().Value()
-	admin, err := sql.Open("pgx", adminDSN)
+	isolated, err := qadatabase.New(ctx, configPath, "rest_content_")
 	if err != nil {
 		t.Fatal(err)
 	}
-	quotedName := `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
-	if _, err = admin.ExecContext(ctx, "CREATE DATABASE "+quotedName); err != nil {
-		_ = admin.Close()
-		t.Fatal(err)
-	}
-	if err = admin.Close(); err != nil {
-		t.Fatal(err)
-	}
-	parsed, err := url.Parse(adminDSN)
-	if err != nil {
-		t.Fatal(err)
-	}
-	parsed.Path = "/" + name
-	targetDSN := parsed.String()
-	migrationDB, err := sql.Open("pgx", targetDSN)
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cleanupCancel()
+		if err := isolated.Close(cleanupCtx); err != nil {
+			t.Error(err)
+		}
+	})
+	migrationDB, err := sql.Open("pgx", isolated.DSN())
 	if err != nil {
 		t.Fatal(err)
 	}
 	runner, err := migrations.New(migrationDB, "")
 	if err != nil {
-		_ = migrationDB.Close()
 		t.Fatal(err)
 	}
 	if err = runner.Up(); err != nil {
-		_ = runner.Close()
 		t.Fatal(err)
 	}
 	if err = runner.Close(); err != nil {
 		t.Fatal(err)
 	}
-	db, err := database.New(ctx, database.Options{DSN: targetDSN, Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), MaxOpenConns: 5, MaxIdleConns: 2, ConnMaxLifetime: time.Minute})
+	db, err := database.New(ctx, database.Options{DSN: isolated.DSN(), Logger: slog.New(slog.NewTextHandler(os.Stderr, nil)), MaxOpenConns: 5, MaxIdleConns: 2, ConnMaxLifetime: time.Minute})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,31 +132,7 @@ func integrationFixture(t *testing.T) (*database.Database, *blobstorage.Filesyst
 		_ = db.Close()
 		t.Fatal(err)
 	}
-	t.Cleanup(func() {
-		if closeErr := store.Close(); closeErr != nil {
-			t.Error(closeErr)
-		}
-		if closeErr := db.Close(); closeErr != nil {
-			t.Error(closeErr)
-		}
-		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), qa.CommandTimeout())
-		defer cleanupCancel()
-		cleanup, openErr := sql.Open("pgx", adminDSN)
-		if openErr != nil {
-			t.Error(openErr)
-			return
-		}
-		defer cleanup.Close()
-		_, _ = cleanup.ExecContext(cleanupCtx, `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1`, name)
-		if _, dropErr := cleanup.ExecContext(cleanupCtx, "DROP DATABASE "+quotedName); dropErr != nil {
-			t.Error(dropErr)
-			return
-		}
-		var count int
-		if queryErr := cleanup.QueryRowContext(cleanupCtx, `SELECT count(*) FROM pg_database WHERE datname = $1`, name).Scan(&count); queryErr != nil || count != 0 {
-			t.Errorf("临时数据库残留 count=%d err=%v", count, queryErr)
-		}
-	})
+	t.Cleanup(func() { _ = store.Close(); _ = db.Close() })
 	return db, store, root
 }
 

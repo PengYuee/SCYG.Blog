@@ -6,11 +6,14 @@ import { runtimeConfigKey } from "@/config/runtime-provider"
 import { apiServicesKey, createApiServices } from "@/request/api-services"
 import { http } from "@/request/http"
 import { router } from "@/router"
+import { scrollRestoration, scrollRestorationKey } from "@/services/scroll-restoration"
 
 /** 创建、配置并挂载 Vue 应用。 */
 export function mountApplication(config: RuntimeConfig): void {
   const app = createApp(App)
   app.use(createPinia())
+  scrollRestoration.install()
+  app.provide(scrollRestorationKey, scrollRestoration)
   app.use(router)
   const apiServices = createApiServices(http, config.serverUrl)
   app.provide(runtimeConfigKey, config)

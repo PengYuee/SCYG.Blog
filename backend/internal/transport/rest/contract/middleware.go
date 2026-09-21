@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/getkin/kin-openapi/openapi3filter"
 	"github.com/gin-gonic/gin"
 	ginmiddleware "github.com/oapi-codegen/gin-middleware"
 
@@ -45,6 +46,7 @@ func Middleware(options Options) (gin.HandlerFunc, error) {
 	}
 	validatorOptions := &ginmiddleware.Options{
 		SilenceServersWarning: true,
+		Options:               openapi3filter.Options{AuthenticationFunc: openapi3filter.NoopAuthenticationFunc},
 		ErrorHandler: func(ctx *gin.Context, message string, status int) {
 			failure := Failure{Kind: classify(message), Message: message, Status: status}
 			if options.ErrorHandler != nil {

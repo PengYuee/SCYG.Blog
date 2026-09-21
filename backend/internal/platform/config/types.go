@@ -133,6 +133,7 @@ type Config struct {
 	database      Database
 	http          HTTP
 	docs          Docs
+	auth          Auth
 	articleImages ArticleImages
 }
 
@@ -150,6 +151,9 @@ func (config Config) Docs() Docs { return config.docs }
 
 // Telemetry returns immutable telemetry settings.
 func (config Config) Telemetry() Telemetry { return config.telemetry }
+
+// Auth returns immutable authentication settings.
+func (config Config) Auth() Auth { return config.auth }
 
 // ArticleImages 返回不可变的文章图片存储与安全限制。
 func (config Config) ArticleImages() ArticleImages { return config.articleImages }

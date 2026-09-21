@@ -32,7 +32,7 @@ const description = computed(() => ({
       <p class="mt-6 text-xs font-semibold uppercase tracking-[0.18em] text-accent">{{ mode === "not-found" ? "404" : "UNAVAILABLE" }}</p>
       <h1 :id="`${mode}-title`" class="mt-2 text-balance font-[family-name:var(--font-family-display)] text-[length:var(--font-size-h1)] font-bold leading-[var(--line-height-h1)]">{{ title }}</h1>
       <p class="mx-auto mt-4 max-w-xl text-pretty text-text-secondary">{{ description }}</p>
-      <RouterLink to="/articles" class="mt-8 inline-flex min-h-11 items-center gap-2 rounded-[var(--radius-control)] bg-accent px-6 font-semibold text-[color:var(--color-hero-text)] hover:bg-accent-hover active:scale-[0.98]"><ArrowLeftIcon class="size-5" aria-hidden="true" />返回文章列表</RouterLink>
+      <RouterLink to="/articles" class="mt-8 inline-flex min-h-11 items-center gap-2 rounded-[var(--radius-control)] bg-accent px-6 font-semibold text-canvas hover:bg-accent-hover active:scale-[0.98]"><ArrowLeftIcon class="size-5" aria-hidden="true" />返回文章列表</RouterLink>
     </section>
   </main>
 </template>

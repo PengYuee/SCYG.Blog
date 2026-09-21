@@ -17,7 +17,7 @@ describe("API response parsers", () => {
     // When: it crosses the adapter boundary.
     const result = parseArticleList(fixture)
     // Then: snake-case fields become readonly domain fields.
-    expect(result).toMatchObject({ items: [{ id: 7, articleTypeId: 2, markdown: "# Markdown" }], pageIndex: 1, pageSize: 20, totalItems: 1 })
+    expect(result).toMatchObject({ items: [{ id: 7, articleTypeId: 2, markdown: "# Markdown" }], pageIndex: 0, pageSize: 20, totalItems: 1 })
   })
 
   it("maps current article content to Markdown source", () => {

@@ -27,6 +27,20 @@ export type PageResult<T> = {
   readonly totalPages: number
 }
 
+/** RFC 9457 问题详情响应。 */
+export const problemDetailsSchema = z.strictObject({
+  type: z.string().min(1),
+  title: z.string().min(1),
+  status: z.number().int().min(400).max(599),
+  detail: z.string().min(1),
+  instance: z.string().min(1),
+  request_id: z.string().min(1),
+  errors: z.record(z.string(), z.array(z.string().min(1)).min(1)),
+})
+
+/** RFC 9457 问题详情领域类型。 */
+export type ProblemDetails = z.infer<typeof problemDetailsSchema>
+
 /** 解析 schema 并将 Zod 失败转换为稳定边界错误。 */
 export function parseBoundary<T>(schema: z.ZodType<T>, input: unknown, boundary: string): T {
   const result = schema.safeParse(input)
@@ -52,5 +66,5 @@ export type UnsupportedResult = {
   /** 结果判别字段。 */
   readonly kind: "unsupported"
   /** 未启用的功能。 */
-  readonly feature: "auth" | "search"
+  readonly feature: "auth"
 }

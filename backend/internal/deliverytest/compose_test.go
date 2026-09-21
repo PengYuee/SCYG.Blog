@@ -41,7 +41,6 @@ func Test_Compose_contains_only_API_and_PostgreSQL_with_health_dependency(t *tes
 
 	// When
 	err := yaml.Unmarshal([]byte(raw), &document)
-
 	// Then
 	if err != nil {
 		t.Fatalf("解析 compose.yaml 失败：%v", err)
@@ -62,7 +61,6 @@ func Test_Compose_rejects_missing_database_config(t *testing.T) {
 
 	// When
 	err := yaml.Unmarshal([]byte(raw), &document)
-
 	// Then
 	if err != nil {
 		t.Fatalf("解析 compose.yaml 失败：%v", err)

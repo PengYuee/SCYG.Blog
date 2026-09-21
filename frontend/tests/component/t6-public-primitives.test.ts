@@ -133,10 +133,10 @@ describe("T6 public desktop primitives", () => {
     const wrapper = mount(BlogHeader, { props: { boundary, observerFactory }, global: { plugins: [router] } })
 
     // When: Hero 边界进入和离开视口。
-    callback?.([{ isIntersecting: true } as IntersectionObserverEntry], {} as IntersectionObserver)
+    callback?.([{ isIntersecting: true, boundingClientRect: { bottom: 900 } } as IntersectionObserverEntry], {} as IntersectionObserver)
     await wrapper.vm.$nextTick()
     expect(wrapper.get("header").attributes("data-state")).toBe("transparent")
-    callback?.([{ isIntersecting: false } as IntersectionObserverEntry], {} as IntersectionObserver)
+    callback?.([{ isIntersecting: false, boundingClientRect: { bottom: 0 } } as IntersectionObserverEntry], {} as IntersectionObserver)
     await wrapper.vm.$nextTick()
 
     // Then: 头部进入已滚动状态，卸载释放观察器。
@@ -146,7 +146,7 @@ describe("T6 public desktop primitives", () => {
     expect(disconnect).toHaveBeenCalledOnce()
   })
 
-  it("exposes public landmarks, fallback and desktop article grammar", async () => {
+  it("exposes public landmarks, scroll cue, fallback and desktop article grammar", async () => {
     // Given: 公共布局与三篇文章。
     const router = await createTestRouter()
     const layoutObserverFactory = (): Pick<IntersectionObserver, "observe" | "disconnect"> => ({ observe: vi.fn(), disconnect: vi.fn() })
@@ -159,9 +159,22 @@ describe("T6 public desktop primitives", () => {
     // When: Hero 项目图片加载失败。
     await layout.get('[data-testid="hero-image"]').trigger("error")
 
-    // Then: 布局、无障碍回退和三列卡片原语均可组合。
+    // Then: 布局、滚动提示、无障碍回退和三列卡片原语均可组合。
     expect(layout.attributes("data-layout")).toBe("public")
-    expect(layout.get('a[href="#blog-content"]').text()).toBe("跳到主要内容")
+    expect(layout.get('a.fixed[href="#blog-content"]').text()).toBe("跳到主要内容")
+    const scrollCue = layout.get('[data-testid="hero-scroll-cue"]')
+    const scrollIntoView = vi.fn()
+    layout.get("main").element.scrollIntoView = scrollIntoView
+    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false })))
+    expect(scrollCue.element.tagName).toBe("BUTTON")
+    expect(scrollCue.attributes("type")).toBe("button")
+    expect(scrollCue.attributes("href")).toBeUndefined()
+    expect(scrollCue.attributes("aria-label")).toBe("向下浏览文章")
+    expect(scrollCue.get("svg").attributes("aria-hidden")).toBe("true")
+    await scrollCue.trigger("click")
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: "start", behavior: "smooth" })
+    expect(router.currentRoute.value.hash).toBe("")
+    expect(layout.find(".wave-divider").exists()).toBe(false)
     expect(layout.get("main").attributes("id")).toBe("blog-content")
     expect(layout.get('[data-testid="hero-fallback"]').attributes("role")).toBe("img")
     expect(section.get('[data-testid="article-grid"]').classes()).toContain("blog-card-grid")

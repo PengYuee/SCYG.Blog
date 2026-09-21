@@ -25,6 +25,9 @@ export default {
         error: "var(--color-error)",
         "error-soft": "var(--color-error-soft)",
         overlay: "var(--color-overlay)",
+        "hero-text": "var(--color-hero-text)",
+        "hero-text-muted": "var(--color-hero-text-muted)",
+        "focus-ring": "var(--color-focus-ring)",
       },
       boxShadow: {
         dialog: "var(--shadow-dialog)",

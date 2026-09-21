@@ -37,6 +37,7 @@ func singleEntityTag(value string) (string, bool) {
 	opaque, next, valid := scanEntityTag(value, 0)
 	return opaque, valid && skipOWS(value, next) == len(value)
 }
+
 func scanEntityTag(value string, index int) (string, int, bool) {
 	index = skipOWS(value, index)
 	if index+2 <= len(value) && value[index:index+2] == "W/" {
@@ -59,6 +60,7 @@ func scanEntityTag(value string, index int) (string, int, bool) {
 	}
 	return value[start:index], index + 1, true
 }
+
 func skipOWS(value string, index int) int {
 	for index < len(value) && (value[index] == ' ' || value[index] == '\t') {
 		index++

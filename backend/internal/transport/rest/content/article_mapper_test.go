@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	module "github.com/PengYuee/SCYG.Blog/backend/internal/modules/content"
+	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/article"
 )
 
 func Test_ContentREST_response_mapping_rejects_invalid_article_identity(t *testing.T) {
@@ -44,7 +44,6 @@ func Test_ContentREST_response_mapping_preserves_article_counters(t *testing.T) 
 
 	// When
 	dto, err := articleDTO(item)
-
 	// Then
 	if err != nil {
 		t.Fatalf("articleDTO() error = %v", err)
@@ -75,16 +74,16 @@ func Test_ContentREST_response_mapping_accepts_max_contract_identity_and_version
 func Test_ContentREST_response_mapping_rejects_invalid_article_text(t *testing.T) {
 	tests := []struct {
 		name   string
-		mutate func(*module.ArticleResult)
+		mutate func(*article.Result)
 	}{
-		{"empty title", func(item *module.ArticleResult) { item.Title = "" }},
-		{"whitespace title", func(item *module.ArticleResult) { item.Title = " \t" }},
-		{"long title", func(item *module.ArticleResult) { item.Title = strings.Repeat("a", 121) }},
-		{"control title", func(item *module.ArticleResult) { item.Title = "bad\x00title" }},
-		{"invalid utf8 title", func(item *module.ArticleResult) { item.Title = string([]byte{0xff}) }},
-		{"illegal slug", func(item *module.ArticleResult) { item.Slug = "Bad Slug" }},
-		{"empty digest", func(item *module.ArticleResult) { item.Digest = "" }},
-		{"empty content", func(item *module.ArticleResult) { item.Content = "" }},
+		{"empty title", func(item *article.Result) { item.Title = "" }},
+		{"whitespace title", func(item *article.Result) { item.Title = " \t" }},
+		{"long title", func(item *article.Result) { item.Title = strings.Repeat("a", 121) }},
+		{"control title", func(item *article.Result) { item.Title = "bad\x00title" }},
+		{"invalid utf8 title", func(item *article.Result) { item.Title = string([]byte{0xff}) }},
+		{"illegal slug", func(item *article.Result) { item.Slug = "Bad Slug" }},
+		{"empty digest", func(item *article.Result) { item.Digest = "" }},
+		{"empty content", func(item *article.Result) { item.Content = "" }},
 	}
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
@@ -129,7 +128,7 @@ func Test_ContentREST_response_mapping_accepts_canonical_slug_boundaries(t *test
 	}
 }
 
-func validArticleResult() module.ArticleResult {
+func validArticleResult() article.Result {
 	now := time.Unix(1, 0).UTC()
-	return module.ArticleResult{ID: 1, ArticleTypeID: 2, Title: "Title", Slug: "title", Digest: "Digest", Content: "Body", Status: "published", TagIDs: []int64{3}, Version: 1, CreatedAt: now, ModifiedAt: now}
+	return article.Result{ID: 1, ArticleTypeID: 2, Title: "Title", Slug: "title", Digest: "Digest", Content: "Body", Status: "published", TagIDs: []int64{3}, Version: 1, CreatedAt: now, ModifiedAt: now}
 }

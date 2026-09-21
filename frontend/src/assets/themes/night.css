@@ -1,0 +1,47 @@
+:root,
+:root[data-theme="night"] {
+  color-scheme: dark;
+
+  /* 夜空主题的语义颜色。 */
+  --color-browser-theme: #070b18;
+  --color-transparent: transparent;
+  --color-canvas: #070b18;
+  --color-surface: #0d1628;
+  --color-surface-muted: #131f34;
+  --color-surface-hover: #1a2942;
+  --color-text-primary: #f3f6fc;
+  --color-text-secondary: #b6c1d4;
+  --color-text-tertiary: #8492aa;
+  --color-border: #2b3a55;
+  --color-border-subtle: #1d2a40;
+  --color-accent: #7cc4ff;
+  --color-accent-hover: #a5d7ff;
+  --color-accent-soft: #132b45;
+  --color-success: #73d6a2;
+  --color-success-soft: #10291e;
+  --color-warning: #f1c75b;
+  --color-warning-soft: #2c2511;
+  --color-error: #ff8f85;
+  --color-error-soft: #31191d;
+  --color-overlay: rgb(2 6 18 / 72%);
+  --color-hero-text: #f3f6fc;
+  --color-hero-text-muted: #b6c1d4;
+  --color-hero-border: rgb(243 246 252 / 32%);
+  --color-hero-surface: rgb(13 22 40 / 68%);
+  --color-hero-surface-hover: rgb(26 41 66 / 82%);
+  --color-hero-surface-active: rgb(43 58 85 / 88%);
+  --color-focus-ring: rgb(124 196 255 / 38%);
+
+  /* 夜空表面的冷黑深度。 */
+  --shadow-card: 0 12px 32px rgb(1 5 15 / 38%);
+  --shadow-card-hover: 0 18px 42px rgb(1 5 15 / 52%);
+  --shadow-nav: 0 8px 24px rgb(1 5 15 / 42%);
+  --shadow-dialog: 0 24px 56px rgb(1 5 15 / 64%);
+  --shadow-switcher: 0 12px 32px rgb(1 5 15 / 52%);
+
+  /* Hero 图片、遮罩和控件保持既有人工验收视觉。 */
+  --hero-background-color: #070b18;
+  --hero-background-image: url("/images/hero-starry.jpg");
+  --hero-background-position: center;
+  --hero-overlay-image: linear-gradient(rgb(2 6 18 / 72%), rgb(2 6 18 / 72%));
+}

@@ -138,7 +138,7 @@ func cors(origins []string) gin.HandlerFunc {
 func requestLimit(defaultLimit, uploadLimit int64) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		limit := defaultLimit
-		if ctx.Request.Method == http.MethodPost && ctx.Request.URL.Path == "/api/v1/article-images" && ctx.Request.URL.RawQuery == "" && !ctx.Request.URL.ForceQuery {
+		if ctx.Request.Method == http.MethodPost && ctx.Request.URL.Path == "/api/v1/manage/article-images" && ctx.Request.URL.RawQuery == "" && !ctx.Request.URL.ForceQuery {
 			limit = uploadLimit
 		}
 		if ctx.Request.Body == nil {

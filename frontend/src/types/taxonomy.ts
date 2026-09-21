@@ -9,5 +9,17 @@ export type ArticleType = {
 /** 分类创建请求。 */
 export type ArticleTypeCreate = { readonly name: string; readonly image: string | null; readonly menu: number }
 
+/** 分类局部更新字段。 */
+export type ArticleTypePatchRequest = { readonly name?: string; readonly image?: string | null; readonly menu?: number }
+
+/** 分类局部更新目标。 */
+export type ArticleTypeUpdateRequest = { readonly id: number; readonly version: number; readonly changes: ArticleTypePatchRequest }
+
 /** 文章标签。 */
 export type Tag = { readonly id: number; readonly name: string }
+
+/** 标签局部更新字段。 */
+export type TagPatchRequest = { readonly name?: string }
+
+/** 标签局部更新目标。 */
+export type TagUpdateRequest = { readonly id: number; readonly version: number; readonly changes: TagPatchRequest }

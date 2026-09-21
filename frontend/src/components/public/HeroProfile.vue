@@ -20,18 +20,17 @@ const refreshQuote = (): void => {
 <template>
   <section class="mx-auto flex max-w-3xl flex-col items-center text-center" aria-labelledby="hero-profile-name">
     <img :src="'/images/avatar.jpg'" width="128" height="128" class="size-32 rounded-full border-4 border-[color:var(--color-hero-text-muted)] object-cover shadow-[var(--shadow-dialog)]" :alt="`${AUTHOR_NAME}的头像`" />
-    <p class="mt-6 text-sm font-semibold tracking-[0.2em] text-[color:var(--color-hero-text-muted)]">PENGYUEE</p>
-    <h1 id="hero-profile-name" class="mt-2 text-balance font-[family-name:var(--font-family-display)] text-[length:var(--font-size-display)] font-bold leading-[var(--line-height-display)] text-[color:var(--color-hero-text)]">{{ AUTHOR_NAME }}</h1>
-    <p class="mt-3 text-base text-[color:var(--color-hero-text-muted)]">个人博客</p>
+    <h1 id="hero-profile-name" class="mt-6 text-balance font-[family-name:var(--font-family-display)] text-[length:var(--font-size-display)] font-bold leading-[var(--line-height-display)] text-hero-text">{{AUTHOR_NAME}}的小站</h1>
+    <p class="mt-3 text-lg font-medium text-hero-text-muted">后端工程师 · .NET · Go · Python · Vue 3</p>
     <nav class="mt-6 flex flex-wrap justify-center gap-3" aria-label="个人站外链接">
       <a v-for="link in profileLinks" :key="link.id" :href="link.href" target="_blank" rel="noopener noreferrer" class="hero-profile-link inline-flex min-h-11 items-center gap-2 rounded-full border px-4 text-sm font-medium">
         <component :is="LINK_ICONS[link.id]" class="size-5" aria-hidden="true" />
         {{ link.label }}
       </a>
     </nav>
-    <figure class="mt-8 max-w-2xl text-[color:var(--color-hero-text)]">
+    <figure class="mt-8 max-w-2xl text-hero-text">
       <blockquote data-testid="hero-quote" class="text-pretty font-[family-name:var(--font-family-display)] text-xl leading-relaxed">“{{ quote.text }}”</blockquote>
-      <figcaption class="mt-2 text-sm text-[color:var(--color-hero-text-muted)]">{{ quote.source }}</figcaption>
+      <figcaption class="mt-2 text-sm text-hero-text-muted">{{ quote.source }}</figcaption>
     </figure>
     <button data-testid="quote-refresh" type="button" class="hero-quote-button mt-3 inline-flex min-h-11 items-center gap-2 rounded-full px-4 text-sm font-semibold" @click="refreshQuote">
       <ArrowPathIcon class="size-4" aria-hidden="true" />
@@ -43,17 +42,17 @@ const refreshQuote = (): void => {
 <style scoped>
 .hero-profile-link {
   color: var(--color-hero-text);
-  border-color: color-mix(in srgb, var(--color-hero-text) 30%, transparent);
-  background: color-mix(in srgb, var(--color-hero-text) 10%, transparent);
+  border-color: var(--color-hero-border);
+  background: var(--color-hero-surface);
   backdrop-filter: blur(var(--space-3));
 }
 .hero-profile-link:hover {
   border-color: var(--color-hero-text-muted);
-  background: color-mix(in srgb, var(--color-hero-text) 20%, transparent);
+  background: var(--color-hero-surface-hover);
 }
 .hero-quote-button { color: var(--color-hero-text-muted); }
 .hero-quote-button:hover {
   color: var(--color-hero-text);
-  background: color-mix(in srgb, var(--color-hero-text) 10%, transparent);
+  background: var(--color-hero-surface);
 }
 </style>

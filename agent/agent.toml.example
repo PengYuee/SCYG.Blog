@@ -1,0 +1,58 @@
+# Copy this file to agent.toml. Values in agent.toml override matching
+# SCYG_AGENT_* environment variables; missing values still fall back to the environment.
+
+database_url = "postgresql+asyncpg://scyg_agent:replace-me@localhost:5432/scyg_agent"
+jwt_public_key_path = "C:/keys/agent-public.pem"
+provider_base_url = "https://provider.example/v1"
+provider_api_key = "replace-me"
+provider_model = "provider-model"
+
+redis_url = "redis://localhost:6379/0"
+redis_ttl_seconds = 86400
+redis_stream_maxlen = 10000
+
+# Optional values below show their defaults.
+http_host = "127.0.0.1"
+http_port = 8080
+grpc_host = "127.0.0.1"
+grpc_port = 9090
+jwt_issuer = "scyg-blog"
+jwt_audience = "scyg-agent"
+jwt_service_subject = "scyg-blog-api"
+runtime_provider = "openai-compatible"
+blog_grpc_target = "127.0.0.1:50051"
+blog_deadline_seconds = 10
+simple_concurrency = 4
+deep_concurrency = 1
+lease_seconds = 60
+heartbeat_seconds = 15
+shutdown_seconds = 30
+worker_poll_milliseconds = 100
+worker_error_backoff_seconds = 1
+worker_drain_seconds = 10
+
+[models]
+protocol = "chat_completions"
+
+[models.fast]
+model = "provider-model-fast"
+base_url = "https://provider.example/v1"
+api_key = "replace-me"
+timeout_seconds = 60
+
+[models.standard]
+model = "provider-model"
+base_url = "https://provider.example/v1"
+api_key = "replace-me"
+timeout_seconds = 120
+
+[models.strong]
+model = "provider-model-strong"
+base_url = "https://provider.example/v1"
+api_key = "replace-me"
+timeout_seconds = 180
+
+[feature_flags]
+grpc = true
+worker = true
+http = true

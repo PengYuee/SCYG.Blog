@@ -5,7 +5,6 @@ import (
 	"time"
 
 	generated "github.com/PengYuee/SCYG.Blog/backend/internal/generated/openapi"
-	module "github.com/PengYuee/SCYG.Blog/backend/internal/modules/content"
 )
 
 func generatedVersion(version uint64) (generated.Version, error) {
@@ -16,7 +15,7 @@ func generatedVersion(version uint64) (generated.Version, error) {
 }
 
 func responseMappingError() error {
-	return &module.ApplicationError{Code: module.CodeInternal, Kind: module.KindInternal, Cause: module.ErrPersistence}
+	return newRESTError(codeInternal, nil)
 }
 
 func invalidTimes(createdAt, modifiedAt time.Time) bool {

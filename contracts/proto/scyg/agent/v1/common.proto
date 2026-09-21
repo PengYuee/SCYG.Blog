@@ -1,0 +1,209 @@
+syntax = "proto3";
+
+package scyg.agent.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+
+// Compatibility policy: published field numbers and enum values are immutable.
+// Removed fields and values are reserved; additive fields use new numbers only.
+
+// RequestMetadata carries traceable request identity without wrapping responses.
+message RequestMetadata {
+  // request_id uniquely identifies this RPC attempt.
+  string request_id = 1 [(buf.validate.field).string = {pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"}];
+  // correlation_id groups calls belonging to one business flow.
+  string correlation_id = 2 [(buf.validate.field).string = {pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"}];
+  // causation_id identifies the command or request that caused this call.
+  optional string causation_id = 3 [(buf.validate.field).string = {pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"}];
+}
+
+// RunId identifies one durable Agent run.
+message RunId {
+  // value is an opaque, stable run identifier.
+  string value = 1 [(buf.validate.field).string = {pattern: "^run_[A-Za-z0-9][A-Za-z0-9_-]{7,63}$"}];
+}
+
+// UserId identifies the user who owns a run.
+message UserId {
+  // value is an opaque Blog identity identifier.
+  string value = 1 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 128
+  }];
+}
+
+// ArticleId identifies an optional Blog article context.
+message ArticleId {
+  // value is an opaque Blog article identifier.
+  string value = 1 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 128
+  }];
+}
+
+// AgentCapability is the only public selector for a new run.
+enum AgentCapability {
+  AGENT_CAPABILITY_UNSPECIFIED = 0;
+  AGENT_CAPABILITY_SEARCH = 1;
+  AGENT_CAPABILITY_WRITE = 2;
+  AGENT_CAPABILITY_POLISH = 3;
+  AGENT_CAPABILITY_CHAT = 4;
+}
+
+message SearchInput {
+  string query = 1 [(buf.validate.field).string = {min_len: 1 max_len: 16000}];
+  uint32 max_results = 2 [(buf.validate.field).uint32 = {gte: 1 lte: 20}];
+}
+
+message WritingInput {
+  string topic = 1 [(buf.validate.field).string = {min_len: 1 max_len: 2000}];
+  string requirements = 2 [(buf.validate.field).string.max_len = 16000];
+  repeated string reference_article_ids = 3 [(buf.validate.field).repeated = {max_items: 20}];
+}
+
+message PolishInput {
+  string content = 1 [(buf.validate.field).string = {min_len: 1 max_len: 100000}];
+  string requirements = 2 [(buf.validate.field).string.max_len = 16000];
+}
+
+message ChatInput {
+  string message = 1 [(buf.validate.field).string = {min_len: 1 max_len: 16000}];
+}
+
+// TaskType selects a statically registered Agent task.
+enum TaskType {
+  // TASK_TYPE_UNSPECIFIED is invalid at request boundaries.
+  TASK_TYPE_UNSPECIFIED = 0;
+  // TASK_TYPE_SUMMARY summarizes article content.
+  TASK_TYPE_SUMMARY = 1;
+  // TASK_TYPE_QUESTION answers a question about content.
+  TASK_TYPE_QUESTION = 2;
+  // TASK_TYPE_POLISH improves existing prose.
+  TASK_TYPE_POLISH = 3;
+  // TASK_TYPE_COMPOSE creates a new draft.
+  TASK_TYPE_COMPOSE = 4;
+  // TASK_TYPE_RESEARCH gathers Blog-local article context.
+  TASK_TYPE_RESEARCH = 5;
+  // TASK_TYPE_REVISE performs a structured draft revision.
+  TASK_TYPE_REVISE = 6;
+}
+
+// RuntimeKind identifies an application-owned runtime adapter family.
+enum RuntimeKind {
+  // RUNTIME_KIND_UNSPECIFIED is invalid at request boundaries.
+  RUNTIME_KIND_UNSPECIFIED = 0;
+  // RUNTIME_KIND_SIMPLE selects direct model orchestration.
+  RUNTIME_KIND_SIMPLE = 1;
+  // RUNTIME_KIND_DEEP selects the checkpointed graph runtime.
+  RUNTIME_KIND_DEEP = 2;
+}
+
+// RuntimeSelection freezes the runtime implementation for the full run lifecycle.
+message RuntimeSelection {
+  // kind selects the static runtime adapter family.
+  RuntimeKind kind = 1 [(buf.validate.field).enum = {
+    defined_only: true
+    not_in: [0]
+  }];
+  // version selects a registered immutable runtime profile version.
+  string version = 2 [(buf.validate.field).string = {pattern: "^v[1-9][0-9]*$"}];
+}
+
+// RunStatus is the durable application status, independent of an SSE connection.
+enum RunStatus {
+  // RUN_STATUS_UNSPECIFIED is invalid for persisted runs.
+  RUN_STATUS_UNSPECIFIED = 0;
+  // RUN_STATUS_PENDING is accepted and awaiting execution ownership.
+  RUN_STATUS_PENDING = 1;
+  // RUN_STATUS_RUNNING is actively executing.
+  RUN_STATUS_RUNNING = 2;
+  // RUN_STATUS_WAITING_INPUT is paused for a user interaction.
+  RUN_STATUS_WAITING_INPUT = 3;
+  // RUN_STATUS_PENDING_RESUME is queued to resume from durable state.
+  RUN_STATUS_PENDING_RESUME = 4;
+  // RUN_STATUS_SUCCEEDED is terminal success.
+  RUN_STATUS_SUCCEEDED = 5;
+  // RUN_STATUS_FAILED is terminal failure.
+  RUN_STATUS_FAILED = 6;
+  // RUN_STATUS_CANCELLED is terminal cancellation.
+  RUN_STATUS_CANCELLED = 7;
+}
+
+// InteractionType describes the user response shape requested by a run.
+enum InteractionType {
+  // INTERACTION_TYPE_UNSPECIFIED is invalid for stored interactions.
+  INTERACTION_TYPE_UNSPECIFIED = 0;
+  // INTERACTION_TYPE_CONFIRMATION requests approval or rejection.
+  INTERACTION_TYPE_CONFIRMATION = 1;
+  // INTERACTION_TYPE_SELECTION requests one allowlisted option.
+  INTERACTION_TYPE_SELECTION = 2;
+  // INTERACTION_TYPE_TEXT_INPUT requests bounded user text.
+  INTERACTION_TYPE_TEXT_INPUT = 3;
+}
+
+// ErrorCode provides stable application meaning for terminal run failures.
+enum ErrorCode {
+  // ERROR_CODE_UNSPECIFIED is not a valid mapped failure.
+  ERROR_CODE_UNSPECIFIED = 0;
+  // ERROR_CODE_VALIDATION identifies invalid boundary input.
+  ERROR_CODE_VALIDATION = 1;
+  // ERROR_CODE_PERMISSION_DENIED identifies an authorization denial.
+  ERROR_CODE_PERMISSION_DENIED = 2;
+  // ERROR_CODE_NOT_FOUND identifies a missing resource.
+  ERROR_CODE_NOT_FOUND = 3;
+  // ERROR_CODE_FAILED_PRECONDITION identifies an invalid state transition.
+  ERROR_CODE_FAILED_PRECONDITION = 4;
+  // ERROR_CODE_CONFLICT identifies a concurrent or idempotency conflict.
+  ERROR_CODE_CONFLICT = 5;
+  // ERROR_CODE_DEPENDENCY_UNAVAILABLE identifies a transient dependency outage.
+  ERROR_CODE_DEPENDENCY_UNAVAILABLE = 6;
+  // ERROR_CODE_INTERNAL identifies an unclassified internal failure.
+  ERROR_CODE_INTERNAL = 7;
+}
+
+// ErrorDetail is a typed terminal failure summary, not a transport response wrapper.
+message ErrorDetail {
+  // code carries stable application meaning.
+  ErrorCode code = 1 [(buf.validate.field).enum = {
+    defined_only: true
+    not_in: [0]
+  }];
+  // message is a safe human-readable description without sensitive content.
+  string message = 2 [(buf.validate.field).string = {
+    min_len: 1
+    max_len: 512
+  }];
+  // retryable states whether retrying may succeed without input changes.
+  bool retryable = 3;
+}
+
+// Run is the control-plane snapshot returned by unary RPCs.
+message Run {
+  // id identifies the durable run.
+  RunId id = 1 [(buf.validate.field).required = true];
+  // owner_user_id identifies the run owner.
+  UserId owner_user_id = 2 [(buf.validate.field).required = true];
+  // task_type identifies the immutable task catalog entry.
+  TaskType task_type = 3 [(buf.validate.field).enum = {
+    defined_only: true
+    not_in: [0]
+  }];
+  // runtime identifies the immutable runtime profile.
+  RuntimeSelection runtime = 4 [(buf.validate.field).required = true];
+  // status is the current durable run state.
+  RunStatus status = 5 [(buf.validate.field).enum = {
+    defined_only: true
+    not_in: [0]
+  }];
+  // article_id identifies optional Blog context.
+  optional ArticleId article_id = 6;
+  // created_at records creation in UTC.
+  google.protobuf.Timestamp created_at = 7 [(buf.validate.field).required = true];
+  // updated_at records the latest durable state change in UTC.
+  google.protobuf.Timestamp updated_at = 8 [(buf.validate.field).required = true];
+  // revision supports stale-state detection by later command surfaces.
+  uint64 revision = 9 [(buf.validate.field).uint64 = {gte: 1}];
+  // failure is present only for a failed terminal run.
+  optional ErrorDetail failure = 10;
+}

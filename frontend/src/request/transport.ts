@@ -13,8 +13,8 @@ export interface HttpTransport {
   get(url: string, config?: unknown): Promise<TransportResponse>
   /** 发送 POST 请求。 */
   post(url: string, data?: TransportBody, config?: unknown): Promise<TransportResponse>
-  /** 发送 PUT 请求。 */
-  put(url: string, data?: TransportBody, config?: unknown): Promise<TransportResponse>
+  /** 发送 PATCH 请求。 */
+  patch(url: string, data?: TransportBody, config?: unknown): Promise<TransportResponse>
   /** 发送 DELETE 请求。 */
   delete(url: string, config?: unknown): Promise<TransportResponse>
 }

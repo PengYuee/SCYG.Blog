@@ -5,17 +5,13 @@ package e2e_test
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
 	"database/sql"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"net"
 	"net/http"
-	"net/url"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -24,6 +20,7 @@ import (
 	"github.com/PengYuee/SCYG.Blog/backend/internal/bootstrap"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content"
 	qaconfig "github.com/PengYuee/SCYG.Blog/backend/internal/qa/config"
+	qadatabase "github.com/PengYuee/SCYG.Blog/backend/internal/qa/database"
 	"github.com/PengYuee/SCYG.Blog/backend/migrations"
 )
 
@@ -59,14 +56,28 @@ func newHarness(t *testing.T, authorizer content.Authorizer) *harness {
 // newHarnessWithObserver 为信号叙事注入 App-owned 生命周期观察器。
 func newHarnessWithObserver(t *testing.T, authorizer content.Authorizer, observer bootstrap.LifecycleObserver) *harness {
 	t.Helper()
-	qaConfig, err := qaconfig.LoadLocal()
-	if err != nil {
-		t.Fatalf("加载 E2E QA 配置失败：%v", err)
+	configPath := os.Getenv("QA_CONFIG")
+	if configPath == "" {
+		t.Fatal("QA_CONFIG is required")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), qaConfig.CommandTimeout())
-	adminDSN := qaConfig.AdminDSN().Value()
-	name, dsn := createDatabase(t, ctx, qaConfig)
-	h := &harness{t: t, ctx: ctx, cancel: cancel, adminDSN: adminDSN, dsn: dsn, name: name, client: &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{DisableKeepAlives: true}}, observer: observer, authorizer: authorizer}
+	qaConfig, err := qaconfig.Load(configPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	isolated, err := qadatabase.New(ctx, configPath, "e2e_")
+	if err != nil {
+		t.Fatal(err)
+	}
+	name, dsn := isolated.Name(), isolated.DSN()
+	h := &harness{t: t, ctx: ctx, cancel: cancel, adminDSN: qaConfig.AdminDSN().Value(), dsn: dsn, name: name, client: &http.Client{Timeout: 5 * time.Second, Transport: &http.Transport{DisableKeepAlives: true}}, observer: observer, authorizer: authorizer}
+	t.Cleanup(func() {
+		cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cleanupCancel()
+		if err := isolated.Close(cleanupCtx); err != nil {
+			t.Error(err)
+		}
+	})
 	h.migrateUp()
 	h.start(authorizer)
 	return h
@@ -88,11 +99,11 @@ func (h *harness) start(authorizer content.Authorizer) {
 	if err = os.WriteFile(configFile, []byte(runtimeConfig), 0o600); err != nil {
 		h.t.Fatalf("写入 E2E 运行配置失败：%v", err)
 	}
-	h.app, err = bootstrap.New(h.ctx, bootstrap.Options{ConfigFile: configFile, LogWriter: io.Discard, Authorizer: authorizer, LifecycleObserver: h.observer}, bootstrap.DefaultDependencies())
+	h.app, err = bootstrap.New(h.ctx, bootstrap.Options{ConfigFile: configFile, DisableConfigEnvironment: true, LogWriter: io.Discard, Authorizer: authorizer, LifecycleObserver: h.observer}, bootstrap.DefaultDependencies())
 	if err != nil {
 		h.t.Fatalf("构造 E2E 应用失败：%v", err)
 	}
-	if err = h.app.Start(); err != nil {
+	if err = h.app.Start(h.ctx); err != nil {
 		h.t.Fatalf("启动 E2E 应用失败：%v", err)
 	}
 	h.baseURL = "http://" + h.app.Address().String()
@@ -163,7 +174,7 @@ func (h *harness) migrate(operation func(*migrations.Runner) error) {
 	}
 }
 
-// close 有界关闭应用并删除随机数据库。
+// close 有界关闭应用；数据库由 isolated helper 的 cleanup 负责删除。
 func (h *harness) close() {
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
@@ -173,45 +184,4 @@ func (h *harness) close() {
 		}
 	}
 	h.cancel()
-	dropDatabase(h.t, h.adminDSN, h.name)
-}
-
-func createDatabase(t *testing.T, ctx context.Context, qaConfig qaconfig.Config) (string, string) {
-	t.Helper()
-	random := make([]byte, 8)
-	if _, err := rand.Read(random); err != nil {
-		t.Fatalf("生成 E2E 数据库名失败：%v", err)
-	}
-	name := qaConfig.DatabasePrefix() + hex.EncodeToString(random)
-	adminDSN := qaConfig.AdminDSN().Value()
-	admin, err := sql.Open("pgx", adminDSN)
-	if err != nil {
-		t.Fatalf("打开 E2E 管理连接失败：%v", err)
-	}
-	defer admin.Close()
-	if _, err = admin.ExecContext(ctx, `CREATE DATABASE "`+name+`"`); err != nil {
-		t.Fatalf("创建 E2E 数据库失败：%v", err)
-	}
-	parsed, err := url.Parse(adminDSN)
-	if err != nil {
-		t.Fatalf("解析 E2E 管理 DSN 失败：%v", err)
-	}
-	parsed.Path = "/" + name
-	return name, parsed.String()
-}
-
-func dropDatabase(t *testing.T, adminDSN, name string) {
-	t.Helper()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	admin, err := sql.Open("pgx", adminDSN)
-	if err != nil {
-		t.Errorf("打开 E2E 清理连接失败：%v", err)
-		return
-	}
-	defer admin.Close()
-	_, _ = admin.ExecContext(ctx, `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = $1`, name)
-	if _, err = admin.ExecContext(ctx, fmt.Sprintf(`DROP DATABASE "%s"`, strings.ReplaceAll(name, `"`, `""`))); err != nil {
-		t.Errorf("删除 E2E 数据库失败：%v", err)
-	}
 }

@@ -1,0 +1,115 @@
+name: ${SCYG_COMPOSE_PROJECT_NAME:-scyg-agent-local}
+
+services:
+  postgres:
+    # PostgreSQL 17.5 Bookworm; digest is immutable.
+    image: postgres:17.5-bookworm@sha256:aadf2c0696f5ef357aa7a68da995137f0cf17bad0bf6e1f17de06ae5c769b302
+    environment:
+      POSTGRES_DB: scyg_agent
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${SCYG_POSTGRES_PASSWORD:?请设置本地 PostgreSQL 管理员密码}
+      SCYG_AGENT_DB_PASSWORD: ${SCYG_AGENT_DB_PASSWORD:?请设置 Agent 数据库角色密码}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    ports:
+      - "127.0.0.1:${SCYG_POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - scyg_agent_postgres_data:/var/lib/postgresql/data
+      - ./deploy/postgres/init/001_roles.sql:/docker-entrypoint-initdb.d/001_roles.sql:ro
+    networks:
+      - scyg_agent_local
+    restart: unless-stopped
+    stop_grace_period: 20s
+    security_opt:
+      - no-new-privileges:true
+
+  agent-setup:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    entrypoint: ["/opt/venv/bin/python", "-m", "scyg_agent.deployment"]
+    environment:
+      SCYG_DEPLOY_ADMIN_DATABASE_URL: ${SCYG_POSTGRES_ADMIN_DATABASE_URL:?请设置管理员数据库 DSN}
+      SCYG_DEPLOY_ADMIN_DATABASE_PASSWORD: ${SCYG_POSTGRES_PASSWORD:?请设置本地 PostgreSQL 管理员密码}
+      SCYG_DEPLOY_AGENT_DATABASE_URL: ${SCYG_AGENT_DATABASE_URL:?请设置 Agent 数据库 DSN}
+      SCYG_DEPLOY_AGENT_DATABASE_PASSWORD: ${SCYG_AGENT_DB_PASSWORD:?请设置 Agent 数据库角色密码}
+    depends_on:
+      postgres:
+        condition: service_healthy
+        restart: true
+    networks:
+      - scyg_agent_local
+    read_only: true
+    user: "10001:10001"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+      - /var/tmp/scyg-agent:rw,noexec,nosuid,nodev,size=16m,uid=10001,gid=10001
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
+
+  agent:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: runtime
+    environment:
+      SCYG_AGENT_HTTP_HOST: 0.0.0.0
+      SCYG_AGENT_HTTP_PORT: "8080"
+      SCYG_AGENT_GRPC_HOST: 0.0.0.0
+      SCYG_AGENT_GRPC_PORT: "9090"
+      SCYG_AGENT_DATABASE_URL: ${SCYG_AGENT_DATABASE_URL:?请设置 Agent 数据库 DSN}
+      SCYG_AGENT_JWT_PUBLIC_KEY_PATH: /run/secrets/jwt-public.pem
+      SCYG_AGENT_JWT_ISSUER: ${SCYG_AGENT_JWT_ISSUER:?请设置 JWT 签发方}
+      SCYG_AGENT_JWT_AUDIENCE: ${SCYG_AGENT_JWT_AUDIENCE:?请设置 JWT 受众}
+      SCYG_AGENT_JWT_SERVICE_SUBJECT: ${SCYG_AGENT_JWT_SERVICE_SUBJECT:?请设置 Blog 服务主体}
+      SCYG_AGENT_PROVIDER_BASE_URL: ${SCYG_AGENT_PROVIDER_BASE_URL:?请设置提供方基础 URL}
+      SCYG_AGENT_PROVIDER_API_KEY: ${SCYG_AGENT_PROVIDER_API_KEY:?请设置提供方 API 密钥}
+      SCYG_AGENT_PROVIDER_MODEL: ${SCYG_AGENT_PROVIDER_MODEL:?请设置提供方模型}
+      SCYG_AGENT_BLOG_GRPC_TARGET: ${SCYG_AGENT_BLOG_GRPC_TARGET:?请设置 Blog gRPC 地址}
+      SCYG_AGENT_SHUTDOWN_SECONDS: "30"
+    depends_on:
+      postgres:
+        condition: service_healthy
+        restart: true
+      agent-setup:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "/opt/venv/bin/python", "-c", "import json,sys,urllib.request; response=urllib.request.urlopen('http://127.0.0.1:8080/health/ready',timeout=2); payload=json.load(response); response.close(); sys.exit(0 if payload.get('ready') is True else 1)"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 30s
+    ports:
+      - "127.0.0.1:${SCYG_AGENT_HTTP_PORT:-8080}:8080"
+      - "127.0.0.1:${SCYG_AGENT_GRPC_PORT:-9090}:9090"
+    volumes:
+      - ${SCYG_AGENT_JWT_PUBLIC_KEY_PATH:?请设置 JWT RSA 公钥路径}:/run/secrets/jwt-public.pem:ro
+    networks:
+      - scyg_agent_local
+    read_only: true
+    user: "10001:10001"
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+      - /var/tmp/scyg-agent:rw,noexec,nosuid,nodev,size=16m,uid=10001,gid=10001
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    stop_signal: SIGTERM
+    stop_grace_period: 40s
+
+volumes:
+  scyg_agent_postgres_data:
+
+networks:
+  scyg_agent_local:
+    driver: bridge

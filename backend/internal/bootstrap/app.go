@@ -45,7 +45,7 @@ func newApp(lifetime context.Context, cfg config.Config, logger *slog.Logger, he
 }
 
 // Start 同步绑定监听地址，并仅在启动结果完整有效后开放 readiness。
-func (app *App) Start() error {
+func (app *App) Start(ctx context.Context) error {
 	app.mutex.Lock()
 	defer app.mutex.Unlock()
 	if app.stopped {
@@ -57,8 +57,8 @@ func (app *App) Start() error {
 	if app.listener != nil {
 		return nil
 	}
-	if err := app.worker.Start(app.lifetime); err != nil {
-		return app.cleanupStartFailure(fmt.Errorf("启动图片清理 worker: %w", err), false)
+	if err := app.worker.Start(app.lifetime); err != nil { //nolint:contextcheck // worker lifetime intentionally outlives the Start context.
+		return app.cleanupStartFailure(ctx, fmt.Errorf("启动图片清理 worker: %w", err), false)
 	}
 	app.httpCleanup = true
 	listener, serveErrors, err := app.server.Start()
@@ -69,20 +69,22 @@ func (app *App) Start() error {
 		err = errors.New("HTTP 启动返回空错误通道")
 	}
 	if err != nil {
-		return app.cleanupStartFailure(fmt.Errorf("绑定 HTTP: %w", err), true)
+		return app.cleanupStartFailure(ctx, fmt.Errorf("绑定 HTTP: %w", err), true)
 	}
-	if _, _, addressErr := net.SplitHostPort(listener.Addr().String()); addressErr != nil {
-		return app.cleanupStartFailure(fmt.Errorf("解析 HTTP 监听地址: %w", addressErr), true)
+	attributes, err := startupAttributes(listener.Addr(), app.config.Docs().Enabled())
+	if err != nil {
+		return app.cleanupStartFailure(ctx, fmt.Errorf("解析 HTTP 监听地址: %w", err), true)
 	}
 	app.listener, app.serveErrors = listener, serveErrors
 	app.health.Activate()
+	app.logger.InfoContext(ctx, "API 服务已就绪", attributes...)
 	return nil
 }
 
 // cleanupStartFailure 统一回收启动失败资源；worker 未退出时保留其数据库依赖并允许 Shutdown 重试。
-func (app *App) cleanupStartFailure(root error, cleanupHTTP bool) error {
+func (app *App) cleanupStartFailure(ctx context.Context, root error, cleanupHTTP bool) error {
 	app.health.Withdraw()
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), app.config.HTTP().ShutdownTimeout())
+	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), app.config.HTTP().ShutdownTimeout())
 	defer cancel()
 	var httpErr error
 	if cleanupHTTP {
@@ -115,7 +117,7 @@ func (app *App) Address() net.Addr {
 // Run 启动服务并等待信号上下文取消或服务器错误，随后执行有界关闭。
 // 未来共享命运协议可在此处用 errgroup 并列运行；当前不创建未使用的 Runner 或协议抽象。
 func (app *App) Run(ctx context.Context) error {
-	if err := app.Start(); err != nil {
+	if err := app.Start(ctx); err != nil {
 		return err
 	}
 	app.mutex.Lock()

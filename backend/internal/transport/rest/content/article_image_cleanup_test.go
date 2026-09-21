@@ -13,24 +13,32 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	module "github.com/PengYuee/SCYG.Blog/backend/internal/modules/content"
+	generated "github.com/PengYuee/SCYG.Blog/backend/internal/generated/openapi"
+
+	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/image"
 )
 
 type cleanupImageService struct {
-	QueryService
-	CommandService
+	ArticleQueryService
+	ArticleCommandService
+	ArticleDeleteService
+	TaxonomyService
 }
 
-func (*cleanupImageService) UploadArticleImage(context.Context, module.UploadArticleImage) (module.ArticleImageResult, error) {
-	return module.ArticleImageResult{ID: "0123456789abcdef0123456789abcdef", StorageKey: "0123456789abcdef0123456789abcdef.jpg", URL: "/media/article-images/0123456789abcdef0123456789abcdef.jpg", MediaType: "image/jpeg", ByteSize: 3, Width: 1, Height: 1, Status: "pending", ExpiresAt: time.Now().Add(time.Hour)}, nil
+type cleanupLoginHandler struct{}
+
+func (cleanupLoginHandler) Login(context.Context, generated.LoginRequestObject) (generated.LoginResponseObject, error) {
+	return nil, errors.New("登录测试接缝未调用")
 }
 
-func (*cleanupImageService) CancelArticleImage(context.Context, module.DeleteArticleImage) error {
-	return nil
+func (*cleanupImageService) Upload(context.Context, image.Upload) (image.Result, error) {
+	return image.Result{ID: "0123456789abcdef0123456789abcdef", StorageKey: "0123456789abcdef0123456789abcdef.jpg", URL: "/media/article-images/0123456789abcdef0123456789abcdef.jpg", MediaType: "image/jpeg", ByteSize: 3, Width: 1, Height: 1, Status: "pending", ExpiresAt: time.Now().Add(time.Hour)}, nil
 }
 
-func (*cleanupImageService) GetArticleImageMedia(context.Context, module.GetArticleImage) (module.ArticleImageMedia, error) {
-	return module.ArticleImageMedia{}, nil
+func (*cleanupImageService) Cancel(context.Context, image.Delete) error { return nil }
+
+func (*cleanupImageService) GetMedia(context.Context, image.Get) (image.Media, error) {
+	return image.Media{}, nil
 }
 
 type cleanupFaultHandle struct {
@@ -57,6 +65,7 @@ func (operations *cleanupFaultOperations) Create() (requestTempHandle, error) {
 }
 
 func (operations *cleanupFaultOperations) Open(path string) (requestTempHandle, error) {
+	//nolint:gosec // test operation opens only the temp file path supplied by its own fixture.
 	file, err := os.OpenFile(path, os.O_RDWR, 0)
 	if err != nil {
 		return nil, err
@@ -91,7 +100,7 @@ func cleanupMultipartRequest(t *testing.T, name string, payload []byte) *http.Re
 	if err = writer.Close(); err != nil {
 		t.Fatal(err)
 	}
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/article-images", &body)
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/manage/article-images", &body)
 	request.Header.Set("Content-Type", writer.FormDataContentType())
 	return request
 }
@@ -99,9 +108,9 @@ func cleanupMultipartRequest(t *testing.T, name string, payload []byte) *http.Re
 func cleanupRouter(t *testing.T, operations requestTempOperations) http.Handler {
 	t.Helper()
 	service := &cleanupImageService{}
-	handler := &Handler{queries: service, commands: service, imagePolicy: module.DefaultArticleImagePolicy(), tempFiles: operations}
+	handler := &Handler{articleQueries: service, articleCommands: service, articleDeleter: service, taxonomy: service, images: service, imagePolicy: image.DefaultPolicy(), tempFiles: operations}
 	router := gin.New()
-	if err := handler.Register(router); err != nil {
+	if err := handler.Register(router, cleanupLoginHandler{}); err != nil {
 		t.Fatal(err)
 	}
 	return router
@@ -131,7 +140,7 @@ func Test_CreateArticleImage_cleanup_failure_returns_stable_problem_before_201(t
 
 func Test_SpoolUniqueImagePart_early_error_does_not_create_temp(t *testing.T) {
 	operations := &cleanupFaultOperations{}
-	handler := &Handler{imagePolicy: module.DefaultArticleImagePolicy(), tempFiles: operations}
+	handler := &Handler{imagePolicy: image.DefaultPolicy(), tempFiles: operations}
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
 	part, err := writer.CreateFormField("unknown")
@@ -148,7 +157,7 @@ func Test_SpoolUniqueImagePart_early_error_does_not_create_temp(t *testing.T) {
 
 func Test_SpoolUniqueImagePart_cancel_attempts_close_and_remove(t *testing.T) {
 	operations := &cleanupFaultOperations{}
-	handler := &Handler{imagePolicy: module.DefaultArticleImagePolicy(), tempFiles: operations}
+	handler := &Handler{imagePolicy: image.DefaultPolicy(), tempFiles: operations}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, err := handler.spoolUniqueImagePart(ctx, multipartReaderForSpool(t, bytes.Repeat([]byte{'x'}, 1024)))

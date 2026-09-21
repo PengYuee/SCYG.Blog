@@ -40,16 +40,16 @@ func snapshotDatabase(t *testing.T, ctx context.Context, dsn string) databaseSna
 	pool := openPool(t, dsn)
 	defer pool.Close()
 	result := databaseSnapshot{}
-	for table, target := range map[string]*int{`"ArticleType"`: &result.ArticleTypes, `"Tag"`: &result.Tags, `"Article"`: &result.Articles, `"TagArticle"`: &result.TagArticles} {
+	for table, target := range map[string]*int{"article_types": &result.ArticleTypes, "tags": &result.Tags, "articles": &result.Articles, "article_tags": &result.TagArticles} {
 		if err := pool.QueryRowContext(ctx, "SELECT count(*) FROM "+table).Scan(target); err != nil {
 			t.Fatalf("读取数据库快照失败：%v", err)
 		}
 	}
 	queries := map[string]*string{
-		`SELECT coalesce(string_agg(concat_ws(':', "Id", "Version", "Name", coalesce("Image", ''), "Meun"), ',' ORDER BY "Id"), '') FROM "ArticleType"`:      &result.ArticleTypeState,
-		`SELECT coalesce(string_agg(concat_ws(':', "Id", "Version", "Name"), ',' ORDER BY "Id"), '') FROM "Tag"`:                                             &result.TagState,
-		`SELECT coalesce(string_agg(concat_ws(':', "Id", "Version", "Title", "Slug", "Digest", "Content", "Status"), ',' ORDER BY "Id"), '') FROM "Article"`: &result.ArticleState,
-		`SELECT coalesce(string_agg(concat_ws(':', "ArticleId", "TagId"), ',' ORDER BY "ArticleId", "TagId"), '') FROM "TagArticle"`:                         &result.TagArticleState,
+		`SELECT coalesce(string_agg(concat_ws(':', id, version, name, coalesce(image, ''), meun), ',' ORDER BY id), '') FROM article_types`: &result.ArticleTypeState,
+		`SELECT coalesce(string_agg(concat_ws(':', id, version, name), ',' ORDER BY id), '') FROM tags`:                                     &result.TagState,
+		`SELECT coalesce(string_agg(concat_ws(':', id, version, title, slug, digest, content, status), ',' ORDER BY id), '') FROM articles`: &result.ArticleState,
+		`SELECT coalesce(string_agg(concat_ws(':', article_id, tag_id), ',' ORDER BY article_id, tag_id), '') FROM article_tags`:            &result.TagArticleState,
 	}
 	for query, target := range queries {
 		if err := pool.QueryRowContext(ctx, query).Scan(target); err != nil {
@@ -65,7 +65,7 @@ func snapshotTag(t *testing.T, ctx context.Context, dsn string, id int64) entity
 	pool := openPool(t, dsn)
 	defer pool.Close()
 	result := entitySnapshot{}
-	if err := pool.QueryRowContext(ctx, `SELECT "Version", "Name" FROM "Tag" WHERE "Id"=$1`, id).Scan(&result.Version, &result.Content); err != nil {
+	if err := pool.QueryRowContext(ctx, `SELECT version, name FROM tags WHERE id=$1`, id).Scan(&result.Version, &result.Content); err != nil {
 		t.Fatalf("读取 Tag 快照失败：%v", err)
 	}
 	return result
@@ -137,7 +137,7 @@ func assertLocalReferences(t *testing.T, h *harness, html string) {
 	}
 	transport := &localOnlyTransport{allowedHost: base.Host, base: http.DefaultTransport}
 	client := &http.Client{Transport: transport, Timeout: 5 * time.Second}
-	for _, path := range []string{"/scalar.js", "/openapi.yaml"} {
+	for _, path := range []string{"/docs/assets/scalar.js", "/openapi.yaml"} {
 		response, requestErr := client.Get(h.baseURL + path)
 		if requestErr != nil || response.StatusCode != http.StatusOK {
 			t.Fatalf("本地文档资源不可用：%s %v", path, requestErr)
@@ -153,6 +153,8 @@ func assertLocalReferences(t *testing.T, h *harness, html string) {
 	}
 }
 
-var _ http.RoundTripper = (*localOnlyTransport)(nil)
-var _ = sql.ErrNoRows
-var _ = net.ErrClosed
+var (
+	_ http.RoundTripper = (*localOnlyTransport)(nil)
+	_                   = sql.ErrNoRows
+	_                   = net.ErrClosed
+)

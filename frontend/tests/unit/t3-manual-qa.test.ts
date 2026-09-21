@@ -4,7 +4,6 @@ import { describe, expect, it } from "vitest"
 import { loadRuntimeConfig, parseRuntimeConfig, RuntimeConfigError } from "@/config/runtime"
 import { parseArticleDetail } from "@/request/api/article"
 import { unsupportedAuthApi } from "@/request/api/auth"
-import { unsupportedSearchApi } from "@/request/api/search"
 import { ApiParseError, normalizeImageUrl } from "@/types/api"
 
 /** 单项手动 QA 结果。 */
@@ -44,7 +43,6 @@ describe.skipIf(artifactPath === undefined)("T3 named real-surface QA", () => {
       authRefreshUnsupported: valueEntry(JSON.stringify(await unsupportedAuthApi.refresh({ refreshToken: "opaque" })), unsupported),
       authMeUnsupported: valueEntry(JSON.stringify(await unsupportedAuthApi.me({})), unsupported),
       authLogoutUnsupported: valueEntry(JSON.stringify(await unsupportedAuthApi.logout({ refreshToken: "opaque" })), unsupported),
-      searchUnsupported: valueEntry(JSON.stringify(await unsupportedSearchApi.search({ q: "qa", pageIndex: 1, pageSize: 20 })), '{"kind":"unsupported","feature":"search"}'),
     }
     const passed = Object.values(entries).every((entry) => entry.passed)
 

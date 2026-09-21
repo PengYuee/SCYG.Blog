@@ -3,6 +3,7 @@ package content_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -10,84 +11,150 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	module "github.com/PengYuee/SCYG.Blog/backend/internal/modules/content"
+	generated "github.com/PengYuee/SCYG.Blog/backend/internal/generated/openapi"
+	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/article"
+	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/image"
+	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/taxonomy"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/observability"
 	restcontent "github.com/PengYuee/SCYG.Blog/backend/internal/transport/rest/content"
 )
 
-type testService struct {
-	writeCalls     int
-	allowWrites    bool
-	articlePage    module.ArticlePage
-	articleType    module.ArticleTypeResult
-	lastTypeCreate module.CreateArticleType
-	lastTypePatch  module.PatchArticleType
+type testFailure string
+
+func (failure testFailure) Error() string      { return string(failure) }
+func (failure testFailure) StableCode() string { return string(failure) }
+
+type testLoginHandler struct{}
+
+func (testLoginHandler) Login(context.Context, generated.LoginRequestObject) (generated.LoginResponseObject, error) {
+	return generated.Login200JSONResponse{AccessToken: "test-token", TokenType: generated.Bearer}, nil
 }
 
-func (*testService) GetArticle(context.Context, module.GetArticle) (module.ArticleResult, error) {
-	return module.ArticleResult{}, module.ErrNotFound
+const permissionDenied testFailure = "permission_denied"
+
+type testService struct {
+	writeCalls        int
+	allowWrites       bool
+	articlePage       article.Page
+	article           article.Result
+	articleType       taxonomy.ArticleTypeResult
+	lastArticleCreate article.Create
+	lastTypeCreate    taxonomy.CreateArticleType
+	lastTypePatch     taxonomy.PatchArticleType
 }
-func (service *testService) ListArticles(context.Context, module.ListArticles) (module.ArticlePage, error) {
+
+func (*testService) Get(context.Context, article.Get) (article.Result, error) {
+	return article.Result{}, errors.New("not found")
+}
+
+func (service *testService) List(context.Context, article.List) (article.Page, error) {
 	return service.articlePage, nil
 }
-func (*testService) GetArticleType(context.Context, module.GetArticleType) (module.ArticleTypeResult, error) {
-	return module.ArticleTypeResult{}, module.ErrNotFound
+
+func (service *testService) GetManage(context.Context, article.Get) (article.Result, error) {
+	return service.article, nil
 }
-func (*testService) ListArticleTypes(context.Context, module.ListArticleTypes) (module.ArticleTypePage, error) {
-	return module.ArticleTypePage{}, nil
+
+func (service *testService) ListManage(context.Context, article.List) (article.Page, error) {
+	return service.articlePage, nil
 }
-func (*testService) GetTag(context.Context, module.GetTag) (module.TagResult, error) {
-	return module.TagResult{}, module.ErrNotFound
+
+func (*testService) GetArticleType(context.Context, taxonomy.GetArticleType) (taxonomy.ArticleTypeResult, error) {
+	return taxonomy.ArticleTypeResult{}, errors.New("not found")
 }
-func (*testService) ListTags(context.Context, module.ListTags) (module.TagPage, error) {
-	return module.TagPage{}, nil
+
+func (*testService) ListArticleTypes(context.Context, taxonomy.ListArticleTypes) (taxonomy.ArticleTypePage, error) {
+	return taxonomy.ArticleTypePage{}, nil
 }
+
+func (*testService) GetTag(context.Context, taxonomy.GetTag) (taxonomy.TagResult, error) {
+	return taxonomy.TagResult{}, errors.New("not found")
+}
+
+func (*testService) ListTags(context.Context, taxonomy.ListTags) (taxonomy.TagPage, error) {
+	return taxonomy.TagPage{}, nil
+}
+
 func (service *testService) denied() error {
 	service.writeCalls++
-	return &module.ApplicationError{Code: module.CodePermissionDenied, Kind: module.KindPermission, Cause: module.ErrPermissionDenied}
+	return permissionDenied
 }
-func (service *testService) CreateArticle(context.Context, module.CreateArticle) (module.ArticleResult, error) {
-	return module.ArticleResult{}, service.denied()
+
+func (service *testService) Create(_ context.Context, command article.Create) (article.Result, error) {
+	service.writeCalls++
+	service.lastArticleCreate = command
+	if service.allowWrites {
+		return service.article, nil
+	}
+	return article.Result{}, permissionDenied
 }
-func (service *testService) PatchArticle(context.Context, module.PatchArticle) (module.ArticleResult, error) {
-	return module.ArticleResult{}, service.denied()
+
+func (service *testService) Patch(context.Context, article.Patch) (article.Result, error) {
+	return article.Result{}, service.denied()
 }
-func (service *testService) DeleteArticle(context.Context, module.DeleteArticle) error {
-	return service.denied()
+
+func (service *testService) Publish(context.Context, article.Publish) (article.Result, error) {
+	if err := service.denied(); err != nil {
+		return article.Result{}, err
+	}
+	return service.article, nil
 }
-func (service *testService) CreateArticleType(_ context.Context, command module.CreateArticleType) (module.ArticleTypeResult, error) {
+
+func (service *testService) Archive(context.Context, article.Archive) (article.Result, error) {
+	if err := service.denied(); err != nil {
+		return article.Result{}, err
+	}
+	return service.article, nil
+}
+
+func (service *testService) Delete(context.Context, article.Delete) error { return service.denied() }
+
+func (service *testService) CreateArticleType(_ context.Context, command taxonomy.CreateArticleType) (taxonomy.ArticleTypeResult, error) {
 	service.writeCalls++
 	service.lastTypeCreate = command
 	if service.allowWrites {
 		return service.articleType, nil
 	}
-	return module.ArticleTypeResult{}, &module.ApplicationError{Code: module.CodePermissionDenied, Kind: module.KindPermission, Cause: module.ErrPermissionDenied}
+	return taxonomy.ArticleTypeResult{}, permissionDenied
 }
-func (service *testService) PatchArticleType(_ context.Context, command module.PatchArticleType) (module.ArticleTypeResult, error) {
+
+func (service *testService) PatchArticleType(_ context.Context, command taxonomy.PatchArticleType) (taxonomy.ArticleTypeResult, error) {
 	service.writeCalls++
 	service.lastTypePatch = command
 	if service.allowWrites {
 		return service.articleType, nil
 	}
-	return module.ArticleTypeResult{}, &module.ApplicationError{Code: module.CodePermissionDenied, Kind: module.KindPermission, Cause: module.ErrPermissionDenied}
+	return taxonomy.ArticleTypeResult{}, permissionDenied
 }
-func (service *testService) DeleteArticleType(context.Context, module.DeleteArticleType) error {
+
+func (service *testService) DeleteArticleType(context.Context, taxonomy.DeleteArticleType) error {
 	return service.denied()
 }
-func (service *testService) CreateTag(context.Context, module.CreateTag) (module.TagResult, error) {
-	return module.TagResult{}, service.denied()
+
+func (service *testService) CreateTag(context.Context, taxonomy.CreateTag) (taxonomy.TagResult, error) {
+	return taxonomy.TagResult{}, service.denied()
 }
-func (service *testService) RenameTag(context.Context, module.RenameTag) (module.TagResult, error) {
-	return module.TagResult{}, service.denied()
+
+func (service *testService) RenameTag(context.Context, taxonomy.RenameTag) (taxonomy.TagResult, error) {
+	return taxonomy.TagResult{}, service.denied()
 }
-func (service *testService) DeleteTag(context.Context, module.DeleteTag) error {
+
+func (service *testService) DeleteTag(context.Context, taxonomy.DeleteTag) error {
 	return service.denied()
+}
+
+func (*testService) Upload(context.Context, image.Upload) (image.Result, error) {
+	return image.Result{}, nil
+}
+func (*testService) Cancel(context.Context, image.Delete) error { return nil }
+func (*testService) GetMedia(context.Context, image.Get) (image.Media, error) {
+	return image.Media{}, nil
 }
 
 func Test_ContentREST_missing_If_Match_returns_RFC9457_428(t *testing.T) {
 	// Given
 	router, service := testRouter(t)
-	request := httptest.NewRequest(http.MethodDelete, "/api/v1/articles/1?secret=hidden", nil)
+	request := httptest.NewRequest(http.MethodDelete, "/api/v1/manage/articles/1?secret=hidden", nil)
 	request = request.WithContext(observability.WithRequestFields(request.Context(), observability.RequestFields{RequestID: "req-10"}))
 	response := httptest.NewRecorder()
 
@@ -109,7 +176,7 @@ func Test_ContentREST_missing_If_Match_returns_RFC9457_428(t *testing.T) {
 	if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
 		t.Fatalf("decode problem: %v", err)
 	}
-	if problem.Instance != "/api/v1/articles/1" || strings.Contains(problem.Instance, "secret") {
+	if problem.Instance != "/api/v1/manage/articles/1" || strings.Contains(problem.Instance, "secret") {
 		t.Fatalf("instance = %q", problem.Instance)
 	}
 	if problem.RequestID != "req-10" || problem.Errors == nil {
@@ -124,7 +191,7 @@ func Test_ContentREST_default_DenyAll_returns_403_without_persistence(t *testing
 	// Given
 	router, service := testRouter(t)
 	body := `{"article_type_id":1,"title":"Title","slug":"title","digest":"Digest","content":"Body","tag_ids":[1],"status":1}`
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/articles", strings.NewReader(body))
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/manage/articles", strings.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 
@@ -146,12 +213,30 @@ func Test_ContentREST_NewHandler_rejects_typed_nil_services(t *testing.T) {
 	nonNil := &testService{}
 
 	// When
-	_, queryErr := restcontent.NewHandler(typedNil, nonNil, module.DefaultArticleImagePolicy())
-	_, commandErr := restcontent.NewHandler(nonNil, typedNil, module.DefaultArticleImagePolicy())
+	_, queryErr := restcontent.NewHandler(typedNil, nonNil, nonNil, nonNil, nonNil, image.DefaultPolicy())
+	_, commandErr := restcontent.NewHandler(nonNil, typedNil, nonNil, nonNil, nonNil, image.DefaultPolicy())
 
 	// Then
 	if queryErr == nil || commandErr == nil {
 		t.Fatalf("typed nil errors = (%v, %v), want both non-nil", queryErr, commandErr)
+	}
+}
+
+func Test_ContentREST_registersInjectedLoginHandler(t *testing.T) {
+	router, _ := testRouter(t)
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", strings.NewReader(`{"username":"admin","password":"secret"}`))
+	request.Header.Set("Content-Type", "application/json")
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
+	}
+	var body generated.LoginResponse
+	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if body.AccessToken != "test-token" || body.TokenType != generated.Bearer {
+		t.Fatalf("login response=%#v", body)
 	}
 }
 
@@ -165,12 +250,12 @@ func testRouter(t *testing.T) (*gin.Engine, *testService) {
 func routerForService(t *testing.T, service *testService) *gin.Engine {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-	handler, err := restcontent.NewHandler(service, service, module.DefaultArticleImagePolicy())
+	handler, err := restcontent.NewHandler(service, service, service, service, service, image.DefaultPolicy())
 	if err != nil {
 		t.Fatalf("NewHandler: %v", err)
 	}
 	router := gin.New()
-	if err = handler.Register(router); err != nil {
+	if err = handler.Register(router, testLoginHandler{}); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
 	return router

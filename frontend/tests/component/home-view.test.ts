@@ -9,6 +9,11 @@ import { createTaxonomy, type TaxonomyApi } from "@/stores/taxonomy"
 import type { ArticleDetail } from "@/types/article"
 import type { PageResult } from "@/types/api"
 import type { ArticleType, Tag } from "@/types/taxonomy"
+import { scrollRestorationKey } from "@/services/scroll-restoration"
+
+/** 首页首次终态通知观察器。 */
+const markReady = vi.fn()
+const scrollRestoration = { install: vi.fn(), arm: vi.fn(() => false), cancel: vi.fn(), markReady, wait: vi.fn(async () => false) }
 
 /** 创建完整文章 fixture，保留真实领域统计字段。 */
 const article = (id: number, articleTypeId: number, visited = id): ArticleDetail => ({
@@ -58,7 +63,7 @@ const mountHome = async (articleApi: ArticleFeedApi, taxonomyApi: TaxonomyApi): 
   const router = await createTestRouter()
   const wrapper = mount(HomeView, {
     props: { articleFeed: createArticleFeed(articleApi, 20), taxonomy: createTaxonomy(taxonomyApi), observerFactory },
-    global: { plugins: [router] },
+    global: { plugins: [router], provide: { [scrollRestorationKey]: scrollRestoration } },
   })
   await flushPromises()
   return { wrapper, router }
@@ -70,6 +75,7 @@ const page = (items: readonly ArticleDetail[]): PageResult<ArticleDetail> => ({ 
 afterEach(() => {
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
+  markReady.mockClear()
 })
 describe("T8 desktop homepage discovery", () => {
   it("mounts from a direct route without injected props and keeps failures composed", async () => {
@@ -91,13 +97,14 @@ describe("T8 desktop homepage discovery", () => {
 
     // When: RouterView 按 T9 的直接组件方式渲染首页。
     const apiServices = createApiServices(http, "http://localhost:5000/api")
-    const wrapper = mount(RouterView, { global: { plugins: [router], provide: { [apiServicesKey]: apiServices } } })
+    const wrapper = mount(RouterView, { global: { plugins: [router], provide: { [apiServicesKey]: apiServices, [scrollRestorationKey]: scrollRestoration } } })
     await flushPromises()
 
     // Then: 默认类型化状态机呈现两个作用域失败，而不是空白页面或缺失属性异常。
     expect(wrapper.get("[data-testid='taxonomy-error']").text()).toContain("离线验收")
     expect(wrapper.get("[data-testid='feed-error']").text()).toContain("离线验收")
     expect(wrapper.text()).toContain("妄揽明月")
+    expect(markReady).toHaveBeenCalledOnce()
   })
   it("composes real profile, recommendations and stable category groups capped at six", async () => {
     // Given: 两个有序分类与八篇真实领域文章。
@@ -146,7 +153,7 @@ describe("T8 desktop homepage discovery", () => {
         taxonomy: createTaxonomy({ listArticleTypes: async () => pendingCategories, listTags: async () => tags }),
         observerFactory,
       },
-      global: { plugins: [router] },
+      global: { plugins: [router], provide: { [scrollRestorationKey]: scrollRestoration } },
     })
     await wrapper.vm.$nextTick()
 
@@ -154,6 +161,7 @@ describe("T8 desktop homepage discovery", () => {
     expect(wrapper.get("[data-testid='taxonomy-loading']").attributes("role")).toBe("status")
     expect(wrapper.get("[data-testid='feed-loading']").attributes("role")).toBe("status")
     expect(wrapper.text()).toContain("妄揽明月")
+    expect(markReady).not.toHaveBeenCalled()
   })
   it("recovers dictionary and feed failures independently", async () => {
     // Given: 字典和文章流首次请求分别失败。

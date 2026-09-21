@@ -1,9 +1,9 @@
 import { expect, test } from "@playwright/test"
 import { installReadFixtures } from "../t13/fixtures/api-fixtures"
 
-const backendApiRoot = "http://localhost:5000/api/"
+const backendApiRoot = "http://127.0.0.1:8080"
 const viteOrigin = "http://127.0.0.1:4173"
-const businessPath = /\/(?:api\/)?(?:Article|ArticleType|Tag)\//
+const businessPath = /\/api\/v1\//
 
 test("uses config.json for every public business request", async ({ page }) => {
   // Given: 生产预览返回真实 config.json，后端读取由确定性 fixture 接管。

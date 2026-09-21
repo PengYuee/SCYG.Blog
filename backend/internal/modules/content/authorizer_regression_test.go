@@ -53,7 +53,7 @@ func Test_AuthorizerOrDeny_normalizes_every_typed_nil_kind(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			normalized := content.AuthorizerOrDeny(testCase.candidate)
-			err := normalized.Authorize(context.Background(), content.ActionCreateArticle, content.Resource{})
+			err := normalized.Authorize(context.Background(), content.Action("test"), content.Resource{})
 			if !errors.Is(err, content.ErrPermissionDenied) {
 				t.Fatalf("typed nil %s was not denied: %v", testCase.name, err)
 			}
@@ -71,7 +71,7 @@ func Test_AuthorizerOrDeny_preserves_non_nil_implementations(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			normalized := content.AuthorizerOrDeny(testCase.candidate)
-			if err := normalized.Authorize(context.Background(), content.ActionCreateArticle, content.Resource{}); err != nil {
+			if err := normalized.Authorize(context.Background(), content.Action("test"), content.Resource{}); err != nil {
 				t.Fatalf("non-nil %s was replaced: %v", testCase.name, err)
 			}
 		})
@@ -85,7 +85,7 @@ func Test_AuthorizerOrDeny_is_race_free_under_concurrent_calls(t *testing.T) {
 		for _, candidate := range candidates {
 			wait.Go(func() {
 				normalized := content.AuthorizerOrDeny(candidate)
-				_ = normalized.Authorize(context.Background(), content.ActionCreateArticle, content.Resource{})
+				_ = normalized.Authorize(context.Background(), content.Action("test"), content.Resource{})
 			})
 		}
 	}

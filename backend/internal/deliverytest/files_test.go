@@ -20,6 +20,7 @@ func backendRoot(t *testing.T) string {
 // readDeliveryFile 读取后端模块内的交付配置并在缺失时立即失败。
 func readDeliveryFile(t *testing.T, relativePath string) string {
 	t.Helper()
+	//nolint:gosec // delivery tests read files only beneath the repository backend root.
 	content, err := os.ReadFile(filepath.Join(backendRoot(t), relativePath))
 	if err != nil {
 		t.Fatalf("读取交付配置 %s 失败：%v", relativePath, err)

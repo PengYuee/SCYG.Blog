@@ -6,17 +6,16 @@
 
 - Go `1.26.0`、Task `v3.49.1`。
 - 静态门禁不要求数据库或 Docker，但首次运行固定版本工具时可能下载工具。
-- 标注“PostgreSQL”的本地命令统一读取 `config.local.yaml`。
+- 标注“PostgreSQL”的本地命令必须通过 `CONFIG=<运行时 YAML>` 或 `QA_CONFIG=<QA YAML>` 显式提供配置；不会从未指定的本地文件推断配置。
 - 标注“Docker”的命令需要 Docker Engine 与 Compose；会创建并清理容器资源。
 
 ## 本地 YAML 配置
 
-1. 仓库提供可提交的 `config.example.yaml`，其中包含 `app`、`http`、`database`、`docs`、`telemetry` 和独立的 `qa` 全部配置键与中文说明。
-2. 当前开发机使用已被 Git 精确忽略的 `config.local.yaml`。把 `database.dsn` 与 `qa.postgres_admin_dsn` 中的 `请填写密码` 替换为真实密码，不要提交该文件。
-3. 占位密码会在连接数据库前返回明确中文配置错误，避免误连。普通 API 运行配置不会持有或输出 QA 管理 DSN。
-4. 本地 API、迁移、integration、e2e 与 F3 不依赖环境变量。API 和迁移均可用 `-config <路径>` 显式选择另一份 YAML。
+1. 仓库提供可提交的 `config.example.yaml` 作为运行时配置示例，包含 `docs` 文档开关；QA 门禁使用独立的 `config.qa.example.yaml`。
+2. 当前开发机使用被 Git 忽略的 `config.local.yaml`。运行时配置中的 `database.dsn` 使用真实密码，不要提交该文件；QA 管理 DSN 只存在于临时 QA 配置。
+3. 本地 API、迁移、integration、e2e 与 F3 不依赖环境变量。API 可用 `-config <路径>` 显式选择运行时配置；迁移命令必须显式传入运行时 `CONFIG`，integration/e2e 必须显式传入 QA-only `QA_CONFIG`。
 
-配置优先级为“内置默认值 < YAML 文件 < 环境覆盖”。环境覆盖仅保留给无本地文件的 Compose/CI：容器入口显式传 `-config=`，再由 `SCYG_` 注入运行配置。本地 Task 目标始终显式传 `-config config.local.yaml`，迁移命令还会禁用环境覆盖。
+运行时配置与 QA 配置分离：复制 `config.example.yaml` 为 `config.local.yaml` 供 API 使用；复制 `config.qa.example.yaml` 为被 Git 忽略的临时 `config.qa.yaml`。`CONFIG` 仅指运行时 YAML，`QA_CONFIG` 仅指 QA YAML；QA 配置不接受环境覆盖，也不会回退到 `config.local.yaml`。
 
 ## 开发与生成
 
@@ -30,27 +29,27 @@
 
 ## 数据库迁移
 
-填写 `config.local.yaml` 后运行 `task migrate:up`、`task migrate:down` 或 `task migrate:roundtrip`。这些目标显式读取同一文件的 `database.dsn`，不会接受 `--dsn` 或读取 `SCYG_DATABASE_DSN`。命令直接修改目标 PostgreSQL，只能对开发/测试数据库执行；运行时不会调用 `AutoMigrate`。
+迁移目标必须显式提供运行时配置：`CONFIG=path task migrate:up` 或 `CONFIG=path task migrate:down`。数据库门禁使用 `QA_CONFIG=path task qa:database`，由唯一编排器执行 migration、integration 与 E2E；不会回退到 `config.local.yaml` 或读取环境 DSN。
 
 ## 测试
 
 - `task unit`：无 PostgreSQL/Docker，竞态、随机顺序、禁用缓存。
-- `task integration`：读取 `qa.postgres_admin_dsn`，创建带 `qa.database_prefix` 的隔离数据库。
-- `task e2e`：读取相同 QA 配置，运行 `e2e` tag 的完整叙事。
+- `QA_CONFIG=path task integration`：使用显式 QA 配置和本次 run capability 创建隔离数据库。
+- `QA_CONFIG=path task e2e`：使用相同显式 QA 配置运行 `e2e` tag 的完整叙事。
 - `task qa:plan`、`task qa:quality`、`task qa:scope`：最终静态审查入口。
-- `task qa:foundation`：使用 `qa.command_timeout` 约束真实 PostgreSQL、API、Compose、故障与清理叙事；日志和 evidence 不输出管理 DSN。
+- `QA_CONFIG=path task qa:foundation`：执行真实 PostgreSQL、API、Compose、故障与清理叙事；日志和 evidence 不输出管理 DSN。
 
 ## 本地运行
 
-先填写 `config.local.yaml`，执行 `task migrate:up`，再执行 `go run ./cmd/api -config config.local.yaml`。API 的 `-config` 缺省值就是 `config.local.yaml`。该命令会长期监听 HTTP，应在交互式终端运行并以 `Ctrl+C` 触发有界优雅关闭。生产组合允许公开读取，但在身份模块落地前所有写入返回 403。
+先填写 `config.local.yaml`，执行 `CONFIG=config.local.yaml task migrate:up`，再执行 `go run ./cmd/api -config config.local.yaml`。API 的 `-config` 缺省值就是 `config.local.yaml`。该命令会长期监听 HTTP，应在交互式终端运行并以 `Ctrl+C` 触发有界优雅关闭。生产组合允许公开读取，但在身份模块落地前所有写入返回 403。
 
 Docker 开发路径为 `task compose:smoke`，结束后必须执行 `task compose:down`。`task qa:container` 自带 finally/defer 清理。
 
-## 架构交接
+## 开发指南
 
-- [绑定架构](docs/architecture/go-backend-architecture.md)
-- [ADR-010：Scalar 自托管资产版本](docs/architecture/adr-010-scalar-asset-pin.md)
+- [Backend 开发指南](docs/guides/backend-development.md)
 - [新增业务模块](docs/guides/module-extension.md)
+- [绑定架构](docs/architecture/go-backend-architecture.md)
+- [当前架构](docs/architecture/current-state-architecture.zh-CN.md)
+- [ADR-010：Scalar 自托管资产版本](docs/architecture/adr-010-scalar-asset-pin.md)
 - [未来协议与外部集成](docs/guides/protocol-integration-extension.md)
-
-本轮仅验证了 README 与静态门禁中明确记录的命令；需要 PostgreSQL、Docker、浏览器或长期监听器的命令没有被宣称为已通过。

@@ -34,6 +34,7 @@ func repositoryRoot(t *testing.T) string {
 // readFile 读取明确路径，不假设执行元数据被提交进产品。
 func readFile(t *testing.T, path string) string {
 	t.Helper()
+	//nolint:gosec // review tests read only explicit repository metadata paths.
 	content, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("读取交付文件 %s 失败：%v", path, err)
@@ -85,6 +86,7 @@ func Test_MetadataPath_resolves_repository_relative_environment_from_arbitrary_c
 		t.Fatalf("计划路径应基于仓库根解析，得到 %q，期望 %q", resolved, expected)
 	}
 }
+
 func Test_PlanCompliance_reads_explicit_artifacts_without_product_commit(t *testing.T) {
 	planPath := metadataPath(t, "PLAN_PATH", ".omo/plans/go-service-architecture-foundation.md")
 	evidenceRoot := metadataPath(t, "EVIDENCE_ROOT", ".omo/evidence")
@@ -131,7 +133,6 @@ func Test_PlanCompliance_accepts_late_binding_ADR_without_history_rewrite(t *tes
 
 	// When
 	err := validateLateBindingADR(adr)
-
 	// Then
 	if err != nil {
 		t.Fatalf("后补 ADR 应作为共享历史的显式纠偏记录：%v", err)
@@ -183,7 +184,10 @@ func Test_ReviewE2E_AST_rejects_string_catalog(t *testing.T) {
 	if err != nil {
 		t.Fatalf("解析 E2E 失败夹具失败：%v", err)
 	}
-	function := fixture.Decls[1].(*ast.FuncDecl)
+	function, ok := fixture.Decls[1].(*ast.FuncDecl)
+	if !ok {
+		t.Fatal("E2E 夹具声明类型错误")
+	}
 	if functionCalls(function, "newHarness") {
 		t.Fatal("字符串清单被错误识别为真实 E2E")
 	}
@@ -194,12 +198,16 @@ func Test_ReviewE2E_AST_rejects_missing_concrete_comparison(t *testing.T) {
 	if err != nil {
 		t.Fatalf("解析弱断言夹具失败：%v", err)
 	}
-	function := fixture.Decls[1].(*ast.FuncDecl)
+	function, ok := fixture.Decls[1].(*ast.FuncDecl)
+	if !ok {
+		t.Fatal("弱断言夹具声明类型错误")
+	}
 	symbols := functionSymbolSet(function)
 	if symbols["DeepEqual"] || symbols["StatusForbidden"] {
 		t.Fatal("弱断言夹具错误包含具体状态比较")
 	}
 }
+
 func functionSymbolSet(function *ast.FuncDecl) map[string]bool {
 	symbols := make(map[string]bool)
 	ast.Inspect(function.Body, func(node ast.Node) bool {
@@ -215,6 +223,7 @@ func functionSymbolSet(function *ast.FuncDecl) map[string]bool {
 }
 
 func functionCalls(function *ast.FuncDecl, name string) bool { return functionCallsAny(function, name) }
+
 func functionCallsAny(function *ast.FuncDecl, names ...string) bool {
 	found := false
 	ast.Inspect(function.Body, func(node ast.Node) bool {
@@ -231,6 +240,7 @@ func functionCallsAny(function *ast.FuncDecl, names ...string) bool {
 	})
 	return found
 }
+
 func callName(expression ast.Expr) string {
 	switch value := expression.(type) {
 	case *ast.Ident:

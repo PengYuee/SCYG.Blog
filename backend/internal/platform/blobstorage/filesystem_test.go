@@ -17,7 +17,7 @@ func Test_Filesystem_write_commit_open_delete_roundtrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 	token, meta, err := store.WriteTemp(context.Background(), "0123456789abcdef0123456789abcdef", io.NopCloser(io.LimitReader(zeroReader{}, 12)))
 	if err != nil || meta.Size != 12 {
 		t.Fatalf("write: %v size=%d", err, meta.Size)
@@ -30,7 +30,7 @@ func Test_Filesystem_write_commit_open_delete_roundtrip(t *testing.T) {
 	if err != nil || stat.Size() != 12 {
 		t.Fatalf("open: %v", err)
 	}
-	file.Close()
+	_ = file.Close()
 	if err = store.Delete(key); err != nil {
 		t.Fatal(err)
 	}
@@ -46,9 +46,9 @@ func Test_Filesystem_rejects_untrusted_names_and_root_escape(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 	sentinel := filepath.Join(parent, "sentinel")
-	if err = os.WriteFile(sentinel, []byte("safe"), 0600); err != nil {
+	if err = os.WriteFile(sentinel, []byte("safe"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	attacks := []string{"../sentinel", `..\\sentinel`, "/sentinel", `C:\\sentinel`, "%2e%2e", "a/b", `a\\b`, "name:stream"}
@@ -57,7 +57,11 @@ func Test_Filesystem_rejects_untrusted_names_and_root_escape(t *testing.T) {
 			t.Fatalf("攻击被接受: %s", attack)
 		}
 	}
-	content, _ := os.ReadFile(sentinel)
+	//nolint:gosec // test path is a fixed t.TempDir sentinel.
+	content, readErr := os.ReadFile(sentinel)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
 	if string(content) != "safe" {
 		t.Fatal("根外哨兵被修改")
 	}
@@ -69,15 +73,19 @@ func Test_Filesystem_lists_only_owned_expired_temps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 	token, _, err := store.WriteTemp(context.Background(), "0123456789abcdef0123456789abcdef", io.NopCloser(io.LimitReader(zeroReader{}, 1)))
 	if err != nil {
 		t.Fatal(err)
 	}
 	spoof := filepath.Join(root, "upload-spoof.tmp")
-	os.WriteFile(spoof, []byte("x"), 0600)
+	if err := os.WriteFile(spoof, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	old := time.Now().Add(-time.Hour)
-	os.Chtimes(filepath.Join(root, token.Name()), old, old)
+	if err := os.Chtimes(filepath.Join(root, token.Name()), old, old); err != nil {
+		t.Fatal(err)
+	}
 	got, err := store.ListExpiredTemps(context.Background(), time.Now(), 10)
 	if err != nil {
 		t.Fatal(err)
@@ -106,7 +114,7 @@ func Test_Filesystem_rename_failure_keeps_temp_without_final_file(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 	token, _, err := store.WriteTemp(context.Background(), "0123456789abcdef0123456789abcdef", io.LimitReader(zeroReader{}, 1))
 	if err != nil {
 		t.Fatal(err)
@@ -136,6 +144,7 @@ func (root openDeleteFaultRoot) open(name string) (fileOperations, error) {
 	}
 	return root.rootOperations.open(name)
 }
+
 func (root openDeleteFaultRoot) remove(name string) error {
 	if root.removeErr != nil {
 		return root.removeErr
@@ -160,7 +169,7 @@ func Test_Filesystem_partial_write_removes_temp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 	_, _, err = store.WriteTemp(context.Background(), "0123456789abcdef0123456789abcdef", &partialReader{})
 	if err == nil {
 		t.Fatal("部分写入故障未传播")
@@ -177,7 +186,7 @@ func Test_Filesystem_open_and_delete_faults_propagate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 	base := store.root
 	injected := errors.New("注入操作故障")
 	store.root = openDeleteFaultRoot{rootOperations: base, openErr: injected}
@@ -196,19 +205,23 @@ func Test_Filesystem_commit_collision_preserves_existing_file(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 	token, _, err := store.WriteTemp(context.Background(), "0123456789abcdef0123456789abcdef", io.LimitReader(zeroReader{}, 1))
 	if err != nil {
 		t.Fatal(err)
 	}
 	key := "0123456789abcdef0123456789abcdef.jpg"
-	if err = os.WriteFile(filepath.Join(root, key), []byte("original"), 0600); err != nil {
+	if err = os.WriteFile(filepath.Join(root, key), []byte("original"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err = store.CommitTemp(token, key); !errors.Is(err, fs.ErrExist) {
 		t.Fatalf("collision=%v", err)
 	}
-	content, _ := os.ReadFile(filepath.Join(root, key))
+	//nolint:gosec // test path is a fixed descendant of t.TempDir.
+	content, readErr := os.ReadFile(filepath.Join(root, key))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
 	if string(content) != "original" {
 		t.Fatal("碰撞覆盖了原文件")
 	}

@@ -109,7 +109,7 @@ func Test_Application_orders_cleanup_worker_around_HTTP_lifecycle(t *testing.T) 
 	// When
 	app, err := bootstrap.New(context.Background(), withConfig(t, bootstrap.Options{LogWriter: &bytes.Buffer{}, LifecycleObserver: orderedObserver{events: events}}), dependencies)
 	if err == nil {
-		err = app.Start()
+		err = app.Start(context.Background())
 	}
 	if err == nil {
 		err = app.Shutdown(context.Background())

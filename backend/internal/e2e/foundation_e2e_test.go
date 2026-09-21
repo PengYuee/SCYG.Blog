@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content"
+	"github.com/PengYuee/SCYG.Blog/backend/migrations"
 )
 
 func Test_E2E_migrations_roundtrip(t *testing.T) {
@@ -32,7 +33,7 @@ func Test_E2E_migrations_roundtrip(t *testing.T) {
 	if err := pool.QueryRowContext(h.ctx, `SELECT version FROM schema_migrations`).Scan(&version); err != nil {
 		t.Fatalf("读取迁移版本失败：%v", err)
 	}
-	if version != 1 {
+	if version != int(migrations.CurrentVersion) {
 		t.Fatalf("迁移版本错误：%d", version)
 	}
 }
@@ -45,7 +46,7 @@ func Test_E2E_scalar_is_offline_and_self_hosted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("读取 Scalar 页面失败：%v", err)
 	}
-	if response.StatusCode != http.StatusOK || !strings.Contains(string(body), "/scalar.js") {
+	if response.StatusCode != http.StatusOK || !strings.Contains(string(body), "/docs/assets/scalar.js") {
 		t.Fatalf("Scalar 未使用本地资源：status=%d", response.StatusCode)
 	}
 	assertLocalReferences(t, h, string(body))
@@ -58,21 +59,37 @@ func Test_E2E_public_reads_hide_drafts(t *testing.T) {
 	defer h.close()
 	articleType, tag := createContent(t, h)
 	draft := createArticle(t, h, articleType, tag, "draft", articleStatusDraft)
-	published := createArticle(t, h, articleType, tag, "published", articleStatusDraft)
-	publish := h.request(http.MethodPatch, published.Header.Get("Location"), "{\"status\":2}", map[string]string{"If-Match": published.Header.Get("ETag")})
-	if publish.StatusCode != http.StatusOK {
-		t.Fatalf("发布文章失败：%d", publish.StatusCode)
+	published := createArticle(t, h, articleType, tag, "published", articleStatusPublished)
+	publishedBody, _ := io.ReadAll(published.Body)
+	if published.Header.Get("ETag") != `"1"` || !strings.Contains(string(publishedBody), `"status":2`) || !strings.Contains(string(publishedBody), `"version":1`) {
+		t.Fatalf("直接发布初始响应错误：etag=%s body=%s", published.Header.Get("ETag"), publishedBody)
 	}
 	response := h.request(http.MethodGet, "/api/v1/articles", "", nil)
 	body, _ := io.ReadAll(response.Body)
 	if response.StatusCode != http.StatusOK || strings.Contains(string(body), "e2e-draft") || !strings.Contains(string(body), "e2e-published") {
 		t.Fatalf("公开列表可见性错误：%s", body)
 	}
-	if hidden := h.request(http.MethodGet, draft.Header.Get("Location"), "", nil); hidden.StatusCode != http.StatusNotFound {
+	publicDraftLocation := strings.Replace(draft.Header.Get("Location"), "/manage", "", 1)
+	publicPublishedLocation := strings.Replace(published.Header.Get("Location"), "/manage", "", 1)
+	if hidden := h.request(http.MethodGet, publicDraftLocation, "", nil); hidden.StatusCode != http.StatusNotFound {
 		t.Fatalf("公开详情暴露草稿：%d", hidden.StatusCode)
 	}
-	if visible := h.request(http.MethodGet, published.Header.Get("Location"), "", nil); visible.StatusCode != http.StatusOK {
-		t.Fatalf("公开详情未返回已发布文章：%d", visible.StatusCode)
+	if visible := h.request(http.MethodGet, publicPublishedLocation, "", nil); visible.StatusCode != http.StatusOK {
+		t.Fatalf("公开详情未返回直接发布文章：%d", visible.StatusCode)
+	}
+	publish := h.request(http.MethodPost, draft.Header.Get("Location")+"/publish", "", map[string]string{"If-Match": draft.Header.Get("ETag")})
+	if publish.StatusCode != http.StatusOK {
+		t.Fatalf("管理端发布草稿失败：%d", publish.StatusCode)
+	}
+	if visible := h.request(http.MethodGet, publicDraftLocation, "", nil); visible.StatusCode != http.StatusOK {
+		t.Fatalf("发布后文章不可见：%d", visible.StatusCode)
+	}
+	archive := h.request(http.MethodPost, draft.Header.Get("Location")+"/archive", "", map[string]string{"If-Match": publish.Header.Get("ETag")})
+	if archive.StatusCode != http.StatusOK {
+		t.Fatalf("管理端归档文章失败：%d", archive.StatusCode)
+	}
+	if hidden := h.request(http.MethodGet, publicDraftLocation, "", nil); hidden.StatusCode != http.StatusNotFound {
+		t.Fatalf("归档后文章仍公开：%d", hidden.StatusCode)
 	}
 }
 
@@ -126,6 +143,7 @@ func Test_E2E_production_denies_writes(t *testing.T) {
 		}
 	}
 }
+
 func Test_E2E_stale_etag_is_rejected(t *testing.T) {
 	h := newHarness(t, allowAll{})
 	defer h.close()
@@ -214,10 +232,11 @@ func staleReplayETag(created, updated string) (string, error) {
 	}
 	return created, nil
 }
+
 func createArticle(t *testing.T, h *harness, articleType, tag *http.Response, suffix string, status articleStatus) *http.Response {
 	t.Helper()
 	body := articleCreatePayload(suffix, locationID(t, articleType), locationID(t, tag), status)
-	response := h.request(http.MethodPost, "/api/v1/articles", body, nil)
+	response := h.request(http.MethodPost, "/api/v1/manage/articles", body, nil)
 	if response.StatusCode != http.StatusCreated {
 		failureBody, readErr := io.ReadAll(response.Body)
 		if readErr != nil {
@@ -237,6 +256,7 @@ func locationID(t *testing.T, response *http.Response) int64 {
 	}
 	return id
 }
+
 func openPool(t *testing.T, dsn string) *sql.DB {
 	t.Helper()
 	pool, err := sql.Open("pgx", dsn)

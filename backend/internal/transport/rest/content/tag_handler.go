@@ -5,17 +5,17 @@ import (
 	"fmt"
 
 	generated "github.com/PengYuee/SCYG.Blog/backend/internal/generated/openapi"
-	module "github.com/PengYuee/SCYG.Blog/backend/internal/modules/content"
+	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/taxonomy"
 )
 
 // ListTags 实现生成的标签列表操作。
 func (handler *Handler) ListTags(ctx context.Context, request generated.ListTagsRequestObject) (generated.ListTagsResponseObject, error) {
 	page, size := pageValues(request.Params.Page, request.Params.PageSize)
-	query := module.ListTags{Page: page, PageSize: size, Sort: tagSort(request.Params.Sort)}
+	query := taxonomy.ListTags{Page: page, PageSize: size, Sort: tagSort(request.Params.Sort)}
 	if request.Params.Q != nil {
 		query.Name = *request.Params.Q
 	}
-	result, err := handler.queries.ListTags(ctx, query)
+	result, err := handler.taxonomy.ListTags(requestContext(ctx), query)
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +36,7 @@ func (handler *Handler) ListTags(ctx context.Context, request generated.ListTags
 
 // CreateTag 实现生成的标签创建操作。
 func (handler *Handler) CreateTag(ctx context.Context, request generated.CreateTagRequestObject) (generated.CreateTagResponseObject, error) {
-	result, err := handler.commands.CreateTag(ctx, module.CreateTag{Name: request.Body.Name})
+	result, err := handler.taxonomy.CreateTag(requestContext(ctx), taxonomy.CreateTag{Name: request.Body.Name})
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +53,7 @@ func (handler *Handler) CreateTag(ctx context.Context, request generated.CreateT
 
 // GetTag 实现生成的标签详情操作。
 func (handler *Handler) GetTag(ctx context.Context, request generated.GetTagRequestObject) (generated.GetTagResponseObject, error) {
-	result, err := handler.queries.GetTag(ctx, module.GetTag{ID: request.TagID})
+	result, err := handler.taxonomy.GetTag(requestContext(ctx), taxonomy.GetTag{ID: request.TagID})
 	if err != nil {
 		return nil, err
 	}
@@ -77,7 +77,7 @@ func (handler *Handler) PatchTag(ctx context.Context, request generated.PatchTag
 	if request.Body.Name == nil {
 		return nil, invalidETag(fmt.Errorf("必须提供标签名称"))
 	}
-	result, err := handler.commands.RenameTag(ctx, module.RenameTag{ID: request.TagID, Version: version, Name: *request.Body.Name})
+	result, err := handler.taxonomy.RenameTag(requestContext(ctx), taxonomy.RenameTag{ID: request.TagID, Version: version, Name: *request.Body.Name})
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +98,7 @@ func (handler *Handler) DeleteTag(ctx context.Context, request generated.DeleteT
 	if err != nil {
 		return nil, invalidETag(err)
 	}
-	if err = handler.commands.DeleteTag(ctx, module.DeleteTag{ID: request.TagID, Version: version}); err != nil {
+	if err = handler.taxonomy.DeleteTag(requestContext(ctx), taxonomy.DeleteTag{ID: request.TagID, Version: version}); err != nil {
 		return nil, err
 	}
 	return generated.DeleteTag204Response{}, nil

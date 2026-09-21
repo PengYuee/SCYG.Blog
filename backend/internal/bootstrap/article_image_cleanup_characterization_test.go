@@ -9,6 +9,7 @@ import (
 
 	"github.com/PengYuee/SCYG.Blog/backend/internal/bootstrap"
 	module "github.com/PengYuee/SCYG.Blog/backend/internal/modules/content"
+	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/image"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/blobstorage"
 	"github.com/PengYuee/SCYG.Blog/backend/migrations"
 )
@@ -19,15 +20,15 @@ func Test_Application_creates_image_directory_before_content_construction(t *tes
 	storageDirectory := filepath.Join(t.TempDir(), "nested", "images")
 	dependencies := validDependencies(&fakeTelemetry{}, &fakeDatabase{}, &fakeMigration{version: migrations.CurrentVersion}, &fakeServer{})
 	directoryObserved := false
-	dependencies.NewContent = func(_ bootstrap.Database, _ module.Authorizer, _ module.CurrentAuthorProvider, filesystem *blobstorage.Filesystem, _ module.ArticleImagePolicy) (*module.Module, error) {
+	dependencies.NewImage = func(_ bootstrap.Database, _ module.Authorizer, _ module.CurrentAuthorProvider, filesystem *blobstorage.Filesystem, _ image.Policy, _ module.Clock) (*image.Service, error) {
 		if filesystem == nil {
-			t.Fatal("内容构造前图片存储为空")
+			t.Fatal("图片构造前图片存储为空")
 		}
 		if info, err := os.Stat(storageDirectory); err != nil || !info.IsDir() {
-			t.Fatalf("内容构造前图片目录不可用：info=%v err=%v", info, err)
+			t.Fatalf("图片构造前图片目录不可用：info=%v err=%v", info, err)
 		}
 		directoryObserved = true
-		return &module.Module{}, nil
+		return &image.Service{}, nil
 	}
 	configPath := filepath.Join(t.TempDir(), "config.yaml")
 	configBody := "database:\n  dsn: postgres://postgres:postgres@localhost:5432/scyg?sslmode=disable\narticle_images:\n  directory: " + filepath.ToSlash(storageDirectory) + "\n"

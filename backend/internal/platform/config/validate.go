@@ -27,11 +27,15 @@ func validate(raw rawConfig) (Config, error) {
 	if err := validateTelemetry(raw.Telemetry); err != nil {
 		return Config{}, err
 	}
+	auth, err := validateAuth(raw.Auth, environment)
+	if err != nil {
+		return Config{}, err
+	}
 	articleImages, err := validateArticleImages(raw.ArticleImages, environment)
 	if err != nil {
 		return Config{}, err
 	}
-	return Config{app: App{environment: environment, logLevel: level}, http: HTTP{host: raw.HTTP.Host, port: raw.HTTP.Port, readHeaderTimeout: raw.HTTP.ReadHeaderTimeout, readTimeout: raw.HTTP.ReadTimeout, writeTimeout: raw.HTTP.WriteTimeout, idleTimeout: raw.HTTP.IdleTimeout, shutdownTimeout: raw.HTTP.ShutdownTimeout, trustedProxies: append([]string(nil), raw.HTTP.TrustedProxies...), corsAllowedOrigins: append([]string(nil), raw.HTTP.CORSAllowedOrigins...)}, database: Database{dsn: DSN{value: raw.Database.DSN}, maxOpenConns: raw.Database.MaxOpenConns, maxIdleConns: raw.Database.MaxIdleConns, connMaxLifetime: raw.Database.ConnMaxLifetime}, docs: Docs{enabled: raw.Docs.Enabled}, telemetry: Telemetry{otlpEndpoint: raw.Telemetry.OTLPEndpoint}, articleImages: articleImages}, nil
+	return Config{app: App{environment: environment, logLevel: level}, http: HTTP{host: raw.HTTP.Host, port: raw.HTTP.Port, readHeaderTimeout: raw.HTTP.ReadHeaderTimeout, readTimeout: raw.HTTP.ReadTimeout, writeTimeout: raw.HTTP.WriteTimeout, idleTimeout: raw.HTTP.IdleTimeout, shutdownTimeout: raw.HTTP.ShutdownTimeout, trustedProxies: append([]string(nil), raw.HTTP.TrustedProxies...), corsAllowedOrigins: append([]string(nil), raw.HTTP.CORSAllowedOrigins...)}, database: Database{dsn: DSN{value: raw.Database.DSN}, maxOpenConns: raw.Database.MaxOpenConns, maxIdleConns: raw.Database.MaxIdleConns, connMaxLifetime: raw.Database.ConnMaxLifetime}, docs: Docs{enabled: raw.Docs.Enabled}, telemetry: Telemetry{otlpEndpoint: raw.Telemetry.OTLPEndpoint}, auth: auth, articleImages: articleImages}, nil
 }
 
 func validateHTTP(raw rawHTTP) error {
@@ -106,6 +110,24 @@ func validateTelemetry(raw rawTelemetry) error {
 		return invalid("telemetry.otlp_endpoint", "必须是绝对 HTTP URL")
 	}
 	return nil
+}
+
+func validateAuth(raw rawAuth, environment Environment) (Auth, error) {
+	secret := strings.TrimSpace(raw.JWTSecret)
+	if len(secret) < 32 {
+		return Auth{}, invalid("auth.jwt_secret", "长度至少为 32 字节")
+	}
+	if environment == EnvironmentProduction && secret == developmentJWTSecret {
+		return Auth{}, invalid("auth.jwt_secret", "production 环境必须配置非默认密钥")
+	}
+	issuer := strings.TrimSpace(raw.Issuer)
+	if issuer == "" {
+		return Auth{}, invalid("auth.issuer", "不能为空")
+	}
+	if raw.AccessTokenTTL <= 0 {
+		return Auth{}, invalid("auth.access_token_ttl", "必须大于零")
+	}
+	return Auth{jwtSecret: secret, issuer: issuer, accessTokenTTL: raw.AccessTokenTTL}, nil
 }
 
 func invalid(field, rule string) error { return &ValidationError{Field: field, Rule: rule} }

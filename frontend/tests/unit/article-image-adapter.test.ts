@@ -4,7 +4,7 @@ import type { HttpTransport } from "@/request/transport"
 
 /** 创建隔离的类型化传输层替身。 */
 function client(): HttpTransport {
-  return { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() }
+  return { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() }
 }
 
 describe("article image API adapter", () => {
@@ -32,10 +32,26 @@ describe("article image API adapter", () => {
 
     // Then: FormData 不携带手工 Content-Type，删除也不从 URL 推导标识。
     const postCall = vi.mocked(transport.post).mock.calls[0]
-    expect(postCall?.[0]).toBe("/api/v1/article-images")
+    expect(postCall?.[0]).toBe("/api/v1/manage/article-images")
     expect(postCall?.[1]).toBeInstanceOf(FormData)
     expect(postCall).toHaveLength(2)
     expect(uploaded).toEqual({ id: "0123456789abcdef0123456789abcdef", url: "https://api.test/media/article-images/ffffffffffffffffffffffffffffffff.png", expiresAt: "2026-07-14T00:00:00Z" })
     expect(transport.delete).toHaveBeenCalledWith("/api/v1/article-images/0123456789abcdef0123456789abcdef")
+  })
+  it("rejects image resources outside the controlled media path", async () => {
+    const transport = client()
+    vi.mocked(transport.post).mockResolvedValue({ data: {
+      id: "0123456789abcdef0123456789abcdef",
+      storageKey: "ffffffffffffffffffffffffffffffff.png",
+      url: "https://external.test/image.png",
+      mediaType: "png",
+      byteSize: 4,
+      width: 1,
+      height: 1,
+      status: "pending",
+      expiresAt: "2026-07-14T00:00:00Z",
+    } })
+
+    await expect(createArticleImageApi(transport, "https://api.test").uploadImage(new File(["png"], "正文.png", { type: "image/png" }))).rejects.toThrow()
   })
 })

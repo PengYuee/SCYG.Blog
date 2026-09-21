@@ -4,46 +4,50 @@ import { createMemoryHistory, createRouter } from "vue-router"
 import { describe, expect, it, vi } from "vitest"
 import { apiServicesKey, createApiServices } from "@/request/api-services"
 import type { HttpTransport } from "@/request/transport"
+import { scrollRestorationKey } from "@/services/scroll-restoration"
 
 /** 可提升的生产适配器假实现与请求记录。 */
 const { get } = vi.hoisted(() => {
   /** 测试适配器有意维护的文章页游标。 */
   let articlePage = 0
-  /** 创建旧 API 文章响应。 */
+  /** 创建当前 v1 文章响应。 */
   const apiArticle = (id: number) => ({ id, title: `Vue 文章 ${id}`, slug: `vue-${id}`, digest: `Vue 摘要 ${id}`, content: "正文", article_type_id: 2, tag_ids: [9], status: 2, support: 1, comment: 1, visited: id, version: 1, created_at: "2026-07-11T00:00:00Z", updated_at: null })
   return {
     get: vi.fn(async (url: string) => {
-      if (url.includes("GetArticleList")) {
+      if (url.includes("/api/v1/articles")) {
         const pageIndex = articlePage
         articlePage += 1
         if (pageIndex === 1) throw new Error("page two unavailable")
         const items = pageIndex === 0 ? Array.from({ length: 9 }, (_, index) => apiArticle(index + 1)) : [apiArticle(10)]
         return { data: { items, page: { number: pageIndex === 0 ? 1 : 2, size: 9, total_items: 10, total_pages: 2 } } }
       }
-      if (url.includes("ArticleType")) return { data: { items: [{ id: 2, name: "前端", image: null, meun: 1 }], page: { number: 1, size: 20, total_items: 1, total_pages: 1 } } }
-      return { data: { items: [{ id: 9, name: "Vue" }], page: { number: 1, size: 20, total_items: 1, total_pages: 1 } } }
+      if (url.includes("/api/v1/article-types")) return { data: { items: [{ id: 2, name: "前端", image: null, meun: 1, version: 1, created_at: "2026-07-11T00:00:00Z", updated_at: null }], page: { number: 1, size: 20, total_items: 1, total_pages: 1 } } }
+      return { data: { items: [{ id: 9, name: "Vue", version: 1, created_at: "2026-07-11T00:00:00Z", updated_at: null }], page: { number: 1, size: 20, total_items: 1, total_pages: 1 } } }
     }),
   }
 })
 
 import ArticleListView from "@/views/public/ArticleListView.vue"
 
-const transport: HttpTransport = { get, post: vi.fn(), put: vi.fn(), delete: vi.fn() }
-const apiServices = createApiServices(transport, "http://localhost:5000/api")
+const transport: HttpTransport = { get, post: vi.fn(), patch: vi.fn(), delete: vi.fn() }
+const apiServices = createApiServices(transport, "http://localhost:5000")
+/** 列表首次查询终态通知观察器。 */
+const markReady = vi.fn()
+const scrollRestoration = { install: vi.fn(), arm: vi.fn(() => false), cancel: vi.fn(), markReady, wait: vi.fn(async () => false) }
 
 describe("T9 article list behavior", () => {
   it("preserves loaded articles and retries a failed next page", async () => {
     // Given: 带全部三种筛选的直接深链。
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: "/articles", component: ArticleListView }, { path: "/articles/:id", component: { template: "<p>detail</p>" } }] })
     await router.push("/articles?q=Vue&categoryId=2&tagId=9")
-    const wrapper = mount(ArticleListView, { global: { plugins: [router], provide: { [apiServicesKey]: apiServices }, stubs: { BlogLayout: { template: "<main><slot /></main>" } } } })
+    const wrapper = mount(ArticleListView, { global: { plugins: [router], provide: { [apiServicesKey]: apiServices, [scrollRestorationKey]: scrollRestoration }, stubs: { BlogLayout: { template: "<main><slot /></main>" } } } })
     await flushPromises()
 
     // When: 首屏完成后尚未发生自动翻页。
-    const articleCalls = get.mock.calls.filter(([url]) => url.includes("GetArticleList"))
+    const articleCalls = get.mock.calls.filter(([url]) => url.includes("/api/v1/articles"))
     // Then: URL 筛选映射到 T4 feed，且只请求第零页。
     expect(articleCalls).toHaveLength(1)
-    expect(articleCalls[0]?.[1]).toMatchObject({ params: { articleTypeId: 2, tagId: 9, pageModel: { pageIndex: 0, pageSize: 9 } } })
+    expect(articleCalls[0]?.[1]).toMatchObject({ params: { page: 1, page_size: 9, article_type_id: 2, tag_id: 9, q: "Vue" } })
     expect(wrapper.text()).toContain("Vue 文章 1")
     expect(wrapper.findAll("article")).toHaveLength(9)
 
@@ -59,9 +63,10 @@ describe("T9 article list behavior", () => {
     await wrapper.get('[data-testid="load-more-retry"]').trigger("click")
     await flushPromises()
     // Then: feed.retry 复用第二页意图，保留旧文章并追加第十篇。
-    expect(get.mock.calls.filter(([url]) => url.includes("GetArticleList"))).toHaveLength(3)
+    expect(get.mock.calls.filter(([url]) => url.includes("/api/v1/articles"))).toHaveLength(3)
     expect(wrapper.findAll("article")).toHaveLength(10)
     expect(wrapper.find('[data-testid="load-more-error"]').exists()).toBe(false)
+    expect(markReady).toHaveBeenCalledOnce()
   })
 
   it("contains no window infinite-scroll registration", async () => {

@@ -24,12 +24,14 @@ func (file faultFile) Write(buffer []byte) (int, error) {
 	}
 	return file.fileOperations.Write(buffer)
 }
+
 func (file faultFile) Sync() error {
 	if file.syncErr != nil {
 		return file.syncErr
 	}
 	return file.fileOperations.Sync()
 }
+
 func (file faultFile) Close() error {
 	realErr := file.fileOperations.Close()
 	return errors.Join(realErr, file.closeErr)
@@ -50,6 +52,7 @@ func (root writeFaultRoot) openFile(name string, flag int, mode os.FileMode) (fi
 	}
 	return faultFile{fileOperations: file, writeErr: root.writeErr, syncErr: root.syncErr, closeErr: root.closeErr}, nil
 }
+
 func (root writeFaultRoot) syncDirectory() error {
 	if root.directoryErr != nil {
 		return root.directoryErr
@@ -82,7 +85,7 @@ func Test_Filesystem_injected_write_sync_close_and_directory_faults(t *testing.T
 			if err != nil {
 				t.Fatal(err)
 			}
-			defer store.Close()
+			defer func() { _ = store.Close() }()
 			store.root = fault.configure(store.root)
 			token, _, writeErr := store.WriteTemp(context.Background(), "0123456789abcdef0123456789abcdef", strings.NewReader("payload"))
 			if !fault.commit {
@@ -107,7 +110,7 @@ func Test_Filesystem_commit_is_atomic_no_replace_under_race(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 	id := "0123456789abcdef0123456789abcdef"
 	first, _, _ := store.WriteTemp(context.Background(), id, strings.NewReader("first"))
 	second, _, _ := store.WriteTemp(context.Background(), id, strings.NewReader("second"))
@@ -135,7 +138,11 @@ func Test_Filesystem_commit_is_atomic_no_replace_under_race(t *testing.T) {
 	if success != 1 || exists != 1 {
 		t.Fatalf("success=%d exists=%d", success, exists)
 	}
-	payload, _ := os.ReadFile(filepath.Join(root, key))
+	//nolint:gosec // test path is a fixed descendant of t.TempDir.
+	payload, readErr := os.ReadFile(filepath.Join(root, key))
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
 	if string(payload) != "first" && string(payload) != "second" {
 		t.Fatalf("目标被覆盖: %q", payload)
 	}
@@ -153,7 +160,7 @@ func Test_CommitTemp_directory_sync_failure_reports_committed_final(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer store.Close()
+	defer func() { _ = store.Close() }()
 	token, _, err := store.WriteTemp(context.Background(), "0123456789abcdef0123456789abcdef", strings.NewReader("payload"))
 	if err != nil {
 		t.Fatal(err)
@@ -165,6 +172,7 @@ func Test_CommitTemp_directory_sync_failure_reports_committed_final(t *testing.T
 	if !errors.As(err, &committed) || !committed.Committed() {
 		t.Fatalf("error=%v", err)
 	}
+	//nolint:gosec // test path is a fixed descendant of t.TempDir.
 	payload, readErr := os.ReadFile(filepath.Join(root, key))
 	if readErr != nil || string(payload) != "payload" {
 		t.Fatalf("payload=%q err=%v", payload, readErr)

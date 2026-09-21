@@ -12,8 +12,13 @@ func Test_OpenAPI_operation_policy_matrix(t *testing.T) {
 	// Given
 	document := loadAuthoritativeSpec(t)
 	all := operations(document)
-	if len(all) != 15 {
-		t.Fatalf("expected 15 operations, got %d", len(all))
+	if len(all) != 23 {
+		t.Fatalf("expected 23 operations, got %d", len(all))
+	}
+	public := map[string]struct{}{
+		"login": {}, "listArticles": {}, "getArticle": {},
+		"listArticleTypes": {}, "getArticleType": {}, "listTags": {},
+		"getTag": {}, "getArticleImageMedia": {},
 	}
 
 	// When / Then
@@ -29,14 +34,21 @@ func Test_OpenAPI_operation_policy_matrix(t *testing.T) {
 		assertProblemResponse(t, operation, "500")
 		method, _, _ := strings.Cut(label, " ")
 		isWrite := method == http.MethodPost || method == http.MethodPatch || method == http.MethodDelete
-		isConditional := method == http.MethodPatch || method == http.MethodDelete
-		if isWrite {
+		isConditional := method == http.MethodPatch || (method == http.MethodPost && (operation.OperationID == "publishManageArticle" || operation.OperationID == "archiveManageArticle")) || (method == http.MethodDelete && operation.OperationID != "deleteArticleImage")
+		if _, isPublic := public[operation.OperationID]; isPublic {
+			if operation.Security == nil || len(*operation.Security) != 0 {
+				t.Fatalf("%s must explicitly disable inherited security", label)
+			}
+		} else {
+			if operation.Security != nil {
+				t.Fatalf("%s must inherit top-level bearer security", label)
+			}
+			assertProblemResponse(t, operation, "401")
+		}
+		if isWrite && operation.OperationID != "login" {
 			assertProblemResponse(t, operation, "403")
 		}
 		assertConditionalPolicy(t, operation, isConditional)
-		if operation.Security != nil && len(*operation.Security) != 0 {
-			t.Fatalf("%s declares operation security", label)
-		}
 	}
 }
 
@@ -44,9 +56,14 @@ func Test_OpenAPI_paths_are_resource_only(t *testing.T) {
 	// Given
 	document := loadAuthoritativeSpec(t)
 	want := map[string]struct{}{
-		"/api/v1/articles": {}, "/api/v1/articles/{article_id}": {},
+		"/api/v1/auth/login": {},
+		"/api/v1/articles":   {}, "/api/v1/articles/{article_id}": {},
+		"/api/v1/manage/articles": {}, "/api/v1/manage/articles/{article_id}": {},
+		"/api/v1/manage/articles/{article_id}/publish": {}, "/api/v1/manage/articles/{article_id}/archive": {},
 		"/api/v1/article-types": {}, "/api/v1/article-types/{article_type_id}": {},
 		"/api/v1/tags": {}, "/api/v1/tags/{tag_id}": {},
+		"/api/v1/manage/article-images": {}, "/api/v1/article-images/{image_id}": {},
+		"/media/article-images/{storage_key}": {},
 	}
 
 	// When / Then
@@ -58,11 +75,14 @@ func Test_OpenAPI_paths_are_resource_only(t *testing.T) {
 			t.Fatalf("unexpected non-resource path %q", path)
 		}
 	}
-	if document.Components == nil || len(document.Components.SecuritySchemes) != 0 {
-		t.Fatal("components must exist without securitySchemes")
+	if document.Components == nil || len(document.Components.SecuritySchemes) != 1 || document.Components.SecuritySchemes["bearerAuth"] == nil {
+		t.Fatal("components must declare bearerAuth")
 	}
-	if len(document.Security) != 0 {
-		t.Fatal("top-level security declaration is forbidden")
+	if len(document.Security) != 1 || len(document.Security[0]) != 1 {
+		t.Fatal("top-level security must require bearerAuth")
+	}
+	if _, exists := document.Security[0]["bearerAuth"]; !exists {
+		t.Fatal("top-level security must require bearerAuth")
 	}
 }
 

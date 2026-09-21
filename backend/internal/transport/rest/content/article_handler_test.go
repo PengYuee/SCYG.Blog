@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	module "github.com/PengYuee/SCYG.Blog/backend/internal/modules/content"
+	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/article"
 )
 
 func Test_ContentREST_list_with_nested_invalid_item_returns_safe_500(t *testing.T) {
@@ -16,7 +16,7 @@ func Test_ContentREST_list_with_nested_invalid_item_returns_safe_500(t *testing.
 	valid := validArticleResultForHTTP()
 	invalid := valid
 	invalid.TagIDs = []int64{0}
-	service := &testService{articlePage: module.ArticlePage{Items: []module.ArticleResult{valid, invalid}, Number: 1, Size: 20, TotalItems: 2, TotalPages: 1}}
+	service := &testService{articlePage: article.Page{Items: []article.Result{valid, invalid}, Number: 1, Size: 20, TotalItems: 2, TotalPages: 1}}
 	router := routerForService(t, service)
 	response := httptest.NewRecorder()
 	// When
@@ -33,7 +33,7 @@ func Test_ContentREST_list_with_nested_invalid_item_returns_safe_500(t *testing.
 func Test_ContentREST_Article_list_preserves_nonzero_counters(t *testing.T) {
 	// Given
 	item := validArticleResultForHTTP()
-	service := &testService{articlePage: module.ArticlePage{Items: []module.ArticleResult{item}, Number: 1, Size: 20, TotalItems: 1, TotalPages: 1}}
+	service := &testService{articlePage: article.Page{Items: []article.Result{item}, Number: 1, Size: 20, TotalItems: 1, TotalPages: 1}}
 	router := routerForService(t, service)
 	response := httptest.NewRecorder()
 
@@ -61,7 +61,7 @@ func Test_ContentREST_Article_list_preserves_nonzero_counters(t *testing.T) {
 
 func Test_ContentREST_list_with_invalid_page_returns_safe_500(t *testing.T) {
 	// Given
-	service := &testService{articlePage: module.ArticlePage{Number: 0, Size: 20, TotalItems: -1, TotalPages: 0}}
+	service := &testService{articlePage: article.Page{Number: 0, Size: 20, TotalItems: -1, TotalPages: 0}}
 	router := routerForService(t, service)
 	response := httptest.NewRecorder()
 
@@ -78,7 +78,7 @@ func Test_ContentREST_list_with_noncanonical_slug_returns_safe_500(t *testing.T)
 	// Given
 	item := validArticleResultForHTTP()
 	item.Slug = "UPPER"
-	service := &testService{articlePage: module.ArticlePage{Items: []module.ArticleResult{item}, Number: 1, Size: 20, TotalItems: 1, TotalPages: 1}}
+	service := &testService{articlePage: article.Page{Items: []article.Result{item}, Number: 1, Size: 20, TotalItems: 1, TotalPages: 1}}
 	router := routerForService(t, service)
 	response := httptest.NewRecorder()
 
@@ -91,7 +91,7 @@ func Test_ContentREST_list_with_noncanonical_slug_returns_safe_500(t *testing.T)
 	}
 }
 
-func validArticleResultForHTTP() module.ArticleResult {
+func validArticleResultForHTTP() article.Result {
 	now := time.Unix(1, 0).UTC()
-	return module.ArticleResult{ID: 1, ArticleTypeID: 1, Title: "Title", Slug: "title", Digest: "Digest", Content: "Body", Status: "published", TagIDs: []int64{1}, Support: 7, Comment: 8, Visited: 9, Version: 1, CreatedAt: now, ModifiedAt: now}
+	return article.Result{ID: 1, ArticleTypeID: 1, Title: "Title", Slug: "title", Digest: "Digest", Content: "Body", Status: "published", TagIDs: []int64{1}, Support: 7, Comment: 8, Visited: 9, Version: 1, CreatedAt: now, ModifiedAt: now}
 }

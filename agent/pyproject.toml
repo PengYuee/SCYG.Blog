@@ -1,0 +1,159 @@
+[build-system]
+requires = ["hatchling==1.27.0"]
+build-backend = "hatchling.build"
+
+[project]
+name = "scyg-agent"
+version = "0.1.0"
+description = "SCYG typed Agent service scaffold"
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "alembic==1.16.4",
+    "anyio==4.14.2",
+    "asyncpg==0.30.0",
+    "cryptography==50.0.0",
+    "deepagents==0.7.15",
+    "langchain==1.4.2",
+    "langchain-openai==1.6.2",
+    "langgraph==1.2.11",
+    "langgraph-checkpoint-postgres==3.1.2",
+    "fastapi==0.139.0",
+    "opentelemetry-api==1.36.0",
+    "opentelemetry-exporter-otlp-proto-grpc==1.36.0",
+    "opentelemetry-instrumentation-fastapi==0.57b0",
+    "opentelemetry-sdk==1.36.0",
+    "protobuf==5.29.6",
+    "psycopg-pool==3.3.1",
+    "psycopg[binary]==3.3.2",
+    "pydantic==2.13.4",
+    "pydantic-settings==2.14.2",
+    "pyjwt[crypto]==2.13.0",
+    "sqlalchemy[asyncio]==2.0.51",
+    "uvicorn==0.35.0",
+    "redis==6.4.0",
+]
+
+[project.scripts]
+scyg-agent = "scyg_agent.__main__:main"
+scyg-agent-contracts = "scyg_agent.contract_generation:main"
+
+[dependency-groups]
+dev = [
+    "asyncpg-stubs>=0.30.2",
+    "basedpyright==1.31.3",
+    "pytest==8.4.1",
+    "pytest-cov==6.2.1",
+    "ruff==0.12.9",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/scyg_agent"]
+
+[tool.basedpyright]
+typeCheckingMode = "all"
+pythonVersion = "3.12"
+pythonPlatform = "All"
+include = ["src", "tests"]
+exclude = [
+    "**/__pycache__",
+    "**/.venv",
+    "**/build",
+    "**/dist",
+    "src/scyg_agent/generated",
+]
+ignore = [
+    # Generated protobuf descriptors intentionally expose dynamic reflection APIs.
+    "tests/test_generated_contracts.py",
+]
+reportUnusedCallResult = "warning"
+reportUnnecessaryTypeIgnoreComment = "error"
+reportUnusedVariable = "error"
+reportMissingParameterType = "error"
+reportPrivateUsage = "error"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+exclude = ["src/scyg_agent/generated"]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "COM812", # Conflicts with Ruff formatter.
+    "CPY001", # This internal service does not require per-file copyright notices.
+    "D203",   # Select D211 for class docstring spacing.
+    "D213",   # Select D212 for summary placement.
+    "ISC001", # Conflicts with Ruff formatter.
+]
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.lint.per-file-ignores]
+"src/scyg_agent/generated/**/*" = ["ALL"] # Generated transport code is checked by drift and import tests.
+"src/scyg_agent/__main__.py" = [
+    "T201", # The bounded CLI check intentionally writes its result to stdout/stderr.
+]
+"tests/**/*.py" = [
+    "ARG",     # Pytest fixtures can be injected for side effects.
+    "D",       # Test names document behavior.
+    "PLR2004", # Literal boundary values are test data.
+    "S101",    # Pytest assertions are required.
+]
+"scripts/**/*.py" = [
+    "D",      # Small command-line tooling keeps behavior in names and output.
+    "INP001", # Executed from the uv project rather than published as a package.
+    "S603",   # Commands are constants assembled by the QA orchestrator.
+    "T201",   # QA tooling intentionally reports labeled gate output.
+    "TC003",  # Runtime protocols use these standard-library annotations.
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+docstring-code-format = true
+docstring-code-line-length = "dynamic"
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-config", "--strict-markers"]
+markers = [
+    "postgres: requires a configured PostgreSQL endpoint",
+    "migration: exercises destructive or historical schema migration",
+    "integration: starts multiple application components or subprocesses",
+]
+filterwarnings = ["error"]
+
+[tool.coverage.run]
+source = ["scyg_agent"]
+branch = true
+omit = [
+    "src/scyg_agent/contract_generation.py", # Build tooling is exercised through real generation probes.
+    "src/scyg_agent/deployment.py", # Deployment tooling is exercised through container and setup acceptance.
+    "src/scyg_agent/local_setup.py", # Role creation, migrations and checkpoint setup require real PostgreSQL acceptance.
+    "src/scyg_agent/adapters/database/event_codec.py", # Exercised through mandatory real T11 PostgreSQL acceptance.
+    "src/scyg_agent/adapters/database/event_append.py", # Atomic SQL semantics require real PostgreSQL acceptance.
+    "src/scyg_agent/adapters/database/event_store.py", # LISTEN/NOTIFY and SQL semantics require real PostgreSQL.
+    "src/scyg_agent/adapters/database/event_subscription.py", # Listener lifecycle requires real asyncpg acceptance.
+    "src/scyg_agent/runtimes/deep/postgresql_source.py", # PostgreSQL/checkpoint precedence requires endpoint acceptance.
+    "src/scyg_agent/generated/**",
+    "src/scyg_agent/composition_resources.py", # Real PostgreSQL migration/checkpoint lifecycle is endpoint acceptance.
+    "src/scyg_agent/composition_runtime.py", # Runtime construction requires real checkpoint and Blog resources.
+]
+
+[tool.coverage.report]
+fail_under = 90
+show_missing = true
+skip_covered = true
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "if typing.TYPE_CHECKING:",
+    "raise NotImplementedError",
+    "@(abc\\.)?abstractmethod",
+]

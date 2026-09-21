@@ -31,7 +31,7 @@ test("详情离线失败保持导航并提供重新加载", async ({ page }) => 
   // Given: 详情请求模拟真实离线中断，其余字典正常。
   const health = observePageHealth(page)
   await installReadFixtures(page)
-  await page.route(/\/Article\/GetArticle(?:\?|$)/, (route) => route.abort("internetdisconnected"))
+  await page.route(/\/api\/v1\/articles\/101(?:\?|$)/, (route) => route.abort("internetdisconnected"))
   const retry = page.getByRole("button", { name: "重新加载" })
   // When: 打开文章详情。
   await gotoReady(page, "/articles/101", retry)
@@ -40,7 +40,7 @@ test("详情离线失败保持导航并提供重新加载", async ({ page }) => 
   await expect(retry).toBeVisible()
   expectExpectedHealth(health, {
     consoleErrors: [/^Failed to load resource: net::ERR_INTERNET_DISCONNECTED$/],
-    failedRequests: [/^GET http:\/\/127\.0\.0\.1:4173\/api\/Article\/GetArticle\?id=101 net::ERR_INTERNET_DISCONNECTED$/],
+    failedRequests: [/^GET http:\/\/127\.0\.0\.1:8080\/api\/v1\/articles\/101 net::ERR_INTERNET_DISCONNECTED$/],
   })
 })
 

@@ -9,12 +9,14 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"gorm.io/gorm"
+
 	"github.com/PengYuee/SCYG.Blog/backend/internal/bootstrap"
-	module "github.com/PengYuee/SCYG.Blog/backend/internal/modules/content"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/config"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/database"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/httpserver"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/observability"
+	rest "github.com/PengYuee/SCYG.Blog/backend/internal/transport/rest"
 	"github.com/PengYuee/SCYG.Blog/backend/migrations"
 )
 
@@ -33,9 +35,12 @@ func (resource *orderedDatabase) Close() error {
 	return nil
 }
 
+func (*orderedDatabase) GORM() *gorm.DB { return nil }
+
 type orderedMigration struct{ events *[]string }
 
 func (*orderedMigration) Version() (uint, bool, error) { return migrations.CurrentVersion, false, nil }
+
 func (resource *orderedMigration) Close() error {
 	*resource.events = append(*resource.events, "migration")
 	return nil
@@ -45,8 +50,8 @@ func Test_Application_New_keeps_readiness_inactive_before_Start(t *testing.T) {
 	// Given
 	dependencies := validDependencies(&fakeTelemetry{}, &fakeDatabase{}, &fakeMigration{version: migrations.CurrentVersion}, &fakeServer{})
 	var health *observability.Health
-	dependencies.NewREST = func(_ *module.Module, candidate *observability.Health, _ bool) (func(*gin.Engine) error, error) {
-		health = candidate
+	dependencies.NewREST = func(options rest.Options) (func(*gin.Engine) error, error) {
+		health = options.Health
 		return func(*gin.Engine) error { return nil }, nil
 	}
 

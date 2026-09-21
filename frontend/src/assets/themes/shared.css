@@ -1,0 +1,56 @@
+:root {
+  /* 中日韩安全字体与排版比例。 */
+  --font-family-display: "Noto Serif SC", "Songti SC", STSong, serif;
+  --font-family-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+  --font-size-display: 56px;
+  --font-size-h1: 36px;
+  --font-size-h2: 28px;
+  --font-size-h3: 20px;
+  --font-size-body: 16px;
+  --font-size-small: 14px;
+  --font-size-caption: 12px;
+  --line-height-display: 1.18;
+  --line-height-h1: 1.3;
+  --line-height-h2: 1.4;
+  --line-height-h3: 1.5;
+  --line-height-body: 1.8;
+  --line-height-small: 1.6;
+  --line-height-caption: 1.5;
+
+  /* 以 4px 为基准的间距和几何比例。 */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+  --radius-control: 8px;
+  --radius-card: 14px;
+  --radius-panel: 20px;
+  --radius-round: 9999px;
+  --border-width: 1px;
+  --focus-outline-width: 2px;
+  --focus-outline-offset: 2px;
+  --focus-halo-width: 4px;
+  --interaction-lift-control: -2px;
+  --interaction-scale-pressed: 0.96;
+
+  /* 交互动效只改变合成友好的视觉属性。 */
+  --duration-fast: 150ms;
+  --duration-standard: 220ms;
+  --duration-slow: 360ms;
+  --duration-scroll-cue: 1.6s;
+  --duration-reduced: 0.01ms;
+  --ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
+
+  /* 桌面布局支持边界。 */
+  --layout-desktop-min: 1024px;
+  --layout-nav-height: 72px;
+  --layer-floating-control: 60;
+}

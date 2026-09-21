@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import ArticleSection from "@/components/article/ArticleSection.vue"
-import ArticleSearchCard from "@/components/public/ArticleSearchCard.vue"
+import HeroSearch from "@/components/public/HeroSearch.vue"
 import ProfileCard from "@/components/public/ProfileCard.vue"
 import RecommendedArticles from "@/components/public/RecommendedArticles.vue"
 import TagCloud from "@/components/public/TagCloud.vue"
-import BlogLayout from "@/layouts/BlogLayout.vue"
+import PublicLayout from "@/layouts/PublicLayout.vue"
 import type { ArticleSummary } from "@/types/article"
 import type { ArticleType, Tag } from "@/types/taxonomy"
 
@@ -32,7 +32,7 @@ const articles: readonly ArticleSummary[] = [1, 2, 3].map((id) => ({
 </script>
 
 <template>
-  <BlogLayout>
+  <PublicLayout title="公共组件展示">
     <div class="blog-content-grid" data-testid="showcase-content-grid">
       <div class="space-y-12">
         <ArticleSection title="公共文章原语" :articles="articles" :categories="categories" more-to="/articles" />
@@ -40,10 +40,10 @@ const articles: readonly ArticleSummary[] = [1, 2, 3].map((id) => ({
       </div>
       <div class="blog-sidebar space-y-6">
         <ProfileCard />
-        <ArticleSearchCard />
+        <HeroSearch tone="surface" input-id="showcase-article-search-input" />
         <RecommendedArticles :articles="articles" />
         <TagCloud :tags="tags" />
       </div>
     </div>
-  </BlogLayout>
+  </PublicLayout>
 </template>

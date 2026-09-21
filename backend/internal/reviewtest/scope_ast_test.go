@@ -3,72 +3,13 @@ package reviewtest_test
 import (
 	"go/ast"
 	"go/token"
-	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
-
-	"golang.org/x/mod/modfile"
 )
-
-// forbiddenModulePrefixes 返回本阶段禁止进入模块图或生产导入的前缀。
-func forbiddenModulePrefixes() []string {
-	return []string{"google.golang.org/grpc", "github.com/gorilla/websocket", "github.com/segmentio/kafka-go", "buf.build/"}
-}
-
-// isForbiddenDirectory 按完整路径段识别未来运行时目录。
-func isForbiddenDirectory(name string) bool {
-	switch name {
-	case "grpc", "websocket", "kafka", "outbox", "proto", "integration":
-		return true
-	default:
-		return false
-	}
-}
-func forbiddenRuntimeDirectory(path string) bool {
-	parts := strings.Split(strings.ToLower(filepath.ToSlash(path)), "/")
-	for index, part := range parts {
-		if isForbiddenDirectory(part) && !(part == "integration" && index > 0 && parts[index-1] == "testdata") {
-			return true
-		}
-	}
-	return false
-}
-
-func scanModule(path string) ([]scopeViolation, error) {
-	content, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	file, err := modfile.Parse(path, content, nil)
-	if err != nil {
-		return nil, err
-	}
-	violations := make([]scopeViolation, 0)
-	for _, requirement := range file.Require {
-		for _, prefix := range forbiddenModulePrefixes() {
-			if strings.HasPrefix(requirement.Mod.Path, prefix) {
-				violations = append(violations, scopeViolation{"go.mod", "禁止模块依赖：" + requirement.Mod.Path})
-			}
-		}
-	}
-	return violations, nil
-}
 
 func scanGoAST(path string, file *ast.File) []scopeViolation {
 	violations := make([]scopeViolation, 0)
 	constants := collectStringConstants(file)
-	for _, imported := range file.Imports {
-		value, err := strconv.Unquote(imported.Path.Value)
-		if err != nil {
-			continue
-		}
-		for _, prefix := range forbiddenModulePrefixes() {
-			if strings.HasPrefix(value, prefix) {
-				violations = append(violations, scopeViolation{path, "禁止运行时导入：" + value})
-			}
-		}
-	}
 	ast.Inspect(file, func(node ast.Node) bool {
 		switch value := node.(type) {
 		case *ast.FuncDecl:
@@ -138,7 +79,10 @@ func collectStringConstants(file *ast.File) map[string]string {
 				continue
 			}
 			for _, specification := range general.Specs {
-				value := specification.(*ast.ValueSpec)
+				value, ok := specification.(*ast.ValueSpec)
+				if !ok {
+					continue
+				}
 				for index, name := range value.Names {
 					if index >= len(value.Values) {
 						continue

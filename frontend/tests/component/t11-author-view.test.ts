@@ -1,11 +1,13 @@
-import { flushPromises, mount } from "@vue/test-utils"
+import { flushPromises, mount, type VueWrapper } from "@vue/test-utils"
 import { createPinia } from "pinia"
 import { createMemoryHistory, createRouter } from "vue-router"
 import { beforeAll, describe, expect, it, vi } from "vitest"
 import ArticleEditorView from "@/views/author/ArticleEditorView.vue"
 import TaxonomyView from "@/views/author/TaxonomyView.vue"
 import RichMarkdownEditor from "@/components/editor/RichMarkdownEditor.vue"
-import { createFakeAuthorRuntime } from "@/services/author-runtime"
+import { createFakeAuthorRuntime, type AuthorRuntime } from "@/services/author-runtime"
+import type { AuthorArticleType } from "@/services/author-contracts"
+import { HttpRequestError } from "@/request/http-error"
 import { ImageUploadError, type ImageLifecycle } from "@/services/image-lifecycle"
 
 vi.mock("md-editor-v3", () => ({ MdEditor: { props: ["modelValue", "onUploadImg"], data: () => ({ uploadFile: new globalThis.File(["x"], "failed.png"), secondFile: new globalThis.File(["y"], "second.png") }), template: "<div><textarea data-testid='markdown-editor' :value='modelValue' @input='$emit(\"update:modelValue\", $event.target.value)' /><button data-testid='upload-image' @click='onUploadImg([uploadFile], (urls) => $emit(\"update:modelValue\", modelValue + urls[0]))'>上传</button><button data-testid='upload-two-images' @click='onUploadImg([uploadFile, secondFile], (urls) => $emit(\"update:modelValue\", modelValue + urls[0] + urls[1]))'>上传两张</button></div>" }, MdPreview: { props: ["modelValue"], template: "<div data-testid='safe-preview'>{{ modelValue }}</div>" }, MdCatalog: { template: "<nav />" } }))
@@ -20,6 +22,31 @@ async function authorRouter(path: string) {
   await router.push(path); await router.isReady(); return router
 }
 
+/** 挂载可注入运行时的文章编辑器。 */
+async function mountEditor(runtime?: AuthorRuntime): Promise<VueWrapper> {
+  const router = await authorRouter("/author/articles/new")
+  return mount(ArticleEditorView, { props: runtime === undefined ? {} : { runtime }, global: { plugins: [createPinia(), router] }, attachTo: document.body })
+}
+
+/** 打开文章分类下拉框。 */
+async function openArticleTypes(wrapper: VueWrapper): Promise<void> {
+  await wrapper.get("[role='combobox']").trigger("click"); await flushPromises()
+}
+
+/** 按显示名称激活分类下拉选项。 */
+async function activateArticleType(wrapper: VueWrapper, name: string): Promise<void> {
+  await openArticleTypes(wrapper)
+  const option = wrapper.findAll("[role='option']").find((item) => item.text() === name)
+  if (option === undefined) throw new TypeError(`缺少分类选项：${name}`)
+  await option.trigger("click"); await flushPromises()
+}
+
+/** 获取弹窗内指定测试标识的按钮。 */
+function modalButton(testId: string): HTMLButtonElement {
+  const button = document.body.querySelector(`[data-testid='${testId}']`)
+  if (!(button instanceof HTMLButtonElement)) throw new TypeError(`缺少弹窗按钮：${testId}`)
+  return button
+}
 describe("T11 author views", () => {
   it("creates a controlled fake article and prevents duplicate saving", async () => {
     // Given: 显式 Fake 新建文章页面。
@@ -37,6 +64,130 @@ describe("T11 author views", () => {
     expect(wrapper.get("[data-testid='safe-preview']").text()).toContain("正文")
   })
 
+  it("opens create modal and cancel clears only the selected category", async () => {
+    // Given: 已选择现有分类的文章草稿。
+    const wrapper = await mountEditor(); await flushPromises(); await activateArticleType(wrapper, "工程笔记")
+    // When: 用户选择新增分类后取消弹窗。
+    await activateArticleType(wrapper, "新增分类")
+    expect(document.body.textContent).toContain("新增分类")
+    modalButton("cancel-create-article-type").click(); await flushPromises()
+    // Then: 当前选择被清空，但原分类选项仍保留。
+    expect(wrapper.get("[role='combobox']").text()).toContain("请选择分类")
+    await openArticleTypes(wrapper); expect(wrapper.text()).toContain("工程笔记"); wrapper.unmount()
+  })
+
+  it("refreshes article types and selects the created resource", async () => {
+    // Given: 创建返回的新分类与随后刷新的分类列表。
+    const base = createFakeAuthorRuntime(); const created: AuthorArticleType = { id: 8, name: "架构", imageUrl: null, menu: 2, version: 1 }
+    const listArticleTypes = vi.fn(base.taxonomy.listArticleTypes).mockResolvedValueOnce([{ id: 1, name: "工程笔记", imageUrl: null, menu: 1, version: 1 }]).mockResolvedValueOnce([{ id: 1, name: "工程笔记", imageUrl: null, menu: 1, version: 1 }, created])
+    const createArticleType = vi.fn(base.taxonomy.createArticleType).mockResolvedValue(created)
+    const runtime = { ...base, taxonomy: { ...base.taxonomy, listArticleTypes, createArticleType } }; const wrapper = await mountEditor(runtime); await flushPromises()
+    // When: 用户提交首尾带空格的新分类名称。
+    await activateArticleType(wrapper, "新增分类"); const input = document.body.querySelector("[data-testid='article-type-name']")
+    if (!(input instanceof HTMLInputElement)) throw new TypeError("缺少分类名称输入框")
+    input.value = "  架构  "; input.dispatchEvent(new Event("input", { bubbles: true })); await flushPromises(); modalButton("submit-create-article-type").click(); await flushPromises()
+    // Then: 请求使用裁剪名称，刷新完成并自动选择服务端返回标识。
+    expect(createArticleType).toHaveBeenCalledWith({ name: "架构", image: null, menu: 2 }); expect(listArticleTypes).toHaveBeenCalledTimes(2)
+    expect(wrapper.get("[role='combobox']").text()).toContain("架构"); wrapper.unmount()
+  })
+
+  it("merges and selects the created resource when successful refresh is stale", async () => {
+    // Given: 创建返回新分类，但成功刷新的列表仍只有旧分类。
+    const oldArticleType: AuthorArticleType = { id: 1, name: "工程笔记", imageUrl: null, menu: 1, version: 1 }
+    const created: AuthorArticleType = { id: 9, name: "最终一致分类", imageUrl: null, menu: 2, version: 1 }
+    const base = createFakeAuthorRuntime(); const listArticleTypes = vi.fn(base.taxonomy.listArticleTypes).mockResolvedValueOnce([oldArticleType]).mockResolvedValueOnce([oldArticleType])
+    const createArticleType = vi.fn(base.taxonomy.createArticleType).mockResolvedValue(created)
+    const runtime = { ...base, taxonomy: { ...base.taxonomy, listArticleTypes, createArticleType } }; const wrapper = await mountEditor(runtime); await flushPromises()
+    // When: 用户创建分类并收到陈旧但成功的刷新结果。
+    await activateArticleType(wrapper, "新增分类"); const input = document.body.querySelector("[data-testid='article-type-name']")
+    if (!(input instanceof HTMLInputElement)) throw new TypeError("缺少分类名称输入框")
+    input.value = created.name; input.dispatchEvent(new Event("input", { bubbles: true })); await flushPromises(); modalButton("submit-create-article-type").click(); await flushPromises()
+    // Then: 返回资源被无重复地补入选项，并按返回标识选中展示。
+    expect(wrapper.get("[role='combobox']").text()).toContain(created.name); await openArticleTypes(wrapper)
+    const createdOptions = wrapper.findAll("[role='option']").filter((option) => option.text() === created.name)
+    expect(createdOptions).toHaveLength(1); expect(createdOptions[0]?.attributes("aria-selected")).toBe("true"); wrapper.unmount()
+  })
+  it("does not select from delete icon and clears a deleted selected category", async () => {
+    // Given: 当前选择指向唯一分类。
+    const base = createFakeAuthorRuntime(); const listArticleTypes = vi.fn(base.taxonomy.listArticleTypes).mockResolvedValueOnce([{ id: 1, name: "工程笔记", imageUrl: null, menu: 1, version: 1 }]).mockResolvedValueOnce([])
+    const runtime = { ...base, taxonomy: { ...base.taxonomy, listArticleTypes } }; const wrapper = await mountEditor(runtime); await flushPromises(); await activateArticleType(wrapper, "工程笔记"); await openArticleTypes(wrapper)
+    // When: 点击删除图标后确认删除。
+    await wrapper.get("button[aria-label='删除分类“工程笔记”']").trigger("click"); await flushPromises()
+    expect(wrapper.get("[role='combobox']").text()).toContain("工程笔记"); expect(document.body.textContent).toContain("工程笔记")
+    modalButton("confirm-delete-article-type").click(); await flushPromises()
+    // Then: 图标点击本身未改选，成功删除才清空所选分类。
+    expect(wrapper.get("[role='combobox']").text()).toContain("请选择分类"); wrapper.unmount()
+  })
+
+  it("removes a deleted category even when successful refresh is stale", async () => {
+    // Given: 删除成功后的刷新仍返回已删除分类。
+    const target: AuthorArticleType = { id: 1, name: "工程笔记", imageUrl: null, menu: 1, version: 1 }; const base = createFakeAuthorRuntime()
+    const listArticleTypes = vi.fn(base.taxonomy.listArticleTypes).mockResolvedValueOnce([target]).mockResolvedValueOnce([target]); const runtime = { ...base, taxonomy: { ...base.taxonomy, listArticleTypes } }; const wrapper = await mountEditor(runtime); await flushPromises(); await openArticleTypes(wrapper)
+    // When: 用户确认删除该分类。
+    await wrapper.get("button[aria-label='删除分类“工程笔记”']").trigger("click"); await flushPromises(); modalButton("confirm-delete-article-type").click(); await flushPromises(); await openArticleTypes(wrapper)
+    // Then: 陈旧刷新不能把已确认删除的分类重新加入选项。
+    expect(wrapper.findAll("[role='option']").some((option) => option.text() === target.name)).toBe(false); wrapper.unmount()
+  })
+
+  it("refreshes a conflicted delete target and requires fresh confirmation", async () => {
+    // Given: 首次删除使用旧版本并收到冲突，刷新返回新版本。
+    const stale: AuthorArticleType = { id: 1, name: "工程笔记", imageUrl: null, menu: 1, version: 1 }; const refreshed = { ...stale, version: 2 }
+    const base = createFakeAuthorRuntime(); const listArticleTypes = vi.fn(base.taxonomy.listArticleTypes).mockResolvedValueOnce([stale]).mockResolvedValueOnce([refreshed]).mockResolvedValueOnce([])
+    const deleteArticleType = vi.fn(base.taxonomy.deleteArticleType).mockRejectedValueOnce(new HttpRequestError("版本冲突", 409, "CONFLICT", null)).mockResolvedValueOnce(undefined)
+    const runtime = { ...base, taxonomy: { ...base.taxonomy, listArticleTypes, deleteArticleType } }; const wrapper = await mountEditor(runtime); await flushPromises(); await openArticleTypes(wrapper)
+    // When: 用户确认旧版本删除，再按提示重新确认。
+    await wrapper.get("button[aria-label='删除分类“工程笔记”']").trigger("click"); await flushPromises(); modalButton("confirm-delete-article-type").click(); await flushPromises()
+    expect(document.body.textContent).toContain("请再次确认"); expect(deleteArticleType).toHaveBeenLastCalledWith({ id: 1, version: 1 })
+    modalButton("confirm-delete-article-type").click(); await flushPromises()
+    // Then: 第二次删除严格使用刷新后的版本。
+    expect(deleteArticleType).toHaveBeenLastCalledWith({ id: 1, version: 2 }); wrapper.unmount()
+  })
+
+  it("locks the category dropdown until create reconciliation completes", async () => {
+    // Given: 创建成功后的分类刷新仍处于挂起状态。
+    const oldType: AuthorArticleType = { id: 1, name: "工程笔记", imageUrl: null, menu: 1, version: 1 }; const created = { ...oldType, id: 2, name: "延迟分类", menu: 2 }
+    let resolveRefresh: ((value: readonly AuthorArticleType[]) => void) | undefined; const deferredRefresh = new Promise<readonly AuthorArticleType[]>((resolve) => { resolveRefresh = resolve })
+    const base = createFakeAuthorRuntime(); const listArticleTypes = vi.fn(base.taxonomy.listArticleTypes).mockResolvedValueOnce([oldType]).mockImplementationOnce(() => deferredRefresh)
+    const createArticleType = vi.fn(base.taxonomy.createArticleType).mockResolvedValue(created); const runtime = { ...base, taxonomy: { ...base.taxonomy, listArticleTypes, createArticleType } }; const wrapper = await mountEditor(runtime); await flushPromises()
+    // When: 创建写入完成但刷新尚未收敛。
+    await activateArticleType(wrapper, "新增分类"); const input = document.body.querySelector("[data-testid='article-type-name']"); if (!(input instanceof HTMLInputElement)) throw new TypeError("缺少分类名称输入框")
+    input.value = created.name; input.dispatchEvent(new Event("input", { bubbles: true })); await flushPromises(); modalButton("submit-create-article-type").click(); await flushPromises()
+    // Then: 下拉在整个协调阶段禁用，刷新完成后才恢复并选中新分类。
+    expect(wrapper.get("[role='combobox']").attributes("disabled")).toBeDefined(); if (resolveRefresh === undefined) throw new TypeError("缺少刷新完成器")
+    resolveRefresh([oldType]); await flushPromises(); expect(wrapper.get("[role='combobox']").attributes("disabled")).toBeUndefined(); expect(wrapper.get("[role='combobox']").text()).toContain(created.name); wrapper.unmount()
+  })
+  it("preserves selection when deleting a different category", async () => {
+    // Given: 选择工程笔记，同时列表中还有待删除的后端分类。
+    const first: readonly AuthorArticleType[] = [{ id: 1, name: "工程笔记", imageUrl: null, menu: 1, version: 1 }, { id: 2, name: "后端", imageUrl: null, menu: 2, version: 3 }]
+    const base = createFakeAuthorRuntime(); const listArticleTypes = vi.fn(base.taxonomy.listArticleTypes).mockResolvedValueOnce(first).mockResolvedValueOnce([first[0]])
+    const runtime = { ...base, taxonomy: { ...base.taxonomy, listArticleTypes } }; const wrapper = await mountEditor(runtime); await flushPromises(); await activateArticleType(wrapper, "工程笔记"); await openArticleTypes(wrapper)
+    // When: 用户删除未选中的后端分类。
+    await wrapper.get("button[aria-label='删除分类“后端”']").trigger("click"); await flushPromises(); modalButton("confirm-delete-article-type").click(); await flushPromises()
+    // Then: 当前工程笔记选择保持不变。
+    expect(wrapper.get("[role='combobox']").text()).toContain("工程笔记"); wrapper.unmount()
+  })
+
+  it("keeps create modal input and selection retryable when mutation rejects", async () => {
+    // Given: 已选分类且创建仓储第一次拒绝、第二次成功。
+    const base = createFakeAuthorRuntime(); const created: AuthorArticleType = { id: 2, name: "可重试分类", imageUrl: null, menu: 2, version: 1 }
+    const createArticleType = vi.fn(base.taxonomy.createArticleType).mockRejectedValueOnce(new HttpRequestError("请求失败", 503, "UPSTREAM", null)).mockResolvedValueOnce(created)
+    const runtime = { ...base, taxonomy: { ...base.taxonomy, createArticleType } }; const wrapper = await mountEditor(runtime); await flushPromises(); await activateArticleType(wrapper, "工程笔记"); await activateArticleType(wrapper, "新增分类")
+    const input = document.body.querySelector("[data-testid='article-type-name']"); if (!(input instanceof HTMLInputElement)) throw new TypeError("缺少分类名称输入框")
+    input.value = "可重试分类"; input.dispatchEvent(new Event("input", { bubbles: true })); await flushPromises(); modalButton("submit-create-article-type").click(); await flushPromises()
+    // When/Then: 失败保留名称、弹窗、选项与选择，并允许原地重试。
+    expect(document.body.textContent).toContain("创建分类失败"); expect(input.value).toBe("可重试分类"); expect(wrapper.get("[role='combobox']").text()).toContain("工程笔记")
+    modalButton("submit-create-article-type").click(); await flushPromises(); expect(createArticleType).toHaveBeenCalledTimes(2); wrapper.unmount()
+  })
+
+  it("keeps delete target and selection retryable when mutation rejects", async () => {
+    // Given: 删除仓储第一次拒绝、第二次成功。
+    const base = createFakeAuthorRuntime(); const deleteArticleType = vi.fn(base.taxonomy.deleteArticleType).mockRejectedValueOnce(new HttpRequestError("请求失败", 503, "UPSTREAM", null)).mockResolvedValueOnce(undefined)
+    const runtime = { ...base, taxonomy: { ...base.taxonomy, deleteArticleType } }; const wrapper = await mountEditor(runtime); await flushPromises(); await activateArticleType(wrapper, "工程笔记"); await openArticleTypes(wrapper)
+    await wrapper.get("button[aria-label='删除分类“工程笔记”']").trigger("click"); await flushPromises(); modalButton("confirm-delete-article-type").click(); await flushPromises()
+    // When/Then: 失败保留目标、选择和确认框，第二次确认可直接重试。
+    expect(document.body.textContent).toContain("删除分类失败"); expect(document.body.textContent).toContain("工程笔记"); expect(wrapper.get("[role='combobox']").text()).toContain("工程笔记")
+    modalButton("confirm-delete-article-type").click(); await flushPromises(); expect(deleteArticleType).toHaveBeenCalledTimes(2); wrapper.unmount()
+  })
   it("uses shared dialogs and toast for taxonomy creation", async () => {
     // Given: 显式 Fake 分类页面。
     const router = await authorRouter("/author/taxonomy")

@@ -1,0 +1,18 @@
+\set ON_ERROR_STOP on
+\getenv agent_password SCYG_AGENT_DB_PASSWORD
+
+SELECT format(
+    'CREATE ROLE scyg_agent LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 20',
+    :'agent_password'
+) WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'scyg_agent') \gexec
+SELECT format(
+    'ALTER ROLE scyg_agent LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT NOREPLICATION NOBYPASSRLS CONNECTION LIMIT 20 PASSWORD %L',
+    :'agent_password'
+) \gexec
+
+GRANT CONNECT ON DATABASE scyg_agent TO scyg_agent;
+GRANT USAGE, CREATE ON SCHEMA public TO scyg_agent;
+CREATE SCHEMA IF NOT EXISTS langgraph AUTHORIZATION scyg_agent;
+ALTER SCHEMA langgraph OWNER TO scyg_agent;
+GRANT USAGE, CREATE ON SCHEMA langgraph TO scyg_agent;
+ALTER ROLE scyg_agent IN DATABASE scyg_agent SET search_path = public, pg_catalog;

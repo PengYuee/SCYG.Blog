@@ -29,8 +29,12 @@ func main() {
 // run 从 YAML 读取数据库连接并执行一个迁移动作。
 func run(args []string) (err error) {
 	if len(args) == 1 && (args[0] == "-h" || args[0] == "--help") {
-		fmt.Print("用法：migrate [-config YAML路径] <up|down|version|force VERSION>\n数据库连接读取 YAML 的 database.dsn；默认 config.local.yaml。\n")
+		fmt.Print("用法：migrate -config YAML路径 <up|down|version|force VERSION>\n数据库连接读取 YAML 的 database.dsn。\n")
 		return flag.ErrHelp
+	}
+	arguments, err := parseMigrationArguments(args)
+	if err != nil {
+		return err
 	}
 	dsn, command, err := loadMigrationConfig(args)
 	if err != nil {
@@ -42,12 +46,20 @@ func run(args []string) (err error) {
 	if command[0] == "force" && len(command) != 2 {
 		return fmt.Errorf("force 命令必须提供版本号")
 	}
+	ctx := context.Background()
+	if command[0] == "up" {
+		if ensureErr := ensureDatabaseForUp(ctx, dsn, func() (string, error) {
+			return loadMigrationAdminDSN(arguments.configFile)
+		}); ensureErr != nil {
+			return ensureErr
+		}
+	}
 	db, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return fmt.Errorf("打开数据库失败：%w", err)
 	}
 	defer func() { err = errors.Join(err, db.Close()) }()
-	if pingErr := db.PingContext(context.Background()); pingErr != nil {
+	if pingErr := db.PingContext(ctx); pingErr != nil {
 		return fmt.Errorf("连接数据库失败")
 	}
 	runner, err := migrations.New(db, "")

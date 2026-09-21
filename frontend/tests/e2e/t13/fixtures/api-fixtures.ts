@@ -9,7 +9,7 @@ type ApiArticle = {
   readonly content: string
   readonly article_type_id: number
   readonly tag_ids: readonly number[]
-  readonly status: 1
+  readonly status: 2
   readonly support: number
   readonly comment: number
   readonly visited: number
@@ -31,8 +31,7 @@ export type MutationRecorder = {
   readonly requests: Request[]
 }
 
-const apiPattern = /\/api\/(?:Article|ArticleType|Tag)\//
-const mutationPattern = /\/(?:Create|Update|UpLoad|Delete)/i
+const apiPattern = /\/api\/v1\//
 const page = (items: readonly unknown[]) => ({ items, page: { number: 1, size: 20, total_items: items.length, total_pages: items.length === 0 ? 0 : 1 } })
 
 /** 构造覆盖首页、列表与详情的确定性中文文章。 */
@@ -45,7 +44,7 @@ ApiArticle => ({
   content,
   article_type_id: ((id - 1) % 3) + 1,
   tag_ids: [((id - 1) % 2) + 1],
-  status: 1,
+  status: 2,
   support: id,
   comment: id % 4,
   visited: 500 - id,
@@ -69,21 +68,21 @@ const tags = page([
 export async function installReadFixtures(pageInstance: Page, options: ReadFixtureOptions = {}): Promise<void> {
   await pageInstance.route(apiPattern, async (route) => {
     const requestUrl = new URL(route.request().url())
-    if (requestUrl.pathname.endsWith("/Article/GetArticleList")) {
+    if (requestUrl.pathname === "/api/v1/articles") {
       await route.fulfill({ status: options.listStatus ?? 200, json: page(articles) })
       return
     }
-    if (requestUrl.pathname.endsWith("/Article/GetArticle")) {
+    if (requestUrl.pathname.startsWith("/api/v1/articles/")) {
       const detail = { ...article(101, options.detailMarkdown), article_type_id: 1 }
       await route.fulfill({ status: options.detailStatus ?? 200, json: detail })
       return
     }
-    if (requestUrl.pathname.endsWith("/ArticleType/GetArticleTypeDic")) {
+    if (requestUrl.pathname === "/api/v1/article-types") {
       const items = categories.items.map((item) => item.id === 1 ? { ...item, image: options.categoryImage ?? item.image } : item)
       await route.fulfill({ status: 200, json: { ...categories, items } })
       return
     }
-    if (requestUrl.pathname.endsWith("/Tag/GetTagDic")) {
+    if (requestUrl.pathname === "/api/v1/tags") {
       await route.fulfill({ status: 200, json: tags })
       return
     }
@@ -96,7 +95,7 @@ export async function installMutationRecorder(pageInstance: Page): Promise<Mutat
   const requests: Request[] = []
   await pageInstance.route(apiPattern, async (route: Route) => {
     const request = route.request()
-    if (request.method() !== "GET" || mutationPattern.test(new URL(request.url()).pathname)) {
+    if (request.method() !== "GET") {
       requests.push(request)
       await route.abort("blockedbyclient")
       return

@@ -32,7 +32,7 @@ func nilLike(value any) bool {
 		return true
 	}
 	reflected := reflect.ValueOf(value)
-	switch reflected.Kind() {
+	switch reflected.Kind() { //nolint:exhaustive // only nullable kinds can be typed-nil.
 	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
 		return reflected.IsNil()
 	default:
@@ -50,7 +50,11 @@ func validateDependencies(dependencies Dependencies) error {
 		{"遥测构造器", dependencies.NewTelemetry},
 		{"数据库构造器", dependencies.NewDatabase},
 		{"迁移构造器", dependencies.NewMigration},
-		{"内容构造器", dependencies.NewContent},
+		{"文章 feature 构造器", dependencies.NewArticle},
+		{"taxonomy feature 构造器", dependencies.NewTaxonomy},
+		{"图片 feature 构造器", dependencies.NewImage},
+		{"文章图片协作构造器", dependencies.NewArticleImages},
+		{"图片清理构造器", dependencies.NewImageCleanup},
 		{"图片清理 worker 构造器", dependencies.NewCleanupWorker},
 		{"REST 构造器", dependencies.NewREST},
 		{"HTTP 构造器", dependencies.NewHTTP},

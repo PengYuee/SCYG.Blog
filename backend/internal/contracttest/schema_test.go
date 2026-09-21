@@ -16,6 +16,8 @@ func Test_OpenAPI_schema_contracts(t *testing.T) {
 
 	// When / Then
 	assertSchemaRequired(t, document, "ArticleCreate", []string{"title", "slug", "digest", "content", "article_type_id", "tag_ids", "status"})
+	assertEnumValues(t, document, "ArticleCreateStatus", []any{float64(1), float64(2)})
+	assertEnumValues(t, document, "ArticleStatus", []any{float64(1), float64(2), float64(3)})
 	assertPatchSchema(t, document, "ArticlePatch")
 	assertPatchSchema(t, document, "ArticleTypePatch")
 	assertPatchSchema(t, document, "TagPatch")
@@ -60,6 +62,29 @@ func Test_OpenAPI_success_shapes_and_headers(t *testing.T) {
 
 	// When / Then
 	for label, operation := range all {
+		if operation.OperationID == "login" {
+			assertJSONSuccess(t, operation, "200")
+			continue
+		}
+		if operation.OperationID == "createManageArticleImage" {
+			assertJSONSuccess(t, operation, "201")
+			assertResponseHeader(t, operation, "201", "Location")
+			continue
+		}
+		if operation.OperationID == "getArticleImageMedia" {
+			mediaResponse := response(t, operation, "200")
+			for _, contentType := range []string{"image/jpeg", "image/png"} {
+				media := mediaResponse.Content.Get(contentType)
+				if media == nil || media.Schema == nil || media.Schema.Value == nil || media.Schema.Value.Format != "binary" {
+					t.Fatalf("operation %s success 200 missing binary %s", operation.OperationID, contentType)
+				}
+			}
+			assertResponseHeader(t, operation, "200", "ETag")
+			if len(response(t, operation, "304").Content) != 0 {
+				t.Fatal("正文图片 304 响应不应包含响应体")
+			}
+			continue
+		}
 		method, _, _ := strings.Cut(label, " ")
 		switch method {
 		case http.MethodGet:
@@ -70,6 +95,11 @@ func Test_OpenAPI_success_shapes_and_headers(t *testing.T) {
 				assertResponseHeader(t, operation, "200", "ETag")
 			}
 		case http.MethodPost:
+			if operation.OperationID == "publishManageArticle" || operation.OperationID == "archiveManageArticle" {
+				assertJSONSuccess(t, operation, "200")
+				assertResponseHeader(t, operation, "200", "ETag")
+				continue
+			}
 			assertJSONSuccess(t, operation, "201")
 			assertResponseHeader(t, operation, "201", "ETag")
 			assertResponseHeader(t, operation, "201", "Location")
@@ -83,6 +113,14 @@ func Test_OpenAPI_success_shapes_and_headers(t *testing.T) {
 		default:
 			t.Fatalf("unexpected operation label %s", label)
 		}
+	}
+}
+
+func assertEnumValues(t *testing.T, document *openapi3.T, name string, expected []any) {
+	t.Helper()
+	actual := document.Components.Schemas[name].Value.Enum
+	if !slices.Equal(actual, expected) {
+		t.Fatalf("schema %s 枚举值 = %v，期望 %v", name, actual, expected)
 	}
 }
 

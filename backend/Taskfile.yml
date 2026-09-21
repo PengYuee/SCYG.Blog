@@ -65,14 +65,36 @@ tasks:
       - go test -race -shuffle=on -count=1 ./...
 
   integration:
-    desc: Run integration-tagged tests
+    desc: Run integration-tagged tests with explicit QA configuration
     cmds:
-      - go test -tags=integration -race -shuffle=on -count=1 ./...
+      - cmd: >-
+          sh -c 'test -n "$QA_CONFIG" || { echo "QA_CONFIG is required" >&2; exit 1; }; if [ -n "$PACKAGES" ]; then go test -tags=integration -race -shuffle=on -count=1 $PACKAGES; else go test -tags=integration -race -shuffle=on -count=1 ./...; fi'
+        platforms: [linux, darwin]
+        env:
+          QA_CONFIG: '{{.QA_CONFIG}}'
+          PACKAGES: '{{.PACKAGES}}'
+      - cmd: >-
+          powershell.exe -NoProfile -Command "if ([string]::IsNullOrWhiteSpace('{{.QA_CONFIG}}')) { Write-Error 'QA_CONFIG is required'; exit 1 }; Set-Item -Path Env:QA_CONFIG -Value (Resolve-Path -LiteralPath '{{.QA_CONFIG}}' -ErrorAction Stop).Path; if ([string]::IsNullOrWhiteSpace('{{.PACKAGES}}')) { go test -tags=integration -race -shuffle=on -count=1 ./... } else { go test -tags=integration -race -shuffle=on -count=1 {{.PACKAGES}} }"
+        platforms: [windows]
+        env:
+          QA_CONFIG: '{{.QA_CONFIG}}'
+          PACKAGES: '{{.PACKAGES}}'
 
   e2e:
-    desc: Run end-to-end-tagged tests
+    desc: Run end-to-end-tagged tests with explicit QA configuration
     cmds:
-      - go test -tags=e2e -race -shuffle=on -count=1 ./...
+      - cmd: >-
+          sh -c 'test -n "$QA_CONFIG" || { echo "QA_CONFIG is required" >&2; exit 1; }; if [ -n "$PACKAGES" ]; then go test -tags=e2e -race -shuffle=on -count=1 $PACKAGES; else go test -tags=e2e -race -shuffle=on -count=1 ./...; fi'
+        platforms: [linux, darwin]
+        env:
+          QA_CONFIG: '{{.QA_CONFIG}}'
+          PACKAGES: '{{.PACKAGES}}'
+      - cmd: >-
+          powershell.exe -NoProfile -Command "if ([string]::IsNullOrWhiteSpace('{{.QA_CONFIG}}')) { Write-Error 'QA_CONFIG is required'; exit 1 }; Set-Item -Path Env:QA_CONFIG -Value (Resolve-Path -LiteralPath '{{.QA_CONFIG}}' -ErrorAction Stop).Path; if ([string]::IsNullOrWhiteSpace('{{.PACKAGES}}')) { go test -tags=e2e -race -shuffle=on -count=1 ./... } else { go test -tags=e2e -race -shuffle=on -count=1 {{.PACKAGES}} }"
+        platforms: [windows]
+        env:
+          QA_CONFIG: '{{.QA_CONFIG}}'
+          PACKAGES: '{{.PACKAGES}}'
 
   generate:
     desc: Regenerate all committed source artifacts
@@ -118,6 +140,7 @@ tasks:
     desc: Reject API documentation specification drift
     cmds:
       - go run ./internal/docsync --check
+
   api:generate:check:
     desc: Reject OpenAPI generation drift without modifying committed output
     cmds:
@@ -153,22 +176,29 @@ tasks:
       - git diff --exit-code -- .
 
   migrate:up:
-    desc: 使用 config.local.yaml 应用全部内嵌迁移
+    desc: 使用显式配置应用全部内嵌迁移
     cmds:
-      - go run ./cmd/migrate -config config.local.yaml up
+      - cmd: test -n "$CONFIG" || { echo "CONFIG is required" >&2; exit 1; }; go run ./cmd/migrate -config "$CONFIG" up
+        platforms: [linux, darwin]
+        env:
+          CONFIG: '{{.CONFIG}}'
+      - cmd: powershell.exe -NoProfile -Command "if ([string]::IsNullOrWhiteSpace('{{.CONFIG}}')) { Write-Error 'CONFIG is required'; exit 1 }; go run ./cmd/migrate -config '{{.CONFIG}}' up"
+        platforms: [windows]
+        env:
+          CONFIG: '{{.CONFIG}}'
 
   migrate:down:
-    desc: 使用 config.local.yaml 回滚全部内嵌迁移
+    desc: 使用显式配置回滚全部内嵌迁移
     cmds:
-      - go run ./cmd/migrate -config config.local.yaml down
+      - cmd: test -n "$CONFIG" || { echo "CONFIG is required" >&2; exit 1; }; go run ./cmd/migrate -config "$CONFIG" down
+        platforms: [linux, darwin]
+        env:
+          CONFIG: '{{.CONFIG}}'
+      - cmd: powershell.exe -NoProfile -Command "if ([string]::IsNullOrWhiteSpace('{{.CONFIG}}')) { Write-Error 'CONFIG is required'; exit 1 }; go run ./cmd/migrate -config '{{.CONFIG}}' down"
+        platforms: [windows]
+        env:
+          CONFIG: '{{.CONFIG}}'
 
-  migrate:roundtrip:
-    desc: Prove migration up, down, up and final clean version
-    cmds:
-      - task: migrate:up
-      - task: migrate:down
-      - task: migrate:up
-      - go run ./cmd/migrate -config config.local.yaml version
 
   container:build:
     desc: Build the pinned API image
@@ -191,16 +221,45 @@ tasks:
     cmds:
       - docker compose down --remove-orphans
 
-  qa:static:
-    desc: Run the bounded backend quality and delivery configuration gates
+  qa:feature:
+    desc: Run fast feature-level backend checks
     cmds:
       - task: task:version:check
       - task: fmt:check
       - task: mod:verify
+      - go test ./internal/architecture ./internal/reviewtest -count=1
+
+  qa:contract:
+    desc: Run API contract checks
+    cmds:
       - task: api:lint
       - task: api:generate:check
       - task: api:docs:check
-      - go test ./internal/contracttest ./internal/deliverytest -count=1
+      - go test ./internal/contracttest -count=1
+
+  reconcile:content:
+    desc: Run the bounded read-only content reconciliation command
+    cmds:
+      - go run ./cmd/content-reconcile -config "{{.RECONCILE_CONFIG}}" -quiesce-evidence "{{.QUIESCE_EVIDENCE}}" -evidence-root "{{.EVIDENCE_ROOT}}" -release "{{.RELEASE}}" -phase "{{.PHASE}}" {{if .PREVIOUS_ATTEMPT}}-previous-attempt "{{.PREVIOUS_ATTEMPT}}"{{end}}
+
+  reconcile:fixture:
+    desc: Run the reconciliation fixture smoke through the QA orchestrator
+    cmds:
+      - cmd: powershell.exe -NoProfile -Command "if ([string]::IsNullOrWhiteSpace('{{.QA_CONFIG}}')) { Write-Error 'QA_CONFIG is required'; exit 1 }; go run ./cmd/content-reconcile-fixture -config '{{.QA_CONFIG}}'"
+        platforms: [windows]
+        env:
+          QA_CONFIG: '{{.QA_CONFIG}}'
+      - cmd: sh -c 'test -n "$QA_CONFIG" || { echo "QA_CONFIG is required" >&2; exit 1; }; go run ./cmd/content-reconcile-fixture -config "$QA_CONFIG"'
+        platforms: [linux, darwin]
+        env:
+          QA_CONFIG: '{{.QA_CONFIG}}'
+
+  qa:static:
+    desc: Run the bounded backend quality and delivery configuration gates
+    cmds:
+      - task: qa:feature
+      - task: qa:contract
+      - go test ./internal/deliverytest -count=1
       - task: vet
       - task: lint
       - task: unit
@@ -208,11 +267,16 @@ tasks:
       - task: vuln
 
   qa:database:
-    desc: Run migration, integration and E2E gates against configured PostgreSQL
+    desc: Run the fixed QA database orchestrator
     cmds:
-      - task: migrate:roundtrip
-      - task: integration
-      - task: e2e
+      - cmd: test -n "$QA_CONFIG" || { echo "QA_CONFIG is required" >&2; exit 1; }; go run ./cmd/qa-database -config "$QA_CONFIG"
+        platforms: [linux, darwin]
+        env:
+          QA_CONFIG: '{{.QA_CONFIG}}'
+      - cmd: powershell.exe -NoProfile -Command "if ([string]::IsNullOrWhiteSpace('{{.QA_CONFIG}}')) { Write-Error 'QA_CONFIG is required'; exit 1 }; go run ./cmd/qa-database -config '{{.QA_CONFIG}}'"
+        platforms: [windows]
+        env:
+          QA_CONFIG: '{{.QA_CONFIG}}'
 
   qa:container:
     desc: Run image build and Compose health smoke gates
@@ -231,26 +295,17 @@ tasks:
       - powershell -NoProfile -ExecutionPolicy Bypass -File scripts/qa-plan.ps1
 
   qa:quality:
-    desc: Run bounded static gates and encoded manual review assertions
+    desc: Run the shared bounded static backend gate
     cmds:
       - task: qa:static
-      - go test -timeout 30s ./internal/reviewtest ./internal/architecture ./internal/deliverytest -count=1
-      - cmd: |
-          echo 'F2 quality: PASS'
 
   qa:scope:
     desc: Reject excluded runtime scope while allowing future design documentation
     cmds:
       - go test -timeout 30s ./internal/reviewtest -run 'Test_Scope' -count=1
-      - cmd: |
-          echo 'F4 scope: PASS'
 
   qa:foundation:
     desc: Run real PostgreSQL, API, Compose, fault, restart and shutdown narratives
     cmds:
       - task: qa:database
       - task: qa:container
-      - cmd: |
-          echo 'foundation QA: PASS'
-      - cmd: |
-          echo 'F3 real system: PASS'

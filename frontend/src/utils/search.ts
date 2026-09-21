@@ -2,22 +2,9 @@
 
 /** 可序列化搜索筛选状态。 */
 export type SearchFilters = {
-  /** 本地搜索词。 */ readonly q: string
+  /** 后端文章搜索词。 */ readonly q: string
   /** 可选分类筛选。 */ readonly articleTypeId?: number
   /** 可选标签筛选。 */ readonly tagId?: number
-}
-
-/** 明确声明范围仅限已加载文章的搜索结果。 */
-export type LoadedSearchResult = {
-  /** 真实性标记，禁止暗示远程完整结果。 */ readonly kind: "loaded_results"
-  /** 规范化后的搜索词。 */ readonly query: string
-  /** 保持已加载顺序的匹配文章。 */ readonly items: readonly ArticleDetail[]
-}
-
-/** 分类与标签名称索引。 */
-export type SearchNames = {
-  /** 分类标识到展示名。 */ readonly categories: ReadonlyMap<number, string>
-  /** 标签标识到展示名。 */ readonly tags: ReadonlyMap<number, string>
 }
 
 /** 首页分类顺序输入。 */
@@ -33,17 +20,31 @@ export type HomepageGroup = {
   /** 最多六篇、保持加载顺序的文章。 */ readonly articles: readonly ArticleDetail[]
 }
 
-/** 在标题、摘要、分类名和标签名中确定性搜索已加载文章。 */
-export function searchLoadedArticles(articles: readonly ArticleDetail[], query: string, names: SearchNames): LoadedSearchResult {
-  const normalizedQuery = query.trim().toLocaleLowerCase()
-  if (normalizedQuery.length === 0) return { kind: "loaded_results", query: normalizedQuery, items: articles }
-  const items = articles.filter((article) => {
-    const categoryName = names.categories.get(article.articleTypeId) ?? ""
-    const tagNames = article.tagIds.map((tagId) => names.tags.get(tagId) ?? "")
-    return [article.title, article.digest, categoryName, ...tagNames]
-      .some((value) => value.toLocaleLowerCase().includes(normalizedQuery))
-  })
-  return { kind: "loaded_results", query: normalizedQuery, items }
+/** 已加载文章的本地搜索结果，明确不代表服务端全量搜索。 */
+export type LoadedSearchResult = {
+  /** 稳定结果标记，供 UI 和验收证据识别搜索范围。 */
+  readonly kind: "loaded_results"
+  /** 规范化后的搜索词。 */
+  readonly query: string
+  /** 按当前文章流顺序筛选出的结果。 */
+  readonly items: readonly ArticleDetail[]
+}
+
+/** 仅在当前已加载文章的标题、摘要、分类和标签文本中搜索。 */
+export function searchLoadedArticles(
+  articles: readonly ArticleDetail[],
+  rawQuery: string,
+  names: { readonly categories: ReadonlyMap<number, string>; readonly tags: ReadonlyMap<number, string> },
+): LoadedSearchResult {
+  const query = rawQuery.trim().toLocaleLowerCase()
+  const items = query.length === 0
+    ? [...articles]
+    : articles.filter((article) => {
+      const category = names.categories.get(article.articleTypeId) ?? ""
+      const tags = article.tagIds.map((tagId) => names.tags.get(tagId) ?? "")
+      return [article.title, article.digest, category, ...tags].some((value) => value.toLocaleLowerCase().includes(query))
+    })
+  return { kind: "loaded_results", query, items }
 }
 
 /** 按访问量降序、文章标识升序选择最多三篇推荐。 */

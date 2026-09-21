@@ -1,3 +1,4 @@
+// Package blobstorage provides path-safe local storage for content blobs.
 package blobstorage
 
 import (
@@ -21,6 +22,7 @@ const tempPrefix = ".article-image-"
 // TempToken 是存储层生成且只能由本实例提交的临时文件标识。
 type TempToken struct{ name string }
 
+// Name returns the generated temporary object name.
 func (token TempToken) Name() string { return token.name }
 
 // NewTempToken 从内容模块持有的私有名称恢复同一存储实例生成的 token。
@@ -35,6 +37,7 @@ type TempEntry struct {
 	ModifiedAt time.Time
 }
 
+// Name returns the temporary object name.
 func (entry TempEntry) Name() string { return entry.name }
 
 // ReadSeekCloser 是可定位读取且可关闭的 blob 句柄。
@@ -106,7 +109,7 @@ func New(directory string) (*Filesystem, error) {
 	if !filepath.IsAbs(clean) {
 		return nil, errors.New("图片存储根必须是绝对路径")
 	}
-	if err := os.MkdirAll(clean, 0700); err != nil {
+	if err := os.MkdirAll(clean, 0o700); err != nil {
 		return nil, fmt.Errorf("创建图片存储根：%w", err)
 	}
 	root, err := os.OpenRoot(clean)
@@ -129,7 +132,7 @@ func (store *Filesystem) WriteTemp(ctx context.Context, id string, reader io.Rea
 		return TempToken{}, TempMetadata{}, fmt.Errorf("生成临时标识：%w", err)
 	}
 	name := tempPrefix + id + "-" + hex.EncodeToString(random) + ".tmp"
-	file, err := store.root.openFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)
+	file, err := store.root.openFile(name, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return TempToken{}, TempMetadata{}, fmt.Errorf("创建临时图片：%w", err)
 	}

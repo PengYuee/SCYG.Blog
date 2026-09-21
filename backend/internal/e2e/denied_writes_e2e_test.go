@@ -54,7 +54,7 @@ func deniedWrites(articleType, tag, article seedResource) []writeCase {
 	return []writeCase{
 		{"创建 ArticleType", http.MethodPost, "/api/v1/article-types", `{"name":"denied-type","meun":2}`, nil},
 		{"创建 Tag", http.MethodPost, "/api/v1/tags", `{"name":"denied-tag"}`, nil},
-		{"创建 Article", http.MethodPost, "/api/v1/articles", articleBody, nil},
+		{"创建 Article", http.MethodPost, "/api/v1/manage/articles", articleBody, nil},
 		{"更新 ArticleType", http.MethodPatch, articleType.Location, `{"name":"changed-type"}`, ifMatch(articleType.ETag)},
 		{"删除 ArticleType", http.MethodDelete, articleType.Location, "", ifMatch(articleType.ETag)},
 		{"更新 Tag", http.MethodPatch, tag.Location, `{"name":"changed-tag"}`, ifMatch(tag.ETag)},

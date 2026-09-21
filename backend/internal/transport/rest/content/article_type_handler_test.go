@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	module "github.com/PengYuee/SCYG.Blog/backend/internal/modules/content"
+	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/taxonomy"
 )
 
 func Test_ContentREST_ArticleType_create_preserves_image_and_meun(t *testing.T) {
@@ -45,24 +45,24 @@ func Test_ContentREST_ArticleType_create_preserves_image_and_meun(t *testing.T) 
 func Test_ContentREST_ArticleType_patch_preserves_optional_fields(t *testing.T) {
 	tests := []struct {
 		name, body string
-		assert     func(*testing.T, module.PatchArticleType)
+		assert     func(*testing.T, taxonomy.PatchArticleType)
 	}{
-		{"image only", `{"image":"next.png"}`, func(t *testing.T, command module.PatchArticleType) {
+		{"image only", `{"image":"next.png"}`, func(t *testing.T, command taxonomy.PatchArticleType) {
 			if !command.Image.Provided || command.Image.Value == nil || *command.Image.Value != "next.png" || command.Name != nil || command.Meun != nil {
 				t.Fatalf("command = %#v", command)
 			}
 		}},
-		{"meun zero", `{"meun":0}`, func(t *testing.T, command module.PatchArticleType) {
+		{"meun zero", `{"meun":0}`, func(t *testing.T, command taxonomy.PatchArticleType) {
 			if command.Meun == nil || *command.Meun != 0 || command.Image.Provided {
 				t.Fatalf("command = %#v", command)
 			}
 		}},
-		{"both", `{"image":"next.png","meun":8}`, func(t *testing.T, command module.PatchArticleType) {
+		{"both", `{"image":"next.png","meun":8}`, func(t *testing.T, command taxonomy.PatchArticleType) {
 			if !command.Image.Provided || command.Image.Value == nil || command.Meun == nil || *command.Meun != 8 {
 				t.Fatalf("command = %#v", command)
 			}
 		}},
-		{"clear image", `{"image":null}`, func(t *testing.T, command module.PatchArticleType) {
+		{"clear image", `{"image":null}`, func(t *testing.T, command taxonomy.PatchArticleType) {
 			if !command.Image.Provided || command.Image.Value != nil {
 				t.Fatalf("command = %#v", command)
 			}
@@ -104,11 +104,11 @@ func Test_ContentREST_ArticleType_empty_patch_returns_400(t *testing.T) {
 	}
 }
 
-func validArticleTypeResult(image string, meun int32) module.ArticleTypeResult {
+func validArticleTypeResult(image string, meun int32) taxonomy.ArticleTypeResult {
 	now := time.Unix(1, 0).UTC()
 	var value *string
 	if image != "" {
 		value = &image
 	}
-	return module.ArticleTypeResult{ID: 1, Name: "News", Image: value, Meun: meun, Version: 1, CreatedAt: now, ModifiedAt: now}
+	return taxonomy.ArticleTypeResult{ID: 1, Name: "News", Image: value, Meun: meun, Version: 1, CreatedAt: now, ModifiedAt: now}
 }

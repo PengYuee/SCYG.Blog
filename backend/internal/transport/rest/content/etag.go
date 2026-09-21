@@ -5,8 +5,6 @@ import (
 	"math"
 	"strconv"
 	"strings"
-
-	module "github.com/PengYuee/SCYG.Blog/backend/internal/modules/content"
 )
 
 func entityTag(version uint64) (string, error) {
@@ -28,5 +26,5 @@ func parseEntityTag(value string) (uint64, error) {
 }
 
 func invalidETag(err error) error {
-	return &module.ApplicationError{Code: module.CodeValidation, Kind: module.KindValidation, Cause: err}
+	return newRESTError(codeValidation, err)
 }

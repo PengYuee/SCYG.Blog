@@ -23,6 +23,7 @@ type rawConfig struct {
 	Database      rawDatabase      `mapstructure:"database"`
 	HTTP          rawHTTP          `mapstructure:"http"`
 	Docs          rawDocs          `mapstructure:"docs"`
+	Auth          rawAuth          `mapstructure:"auth"`
 	ArticleImages rawArticleImages `mapstructure:"article_images"`
 }
 
@@ -69,6 +70,11 @@ type (
 	rawTelemetry struct {
 		OTLPEndpoint string `mapstructure:"otlp_endpoint"`
 	}
+	rawAuth struct {
+		JWTSecret      string        `mapstructure:"jwt_secret"`
+		Issuer         string        `mapstructure:"issuer"`
+		AccessTokenTTL time.Duration `mapstructure:"access_token_ttl"`
+	}
 )
 
 // Load constructs one local Viper instance, parses all sources, and returns a validated value.
@@ -81,6 +87,7 @@ func Load(options Options) (Config, error) {
 		"app.env", "app.log_level", "http.host", "http.port", "http.read_header_timeout", "http.read_timeout",
 		"http.write_timeout", "http.idle_timeout", "http.shutdown_timeout", "http.trusted_proxies", "http.cors_allowed_origins",
 		"database.dsn", "database.max_open_conns", "database.max_idle_conns", "database.conn_max_lifetime", "docs.enabled", "telemetry.otlp_endpoint",
+		"auth.jwt_secret", "auth.issuer", "auth.access_token_ttl",
 		"article_images.directory", "article_images.pending_ttl", "article_images.orphan_grace", "article_images.cleanup_interval",
 		"article_images.upload_request_bytes", "article_images.max_file_bytes", "article_images.max_pixels", "article_images.max_dimension", "article_images.development_author_id",
 	}
@@ -120,6 +127,7 @@ func setDefaults(instance *viper.Viper) {
 		"http.trusted_proxies": []string{}, "http.cors_allowed_origins": []string{"http://localhost:5173"},
 		"database.dsn": "postgres://postgres:" + "postgres@localhost:5432/scyg?sslmode=disable", "database.max_open_conns": 25, "database.max_idle_conns": 5,
 		"database.conn_max_lifetime": "30m", "docs.enabled": true, "telemetry.otlp_endpoint": "",
+		"auth.jwt_secret": developmentJWTSecret, "auth.issuer": "scyg-api", "auth.access_token_ttl": "1h",
 		"article_images.directory": "data/article-images", "article_images.pending_ttl": "24h", "article_images.orphan_grace": "24h", "article_images.cleanup_interval": "1h",
 		"article_images.upload_request_bytes": int64(6 << 20), "article_images.max_file_bytes": int64(5 << 20), "article_images.max_pixels": int64(25_000_000),
 		"article_images.max_dimension": 8192, "article_images.development_author_id": "",

@@ -8,10 +8,10 @@ export type ProfileLink = {
   /** 真实目标地址。 */ readonly href: string
 }
 
-/** 旧站确认的个人身份。 */
+/** 站点确认的个人身份。 */
 export const AUTHOR_NAME = "妄揽明月"
 
-/** 旧站确认的个人链接，顺序保持不变。 */
+/** 站点确认的个人链接，顺序保持不变。 */
 export const PROFILE_LINKS: readonly ProfileLink[] = [
   { id: "qq", label: "QQ · 妄揽明月", href: "http://wpa.qq.com/msgrd?v=3&uin=798513422&site=qq&menu=yes" },
   { id: "gitee", label: "Gitee · 妄揽明月", href: "https://gitee.com/wlmy1996/personal_website" },

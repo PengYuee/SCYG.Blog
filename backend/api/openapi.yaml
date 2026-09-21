@@ -5,6 +5,8 @@ info:
   description: "SCYG 博客内容 API，提供公开读取和受授权保护的写入。"
 servers:
   - url: /
+security:
+  - bearerAuth: []
 tags:
   - name: Articles
     description: "文章读取与维护。"
@@ -14,10 +16,40 @@ tags:
     description: "标签查询与维护。"
   - name: ArticleImages
     description: "文章正文图片上传、取消与媒体读取。"
+  - name: Auth
+    description: "身份认证。"
 paths:
+  /api/v1/auth/login:
+    post:
+      operationId: login
+      tags: [Auth]
+      security: []
+      summary: "登录并获取访问令牌"
+      description: "使用用户名和密码验证用户身份，成功后返回短期 Bearer JWT。"
+      requestBody:
+        description: "用户登录凭据。"
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: "登录成功。"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
   /api/v1/articles:
     get:
       operationId: listArticles
+      security: []
       tags: [Articles]
       summary: "查询已发布文章"
       description: "分页返回状态为 `2`（已发布）且未删除的文章，可按文章类型、标签和关键词筛选。"
@@ -39,11 +71,61 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '500':
           $ref: '#/components/responses/InternalError'
-    post:
-      operationId: createArticle
+  /api/v1/articles/{article_id}:
+    parameters:
+      - $ref: '#/components/parameters/ArticleID'
+    get:
+      operationId: getArticle
+      security: []
       tags: [Articles]
-      summary: "创建文章"
-      description: "创建文章并返回资源、规范地址和强实体标签。"
+      summary: "获取已发布文章"
+      description: "仅在文章状态为 `2`（已发布）且未删除时返回。"
+      responses:
+        '200':
+          description: "请求成功，返回当前资源或分页响应。"
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Article'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/manage/articles:
+    get:
+      operationId: listManageArticles
+      tags: [Articles]
+      summary: "管理端查询文章"
+      description: "受保护地分页返回所有未删除文章，包括草稿、已发布和已归档文章。"
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - $ref: '#/components/parameters/Sort'
+        - $ref: '#/components/parameters/ArticleTypeFilter'
+        - $ref: '#/components/parameters/TagFilter'
+        - $ref: '#/components/parameters/SearchFilter'
+      responses:
+        '200':
+          description: "管理端文章分页。"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ArticleList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    post:
+      operationId: createManageArticle
+      tags: [Articles]
+      summary: "管理端创建文章"
+      description: "受保护地创建文章并返回资源、规范地址和强实体标签。"
       requestBody:
         description: "创建文章所需的 JSON 数据。"
         required: true
@@ -66,6 +148,8 @@ paths:
                 $ref: '#/components/schemas/Article'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
@@ -74,17 +158,18 @@ paths:
           $ref: '#/components/responses/Conflict'
         '500':
           $ref: '#/components/responses/InternalError'
-  /api/v1/articles/{article_id}:
+
+  /api/v1/manage/articles/{article_id}:
     parameters:
       - $ref: '#/components/parameters/ArticleID'
     get:
-      operationId: getArticle
+      operationId: getManageArticle
       tags: [Articles]
-      summary: "获取已发布文章"
-      description: "仅在文章状态为 `2`（已发布）且未删除时返回。"
+      summary: "管理端获取文章"
+      description: "受保护地获取未删除文章，包括草稿、已发布和已归档文章。"
       responses:
         '200':
-          description: "请求成功，返回当前资源或分页响应。"
+          description: "管理端文章详情。"
           headers:
             ETag:
               $ref: '#/components/headers/ETag'
@@ -92,28 +177,31 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Article'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
     patch:
-      operationId: patchArticle
+      operationId: patchManageArticle
       tags: [Articles]
-      summary: "更新文章"
-      description: "更新请求中提供的字段，`If-Match` 必须与当前版本一致。"
+      summary: "管理端部分更新文章"
+      description: "受保护地更新文章字段；生命周期迁移使用独立动作接口。`If-Match` 必须与当前版本一致。"
       parameters:
         - $ref: '#/components/parameters/IfMatch'
       requestBody:
-        description: "更新文章所需的 JSON 数据。"
+        description: "管理端文章局部更新字段；不包含生命周期状态。"
         required: true
         content:
           application/json:
             schema:
               $ref: '#/components/schemas/ArticlePatch'
-            example: {title: 更新后的标题}
       responses:
         '200':
-          description: "请求成功，返回当前资源或分页响应。"
+          description: "更新成功。"
           headers:
             ETag:
               $ref: '#/components/headers/ETag'
@@ -123,6 +211,8 @@ paths:
                 $ref: '#/components/schemas/Article'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
@@ -136,15 +226,81 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
     delete:
-      operationId: deleteArticle
+      operationId: deleteManageArticle
       tags: [Articles]
-      summary: "删除文章"
-      description: "删除文章，`If-Match` 必须与当前版本一致。"
+      summary: "管理端删除文章"
+      description: "受保护地软删除文章；`If-Match` 必须与当前版本一致。"
       parameters:
         - $ref: '#/components/parameters/IfMatch'
       responses:
         '204':
-          description: "删除成功，不返回响应体。"
+          description: "删除成功。"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/manage/articles/{article_id}/publish:
+    post:
+      operationId: publishManageArticle
+      tags: [Articles]
+      summary: "管理端发布文章"
+      description: "受保护地将草稿发布；`If-Match` 必须与当前版本一致。"
+      parameters:
+        - $ref: '#/components/parameters/ArticleID'
+        - $ref: '#/components/parameters/IfMatch'
+      responses:
+        '200':
+          description: "发布成功。"
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Article'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '412':
+          $ref: '#/components/responses/PreconditionFailed'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /api/v1/manage/articles/{article_id}/archive:
+    post:
+      operationId: archiveManageArticle
+      tags: [Articles]
+      summary: "管理端归档文章"
+      description: "受保护地将已发布文章归档；`If-Match` 必须与当前版本一致。"
+      parameters:
+        - $ref: '#/components/parameters/ArticleID'
+        - $ref: '#/components/parameters/IfMatch'
+      responses:
+        '200':
+          description: "归档成功。"
+          headers:
+            ETag:
+              $ref: '#/components/headers/ETag'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Article'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
@@ -158,6 +314,7 @@ paths:
   /api/v1/article-types:
     get:
       operationId: listArticleTypes
+      security: []
       tags: [ArticleTypes]
       summary: "查询文章类型"
       description: "分页返回未删除的文章类型，可按关键词筛选。"
@@ -204,6 +361,8 @@ paths:
                 $ref: '#/components/schemas/ArticleType'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '409':
@@ -215,6 +374,7 @@ paths:
       - $ref: '#/components/parameters/ArticleTypeID'
     get:
       operationId: getArticleType
+      security: []
       tags: [ArticleTypes]
       summary: "获取文章类型"
       description: "按正整数标识返回未删除的文章类型。"
@@ -259,6 +419,8 @@ paths:
                 $ref: '#/components/schemas/ArticleType'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
@@ -281,6 +443,8 @@ paths:
       responses:
         '204':
           description: "删除成功，不返回响应体。"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
@@ -296,6 +460,7 @@ paths:
   /api/v1/tags:
     get:
       operationId: listTags
+      security: []
       tags: [Tags]
       summary: "查询标签"
       description: "分页返回未删除的标签，可按关键词筛选。"
@@ -342,6 +507,8 @@ paths:
                 $ref: '#/components/schemas/Tag'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '409':
@@ -353,6 +520,7 @@ paths:
       - $ref: '#/components/parameters/TagID'
     get:
       operationId: getTag
+      security: []
       tags: [Tags]
       summary: "获取标签"
       description: "按正整数标识返回未删除的标签。"
@@ -397,6 +565,8 @@ paths:
                 $ref: '#/components/schemas/Tag'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
@@ -419,6 +589,8 @@ paths:
       responses:
         '204':
           description: "删除成功，不返回响应体。"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
@@ -431,12 +603,12 @@ paths:
           $ref: '#/components/responses/PreconditionRequired'
         '500':
           $ref: '#/components/responses/InternalError'
-  /api/v1/article-images:
+  /api/v1/manage/article-images:
     post:
-      operationId: createArticleImage
+      operationId: createManageArticleImage
       tags: [ArticleImages]
-      summary: "上传正文图片"
-      description: "上传单个 JPEG 或 PNG 正文图片，创建有效期内待提交的图片资源。请求只能包含名为 `file` 的必填文件；重复或未知 part 由处理器拒绝。"
+      summary: "管理端上传正文图片"
+      description: "受保护地上传单个 JPEG 或 PNG 正文图片，创建有效期内待提交的图片资源。请求只能包含名为 `file` 的必填文件；重复或未知 part 由处理器拒绝。"
       requestBody:
         description: "只包含一个必填二进制 `file` 的 multipart 表单，文件上限为 5 MiB。"
         required: true
@@ -464,6 +636,8 @@ paths:
                 $ref: '#/components/schemas/ArticleImage'
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '409':
@@ -483,6 +657,8 @@ paths:
           description: "取消成功，不返回响应体。"
         '400':
           $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/Forbidden'
         '404':
@@ -496,6 +672,7 @@ paths:
       - $ref: '#/components/parameters/ArticleImageStorageKey'
     get:
       operationId: getArticleImageMedia
+      security: []
       tags: [ArticleImages]
       summary: "读取正文图片媒体"
       description: "按受控存储键读取 JPEG 或 PNG 二进制；实体标签未变化时返回 304。"
@@ -526,6 +703,11 @@ paths:
         '500':
           $ref: '#/components/responses/InternalError'
 components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
   parameters:
     ArticleImageID:
       description: "32 位小写十六进制正文图片标识。"
@@ -630,7 +812,7 @@ components:
         pattern: '^"[1-9][0-9]*"$'
         example: '"1"'
     Location:
-      description: "新资源规范 URI，例如 `/api/v1/articles/1`。"
+      description: "新资源规范 URI，例如 `/api/v1/manage/articles/1`。"
       required: true
       schema:
         type: string
@@ -638,6 +820,12 @@ components:
   responses:
     BadRequest:
       description: "HTTP `400`，请求参数或请求体校验失败。"
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+    Unauthorized:
+      description: "HTTP `401`，缺少或无法验证认证凭据。"
       content:
         application/problem+json:
           schema:
@@ -679,6 +867,40 @@ components:
           schema:
             $ref: '#/components/schemas/Problem'
   schemas:
+    LoginRequest:
+      description: "用户名和密码登录凭据。"
+      type: object
+      additionalProperties: false
+      required: [username, password]
+      properties:
+        username:
+          description: "登录用户名。"
+          type: string
+          minLength: 1
+          maxLength: 64
+        password:
+          description: "登录密码，不在错误响应中回显。"
+          type: string
+          minLength: 1
+          maxLength: 256
+    LoginResponse:
+      description: "短期访问令牌。"
+      type: object
+      additionalProperties: false
+      required: [access_token, token_type, expires_at]
+      properties:
+        access_token:
+          description: "短期 Bearer 访问令牌。"
+          type: string
+          minLength: 1
+        token_type:
+          description: "令牌类型：`Bearer` 表示 HTTP Bearer 认证。"
+          type: string
+          enum: [Bearer]
+        expires_at:
+          description: "令牌过期时间。"
+          type: string
+          format: date-time
     ArticleImageID:
       description: "正文图片标识，固定为 32 位小写十六进制字符串。"
       type: string
@@ -759,6 +981,13 @@ components:
       type: integer
       format: int64
       minimum: 1
+    ArticleCreateStatus:
+      description: "文章创建状态：`1` 创建为草稿，`2` 直接发布。"
+      example: 1
+      type: integer
+      format: int32
+      enum: [1, 2]
+      x-enum-varnames: [ArticleCreateStatusDraft, ArticleCreateStatusPublished]
     ArticleStatus:
       description: "文章状态：`1` 草稿，`2` 已发布，`3` 已归档。"
       example: 2
@@ -841,8 +1070,6 @@ components:
       additionalProperties: false
       required: [id, title, slug, digest, content, article_type_id, tag_ids, status, support, comment, visited, version, created_at, updated_at]
       properties:
-        id:
-          $ref: '#/components/schemas/PositiveID'
         title:
           description: "标题。"
           type: string
@@ -863,6 +1090,8 @@ components:
           description: "文章正文。"
           type: string
           minLength: 1
+        id:
+          $ref: '#/components/schemas/PositiveID'
         article_type_id:
           $ref: '#/components/schemas/PositiveID'
         tag_ids:
@@ -934,7 +1163,7 @@ components:
           items:
             $ref: '#/components/schemas/PositiveID'
         status:
-          $ref: '#/components/schemas/ArticleStatus'
+          $ref: '#/components/schemas/ArticleCreateStatus'
     ArticlePatch:
       description: "文章局部更新输入，至少提供一个字段，其他字段保持不变。"
       type: object
@@ -969,8 +1198,6 @@ components:
           uniqueItems: true
           items:
             $ref: '#/components/schemas/PositiveID'
-        status:
-          $ref: '#/components/schemas/ArticleStatus'
     ArticleType:
       description: "文章类型资源，包含可空图片、非负菜单排序值、版本和 UTC 时间。"
       type: object

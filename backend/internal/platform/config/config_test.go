@@ -17,7 +17,7 @@ const secretSentinel = "task3-" + "secret-sentinel"
 func Test_Config_defaults_file_environment_precedence(t *testing.T) {
 	// Given
 	path := filepath.Join(t.TempDir(), "config.yaml")
-	yaml := "app:\n  env: production\n  log_level: warn\nhttp:\n  host: file-host\n  port: 9090\ndatabase:\n  dsn: postgres://file:" + "pass" + "word@localhost:5432/blog?sslmode=disable\n"
+	yaml := "app:\n  env: production\n  log_level: warn\nauth:\n  jwt_secret: production-test-secret-012345678901234567890123\nhttp:\n  host: file-host\n  port: 9090\ndatabase:\n  dsn: postgres://file:" + "pass" + "word@localhost:5432/blog?sslmode=disable\n"
 	if err := os.WriteFile(path, []byte(yaml), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -53,9 +53,6 @@ func Test_Config_defaults_apply_without_optional_file(t *testing.T) {
 	}
 	if cfg.HTTP().Port() != 8080 || cfg.HTTP().ReadTimeout() != 15*time.Second {
 		t.Fatalf("unexpected defaults: %+v", cfg.HTTP())
-	}
-	if cfg.Docs().Enabled() != true {
-		t.Fatal("docs should default enabled")
 	}
 }
 
@@ -144,7 +141,7 @@ func Test_Config_public_values_expose_no_mutable_fields(t *testing.T) {
 	}
 
 	// When / Then
-	for _, value := range []any{cfg.App(), cfg.HTTP(), cfg.Database(), cfg.Docs(), cfg.Telemetry()} {
+	for _, value := range []any{cfg.App(), cfg.HTTP(), cfg.Database(), cfg.Telemetry()} {
 		typeOfValue := reflect.TypeOf(value)
 		for index := range typeOfValue.NumField() {
 			if typeOfValue.Field(index).IsExported() {
@@ -157,7 +154,8 @@ func Test_Config_public_values_expose_no_mutable_fields(t *testing.T) {
 func Test_Config_file_loads_all_runtime_keys(t *testing.T) {
 	// Given
 	path := filepath.Join(t.TempDir(), "config.yaml")
-	yaml := "app:\n  env: test\n  log_level: debug\nhttp:\n  host: 127.0.0.1\n  port: 9091\n  read_header_timeout: 2s\n  read_timeout: 3s\n  write_timeout: 4s\n  idle_timeout: 5s\n  shutdown_timeout: 6s\n  trusted_proxies: [127.0.0.1]\n  cors_allowed_origins: [http://localhost:5173]\ndatabase:\n  dsn: postgres://postgres:secret@localhost:5432/blog\n  max_open_conns: 12\n  max_idle_conns: 4\n  conn_max_lifetime: 20m\ndocs:\n  enabled: false\ntelemetry:\n  otlp_endpoint: http://localhost:4318\nqa:\n  postgres_admin_dsn: postgres://postgres:qa-secret@localhost:5432/postgres\n  database_prefix: scyg_qa_\n  command_timeout: 30s\n"
+	//nolint:gosec // synthetic credentials exercise runtime YAML parsing only.
+	yaml := "app:\n  env: test\n  log_level: debug\nhttp:\n  host: 127.0.0.1\n  port: 9091\n  read_header_timeout: 2s\n  read_timeout: 3s\n  write_timeout: 4s\n  idle_timeout: 5s\n  shutdown_timeout: 6s\n  trusted_proxies: [127.0.0.1]\n  cors_allowed_origins: [http://localhost:5173]\ndatabase:\n  dsn: postgres://postgres:secret@localhost:5432/blog\n  max_open_conns: 12\n  max_idle_conns: 4\n  conn_max_lifetime: 20m\ntelemetry:\n  otlp_endpoint: http://localhost:4318\nqa:\n  postgres_admin_dsn: postgres://postgres:qa-secret@localhost:5432/postgres\n  database_prefix: scyg_qa_\n  command_timeout: 30s\n"
 	if err := os.WriteFile(path, []byte(yaml), 0o600); err != nil {
 		t.Fatal(err)
 	}
@@ -166,7 +164,7 @@ func Test_Config_file_loads_all_runtime_keys(t *testing.T) {
 	cfg, err := config.Load(config.Options{File: path})
 
 	// Then
-	if err != nil || cfg.App().Environment() != config.EnvironmentTest || cfg.HTTP().Port() != 9091 || cfg.Database().MaxOpenConns() != 12 || cfg.Docs().Enabled() || cfg.Telemetry().OTLPEndpoint() != "http://localhost:4318" {
+	if err != nil || cfg.App().Environment() != config.EnvironmentTest || cfg.HTTP().Port() != 9091 || cfg.Database().MaxOpenConns() != 12 || cfg.Telemetry().OTLPEndpoint() != "http://localhost:4318" {
 		t.Fatalf("cfg=%s err=%v", cfg, err)
 	}
 }

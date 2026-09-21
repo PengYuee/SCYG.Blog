@@ -14,15 +14,15 @@ describe("HTTP error characterization", () => {
     expect(baseUrl).toBeUndefined()
   })
 
-  it("resolves relative business APIs against RuntimeConfig.serverUrl", () => {
-    // Given: 部署配置指向独立于 Vite 的后端服务。
-    configureHttp({ serverUrl: "http://localhost:5000/api" })
+  it("resolves v1 business APIs against the backend root", () => {
+    // Given: 部署配置指向独立于 Vite 的后端根地址。
+    configureHttp({ serverUrl: "http://localhost:5000" })
 
-    // When: Axios 解析一条相对业务接口路径。
-    const requestUrl = http.getUri({ url: "/Article/GetArticleList" })
+    // When: Axios 解析一条 v1 业务接口路径。
+    const requestUrl = http.getUri({ url: "/api/v1/articles" })
 
-    // Then: 最终请求地址使用运行时后端而非 Vite 来源。
-    expect(requestUrl).toBe("http://localhost:5000/api/Article/GetArticleList")
+    // Then: 最终请求地址不会重复拼接 /api，也不使用 Vite 来源。
+    expect(requestUrl).toBe("http://localhost:5000/api/v1/articles")
     expect(requestUrl).not.toContain("localhost:4173")
   })
   it("preserves explicitly supplied HttpRequestError fields", () => {
@@ -55,6 +55,25 @@ describe("HTTP error characterization", () => {
     expect(error).toMatchObject({ message: "invalid article", status: 422, code: "ERR_BAD_REQUEST" })
   })
 
+  it("preserves complete RFC 9457 problem details", () => {
+    const response = {
+      status: 412,
+      data: {
+        type: "/problems/precondition",
+        title: "版本冲突",
+        status: 412,
+        detail: "文章版本已变化",
+        instance: "/api/v1/manage/articles/7",
+        request_id: "req-1",
+        errors: {},
+      },
+    } satisfies Pick<AxiosResponse, "status" | "data">
+    const axiosError = { name: "AxiosError", message: "Request failed", code: "ERR_BAD_REQUEST", isAxiosError: true, response, toJSON: () => ({}) } satisfies Partial<AxiosError> & { readonly isAxiosError: true }
+
+    const error = normalizeHttpError(axiosError)
+
+    expect(error).toMatchObject({ message: "文章版本已变化", status: 412, detail: "文章版本已变化", requestId: "req-1", errors: {} })
+  })
   it("normalizes non-Axios values with the unknown error contract", () => {
     // Given: a rejection outside Axios.
     const cause = new RangeError("unexpected")

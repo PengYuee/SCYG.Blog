@@ -1,0 +1,47 @@
+version: '3'
+
+vars:
+  TASK_VERSION: v3.49.1
+  UV_VERSION: 0.11.28
+
+tasks:
+  default:
+    desc: Run the complete Agent QA gate
+    cmds:
+      - task: qa:agent
+
+  task:version:check:
+    desc: Require the repository-wide pinned Task runner
+    cmds:
+      - cmd: >-
+          powershell.exe -NoProfile -Command
+          "if ((task --version).Trim() -ne '{{trimPrefix "v" .TASK_VERSION}}') { Write-Error '必须使用 Task {{.TASK_VERSION}}'; exit 1 }"
+        platforms: [windows]
+      - cmd: >-
+          sh -c 'test "$(task --version)" = "{{trimPrefix "v" .TASK_VERSION}}"'
+        platforms: [linux, darwin]
+
+  uv:version:check:
+    desc: Require the pinned uv command used by the dependency audit
+    cmds:
+      - cmd: >-
+          powershell.exe -NoProfile -Command
+          "if (-not (Get-Command uv -ErrorAction SilentlyContinue)) { Write-Error 'uv {{.UV_VERSION}} is required'; exit 1 }; if ((uv --version).Trim() -notmatch '^uv {{.UV_VERSION}}( |$)') { Write-Error '必须使用 uv {{.UV_VERSION}}'; exit 1 }"
+        platforms: [windows]
+      - cmd: >-
+          sh -c 'command -v uv >/dev/null && test "$(uv --version | awk "{print \$2}")" = "{{.UV_VERSION}}"'
+        platforms: [linux, darwin]
+
+  qa:agent:
+    desc: Run full Agent contract, quality, deployment and T32 topology gates
+    cmds:
+      - task: task:version:check
+      - task: uv:version:check
+      - cmd: uv run --locked --project agent python agent/scripts/qa_agent.py --mode full
+
+  qa:agent:static:
+    desc: Run secret-free static Agent QA for CI only
+    cmds:
+      - task: task:version:check
+      - task: uv:version:check
+      - cmd: uv run --locked --project agent python agent/scripts/qa_agent.py --mode static

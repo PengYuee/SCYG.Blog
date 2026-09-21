@@ -4,6 +4,9 @@ import type { AuthRuntimeConfig, AuthState } from "@/stores/auth"
 /** 受保护的写操作领域。 */
 export type MutationDomain = "article" | "taxonomy" | "image"
 
+/** 分类与标签写入共享的稳定 mutation 领域。 */
+export const TAXONOMY_MUTATION_DOMAIN = "taxonomy" as const
+
 /** 写操作被策略阻断的稳定结构化错误。 */
 export type MutationBlockedError = {
   /** 稳定错误代码。 */ readonly code: "MUTATION_BLOCKED"

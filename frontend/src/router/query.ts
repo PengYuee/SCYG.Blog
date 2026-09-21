@@ -3,7 +3,7 @@ import type { LocationQuery, LocationQueryRaw } from "vue-router"
 
 /** 文章列表规范查询。 */
 export type ArticleListQuery = {
-  /** 已去除首尾空白的本地搜索词。 */ readonly q: string
+  /** 已去除首尾空白的后端搜索词。 */ readonly q: string
   /** 可选分类标识。 */ readonly categoryId?: number | undefined
   /** 可选标签标识。 */ readonly tagId?: number | undefined
 }

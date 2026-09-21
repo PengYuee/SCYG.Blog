@@ -5,17 +5,17 @@ import (
 	"fmt"
 
 	generated "github.com/PengYuee/SCYG.Blog/backend/internal/generated/openapi"
-	module "github.com/PengYuee/SCYG.Blog/backend/internal/modules/content"
+	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/taxonomy"
 )
 
 // ListArticleTypes 实现生成的文章分类列表操作。
 func (handler *Handler) ListArticleTypes(ctx context.Context, request generated.ListArticleTypesRequestObject) (generated.ListArticleTypesResponseObject, error) {
 	page, size := pageValues(request.Params.Page, request.Params.PageSize)
-	query := module.ListArticleTypes{Page: page, PageSize: size, Sort: taxonomySort(request.Params.Sort)}
+	query := taxonomy.ListArticleTypes{Page: page, PageSize: size, Sort: taxonomySort(request.Params.Sort)}
 	if request.Params.Q != nil {
 		query.Name = *request.Params.Q
 	}
-	result, err := handler.queries.ListArticleTypes(ctx, query)
+	result, err := handler.taxonomy.ListArticleTypes(requestContext(ctx), query)
 	if err != nil {
 		return nil, err
 	}
@@ -36,7 +36,7 @@ func (handler *Handler) ListArticleTypes(ctx context.Context, request generated.
 
 // CreateArticleType 实现生成的文章分类创建操作。
 func (handler *Handler) CreateArticleType(ctx context.Context, request generated.CreateArticleTypeRequestObject) (generated.CreateArticleTypeResponseObject, error) {
-	result, err := handler.commands.CreateArticleType(ctx, module.CreateArticleType{Name: request.Body.Name, Image: request.Body.Image, Meun: request.Body.Meun})
+	result, err := handler.taxonomy.CreateArticleType(requestContext(ctx), taxonomy.CreateArticleType{Name: request.Body.Name, Image: request.Body.Image, Meun: request.Body.Meun})
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +53,7 @@ func (handler *Handler) CreateArticleType(ctx context.Context, request generated
 
 // GetArticleType 实现生成的文章分类详情操作。
 func (handler *Handler) GetArticleType(ctx context.Context, request generated.GetArticleTypeRequestObject) (generated.GetArticleTypeResponseObject, error) {
-	result, err := handler.queries.GetArticleType(ctx, module.GetArticleType{ID: request.ArticleTypeID})
+	result, err := handler.taxonomy.GetArticleType(requestContext(ctx), taxonomy.GetArticleType{ID: request.ArticleTypeID})
 	if err != nil {
 		return nil, err
 	}
@@ -75,7 +75,7 @@ func (handler *Handler) PatchArticleType(ctx context.Context, request generated.
 		return nil, invalidETag(err)
 	}
 	image, _ := ctx.Value(articleTypeImageKey).(imagePatch)
-	result, err := handler.commands.PatchArticleType(ctx, module.PatchArticleType{ID: request.ArticleTypeID, Version: version, Name: request.Body.Name, Image: module.OptionalImage{Provided: image.provided, Value: image.value}, Meun: request.Body.Meun})
+	result, err := handler.taxonomy.PatchArticleType(requestContext(ctx), taxonomy.PatchArticleType{ID: request.ArticleTypeID, Version: version, Name: request.Body.Name, Image: taxonomy.OptionalImage{Provided: image.provided, Value: image.value}, Meun: request.Body.Meun})
 	if err != nil {
 		return nil, err
 	}
@@ -96,7 +96,7 @@ func (handler *Handler) DeleteArticleType(ctx context.Context, request generated
 	if err != nil {
 		return nil, invalidETag(err)
 	}
-	if err = handler.commands.DeleteArticleType(ctx, module.DeleteArticleType{ID: request.ArticleTypeID, Version: version}); err != nil {
+	if err = handler.taxonomy.DeleteArticleType(requestContext(ctx), taxonomy.DeleteArticleType{ID: request.ArticleTypeID, Version: version}); err != nil {
 		return nil, err
 	}
 	return generated.DeleteArticleType204Response{}, nil

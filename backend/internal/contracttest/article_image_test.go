@@ -27,8 +27,8 @@ func Test_OpenAPI_article_image_contracts_when_spec_loaded(t *testing.T) {
 	all := operations(document)
 
 	// When / Then
-	upload := all[http.MethodPost+" /api/v1/article-images"]
-	if upload == nil || upload.OperationID != "createArticleImage" {
+	upload := all[http.MethodPost+" /api/v1/manage/article-images"]
+	if upload == nil || upload.OperationID != "createManageArticleImage" {
 		t.Fatal("正文图片上传操作缺失或 operationId 不稳定")
 	}
 	remove := all[http.MethodDelete+" /api/v1/article-images/{image_id}"]
@@ -119,7 +119,7 @@ func Test_OpenAPI_article_image_request_validation_when_input_is_valid(t *testin
 		if routeErr != nil {
 			t.Fatalf("合法请求未匹配路由：%v", routeErr)
 		}
-		if validationErr := openapi3filter.ValidateRequest(context.Background(), &openapi3filter.RequestValidationInput{Request: request, PathParams: pathParams, Route: route}); validationErr != nil {
+		if validationErr := openapi3filter.ValidateRequest(context.Background(), &openapi3filter.RequestValidationInput{Request: request, PathParams: pathParams, Route: route, Options: &openapi3filter.Options{AuthenticationFunc: openapi3filter.NoopAuthenticationFunc}}); validationErr != nil {
 			t.Fatalf("OpenAPI 请求校验器拒绝合法输入：%v", validationErr)
 		}
 	}
@@ -144,7 +144,7 @@ func multipartRequest(t *testing.T, includeFile bool) *http.Request {
 	if err := writer.Close(); err != nil {
 		t.Fatalf("关闭 multipart writer 失败：%v", err)
 	}
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/article-images", &body)
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/manage/article-images", &body)
 	request.Header.Set("Content-Type", writer.FormDataContentType())
 	return request
 }
@@ -157,7 +157,7 @@ func Test_OpenAPI_article_DTOs_when_image_contract_added(t *testing.T) {
 	// When / Then
 	assertExactProperties(t, document, "Article", []string{"id", "title", "slug", "digest", "content", "article_type_id", "tag_ids", "status", "support", "comment", "visited", "version", "created_at", "updated_at"})
 	assertExactProperties(t, document, "ArticleCreate", []string{"title", "slug", "digest", "content", "article_type_id", "tag_ids", "status"})
-	assertExactProperties(t, document, "ArticlePatch", []string{"title", "slug", "digest", "content", "article_type_id", "tag_ids", "status"})
+	assertExactProperties(t, document, "ArticlePatch", []string{"title", "slug", "digest", "content", "article_type_id", "tag_ids"})
 }
 
 func assertExactProperties(t *testing.T, document *openapi3.T, name string, expected []string) {

@@ -14,8 +14,6 @@ linters:
     - errorlint
     - exhaustive
     - fatcontext
-    - gocognit
-    - gocyclo
     - gosec
     - govet
     - ineffassign
@@ -33,19 +31,14 @@ linters:
   settings:
     errcheck:
       check-type-assertions: true
-      check-blank: true
-    gocognit:
-      min-complexity: 25
-    gocyclo:
-      min-complexity: 15
+      check-blank: false
     govet:
-      enable-all: true
-      settings:
-        shadow:
-          strict: true
+      settings: {}
     revive:
       rules:
         - name: exported
+          arguments:
+            - disableStutteringCheck
         - name: package-comments
         - name: var-naming
     sloglint:

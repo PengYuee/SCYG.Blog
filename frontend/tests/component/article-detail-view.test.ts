@@ -8,6 +8,11 @@ import { http, HttpRequestError } from "@/request/http"
 import { sanitizeMarkdown } from "@/security/sanitize-markdown"
 import type { Taxonomy, TaxonomyState } from "@/stores/taxonomy"
 import type { ArticleDetail } from "@/types/article"
+import { scrollRestorationKey } from "@/services/scroll-restoration"
+
+/** 详情首次正文终态通知观察器。 */
+const markReady = vi.fn()
+const scrollRestoration = { install: vi.fn(), arm: vi.fn(() => false), cancel: vi.fn(), markReady, wait: vi.fn(async () => false) }
 
 /** 创建文章 101 的完整领域 fixture。 */
 const articleFixture = (markdown = "## 安全目录\n\n```ts\nconst title = 'safe'\n```"): ArticleDetail => ({
@@ -85,7 +90,11 @@ const mountDetail = async (
   const router = await createDetailRouter(id)
   return mount(ArticleDetailView, {
     props: { articleLoader: loader, ...(taxonomy === undefined ? {} : { taxonomy }) },
-    global: { plugins: [router], ...(apiServices === undefined ? {} : { provide: { [apiServicesKey]: apiServices } }), stubs: { MdPreview: MdPreviewStub, MdCatalog: MdCatalogStub } },
+    global: {
+      plugins: [router],
+      provide: { [scrollRestorationKey]: scrollRestoration, ...(apiServices === undefined ? {} : { [apiServicesKey]: apiServices }) },
+      stubs: { MdPreview: MdPreviewStub, MdCatalog: MdCatalogStub },
+    },
   })
 }
 
@@ -126,6 +135,7 @@ describe("T10 article detail", () => {
     expect(wrapper.get('[data-testid="category-image"]').attributes("src")).toBe("https://api.example.test/images/frontend.jpg")
     await wrapper.get('[data-testid="category-image"]').trigger("error")
     expect(wrapper.get('[data-testid="category-image"]').attributes("src")).toBe("/images/hero-starry.jpg")
+    expect(markReady).toHaveBeenCalledOnce()
     expect(wrapper.get("code").text()).toContain("const title")
     const markdownLayout = wrapper.get('[data-testid="markdown-layout"]')
     expect(markdownLayout.classes()).toContain("lg:grid-cols-[minmax(0,var(--layout-reading-measure))_16rem]")
@@ -136,7 +146,7 @@ describe("T10 article detail", () => {
   it("normalizes a relative category image against injected runtime config", async () => {
     // Given: 生产 taxonomy 接口返回相对图片，运行时配置指向独立后端。
     vi.spyOn(http, "get").mockImplementation(async (url: string) => {
-      if (url.includes("ArticleType")) return { data: { items: [{ id: 7, name: "前端", image: "/media/frontend.jpg", meun: 1, version: 1, created_at: "2026-07-11T00:00:00Z", updated_at: null }], page: { number: 1, size: 20, total_items: 1, total_pages: 1 } } }
+      if (url.includes("/api/v1/article-types")) return { data: { items: [{ id: 7, name: "前端", image: "/media/frontend.jpg", meun: 1, version: 1, created_at: "2026-07-11T00:00:00Z", updated_at: null }], page: { number: 1, size: 20, total_items: 1, total_pages: 1 } } }
       return { data: { items: [], page: { number: 1, size: 20, total_items: 0, total_pages: 0 } } }
     })
 

@@ -30,23 +30,29 @@ export function createFakeAuthorRuntime(): AuthorRuntime {
   return { articles: repositories.articles, taxonomy: repositories.taxonomy, guard: createMutationGuard(config, () => fakeState) }
 }
 
-/** 为显式 development 可信作者页面创建真实文章与图片运行时。 */
+/** 为显式 development 可信作者页面创建真实 API 运行时。 */
 export function createAuthorRuntime(services: ApiServices): AuthorRuntime {
   if (import.meta.env.MODE !== "development" || !fakeAuthorEnabled) throw new AuthorRuntimeUnavailableError()
-  const fake = createFakeAuthorRepositories()
   const config = parseAuthRuntimeConfig({ mode: "development", fakeAuthEnabled: true })
   return {
     articles: {
-      detail: services.article.detail,
+      detail: services.article.manageDetail,
       create: services.article.create,
       update: services.article.update,
       uploadImage: services.articleImage.uploadImage,
       deleteImage: services.articleImage.deleteImage,
     },
     taxonomy: {
-      ...fake.taxonomy,
+      /** 分类读取、创建、修改与删除使用真实 v1 适配器。 */
       listArticleTypes: services.articleType.list,
+      createArticleType: services.articleType.create,
+      updateArticleType: services.articleType.update,
+      deleteArticleType: services.articleType.delete,
+      /** 标签读取、创建、修改与删除全部使用真实 v1 适配器。 */
       listTags: services.tag.list,
+      createTag: services.tag.create,
+      updateTag: services.tag.update,
+      deleteTag: services.tag.delete,
     },
     guard: createMutationGuard(config, () => fakeState),
   }

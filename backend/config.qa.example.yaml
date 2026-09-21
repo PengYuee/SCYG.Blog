@@ -1,0 +1,4 @@
+qa:
+  postgres_admin_dsn: postgres://postgres:<password>@127.0.0.1:5432/postgres?sslmode=disable
+  database_prefix: scyg_qa_
+  command_timeout: 2m

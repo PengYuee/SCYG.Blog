@@ -11,6 +11,7 @@ export interface ArticleFeedApi {
 export type ArticleFeedFilters = {
   /** 分类筛选标识。 */ readonly articleTypeId?: number
   /** 标签筛选标识。 */ readonly tagId?: number
+  /** 关键词筛选。 */ readonly q?: string
 }
 
 /** 所有文章流状态共享的稳定数据。 */

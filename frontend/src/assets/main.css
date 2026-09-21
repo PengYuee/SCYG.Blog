@@ -1,92 +1,16 @@
-﻿@tailwind base;
+﻿@import "./themes/shared.css";
+@import "./themes/night.css";
+@import "./themes/sky.css";
+
+@tailwind base;
 @tailwind components;
 @tailwind utilities;
-
-:root {
-  color-scheme: light;
-
-  /* Shared semantic color primitives consumed by Tailwind and reusable Vue components. */
-  --color-canvas: #f7f9fe;
-  --color-surface: #ffffff;
-  --color-surface-muted: #f0f3fa;
-  --color-surface-hover: #fff2ed;
-  --color-text-primary: #263044;
-  --color-text-secondary: #657087;
-  --color-text-tertiary: #8f98aa;
-  --color-border: #dce2ed;
-  --color-border-subtle: #e9edf5;
-  --color-accent: #ff623e;
-  --color-accent-hover: #e64d2c;
-  --color-accent-soft: #fff0eb;
-  --color-success: #18794e;
-  --color-success-soft: #e9f7f0;
-  --color-warning: #946200;
-  --color-warning-soft: #fff5d6;
-  --color-error: #c4320a;
-  --color-error-soft: #fff0eb;
-  --color-overlay: rgb(12 20 39 / 56%);
-  --color-hero-text: #ffffff;
-  --color-hero-text-muted: rgb(255 255 255 / 78%);
-  --color-focus-ring: rgb(255 98 62 / 34%);
-
-  /* Shared CJK-safe typography scale. */
-  --font-family-display: "Noto Serif SC", "Songti SC", STSong, serif;
-  --font-family-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
-  --font-size-display: 56px;
-  --font-size-h1: 36px;
-  --font-size-h2: 28px;
-  --font-size-h3: 20px;
-  --font-size-body: 16px;
-  --font-size-small: 14px;
-  --font-size-caption: 12px;
-  --line-height-display: 1.18;
-  --line-height-h1: 1.3;
-  --line-height-h2: 1.4;
-  --line-height-h3: 1.5;
-  --line-height-body: 1.8;
-  --line-height-small: 1.6;
-  --line-height-caption: 1.5;
-
-  /* Shared 4px spacing, geometry, depth, and interaction primitives. */
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 20px;
-  --space-6: 24px;
-  --space-8: 32px;
-  --space-10: 40px;
-  --space-12: 48px;
-  --space-16: 64px;
-  --space-20: 80px;
-  --space-24: 96px;
-  --radius-control: 8px;
-  --radius-card: 14px;
-  --radius-panel: 20px;
-  --radius-round: 9999px;
-  --shadow-card: 0 12px 32px rgb(40 55 82 / 10%);
-  --shadow-card-hover: 0 18px 42px rgb(40 55 82 / 16%);
-  --shadow-nav: 0 8px 24px rgb(40 55 82 / 10%);
-  --shadow-dialog: 0 20px 48px rgb(40 55 82 / 18%);
-  --border-width: 1px;
-  --focus-outline-width: 2px;
-  --focus-outline-offset: 2px;
-  --focus-halo-width: 4px;
-  --duration-fast: 150ms;
-  --duration-standard: 220ms;
-  --duration-slow: 360ms;
-  --duration-reduced: 0.01ms;
-  --ease-standard: cubic-bezier(0.2, 0.8, 0.2, 1);
-  --layout-desktop-min: 1024px;
-  --layout-nav-height: 72px;
-}
 
 /* Public desktop blog layout contract. */
 [data-layout="public"] {
   --layout-container: 1220px;
   --layout-gutter: 24px;
-  --layout-hero-height: 100vh;
-  --layout-wave-height: 72px;
+  --layout-hero-height: 100dvh;
   --layout-sidebar: 300px;
   --layout-column-gap: 32px;
   --layout-card-gap: 24px;
@@ -95,9 +19,9 @@
 
 /* Author and editor layout contract; state colors remain shared semantic primitives. */
 [data-layout="author"] {
-  --color-editor-canvas: #f7f9fe;
-  --color-editor-surface: #ffffff;
-  --layout-container: 1220px;
+  --color-editor-canvas: var(--color-canvas);
+  --color-editor-surface: var(--color-surface);
+  --layout-container: 1500px;
   --layout-gutter: 24px;
   --layout-editor-measure: 48rem;
 }
@@ -140,6 +64,20 @@
     font: inherit;
   }
 
+  input,
+  select,
+  textarea {
+    border-color: var(--color-border);
+    background: var(--color-surface);
+    color: var(--color-text-primary);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--color-text-tertiary);
+    opacity: 1;
+  }
+
   a,
   button,
   input,
@@ -160,16 +98,22 @@
   main[id] {
     scroll-margin-top: var(--layout-nav-height);
   }
+
+  /* Hero 的原生下滑锚点必须精确贴齐视口顶部，正文内边距负责避让固定头部。 */
+  main#blog-content {
+    scroll-margin-top: 0;
+  }
+
 }
 
 @layer components {
-  /* Full-height public hero using the project-owned static star field. */
+  /* 全高 Hero 的材质完全由当前主题提供。 */
   .blog-hero {
     min-height: var(--layout-hero-height);
     min-height: 100dvh;
-    background-color: var(--color-text-primary);
-    background-image: linear-gradient(var(--color-overlay), var(--color-overlay)), url("/images/hero-starry.jpg");
-    background-position: center;
+    background-color: var(--hero-background-color);
+    background-image: var(--hero-overlay-image), var(--hero-background-image);
+    background-position: var(--hero-background-position);
     background-size: cover;
     color: var(--color-hero-text);
   }
@@ -212,6 +156,7 @@
     box-shadow: var(--shadow-card-hover);
     transform: translateY(calc(var(--space-1) * -1));
   }
+
 }
 
 @layer utilities {
@@ -222,6 +167,98 @@
   .text-pretty {
     text-wrap: pretty;
   }
+}
+
+/* 第三方编辑器和 Markdown 主题位于非层叠层，使用更具体的全局语义契约覆盖其内置浅色值。 */
+[data-layout] .md-editor,
+:root .md-editor-modal-container,
+.blog-markdown .md-editor-catalog {
+  --md-color: var(--color-text-secondary);
+  --md-hover-color: var(--color-text-primary);
+  --md-bk-color: var(--color-surface);
+  --md-bk-color-outstand: var(--color-surface-muted);
+  --md-bk-hover-color: var(--color-surface-hover);
+  --md-border-color: var(--color-border);
+  --md-border-hover-color: var(--color-accent);
+  --md-border-active-color: var(--color-accent-hover);
+  --md-modal-mask: var(--color-overlay);
+  --md-modal-shadow: var(--shadow-dialog);
+  --md-scrollbar-bg-color: var(--color-surface-muted);
+  --md-scrollbar-thumb-color: var(--color-border);
+  --md-scrollbar-thumb-hover-color: var(--color-text-tertiary);
+  --md-scrollbar-thumb-active-color: var(--color-text-secondary);
+}
+
+.blog-markdown {
+  color: var(--color-text-primary);
+}
+
+.blog-markdown .md-editor,
+.blog-markdown .md-editor-preview {
+  background: var(--color-transparent);
+  color: var(--color-text-primary);
+}
+
+.blog-markdown :is(h1, h2, h3, h4, h5, h6) {
+  border-color: var(--color-border-subtle);
+  color: var(--color-text-primary);
+}
+
+.blog-markdown :is(p, li) {
+  color: var(--color-text-secondary);
+}
+
+.blog-markdown a {
+  color: var(--color-accent);
+}
+
+.blog-markdown a:hover {
+  color: var(--color-accent-hover);
+}
+
+.blog-markdown :not(pre) > code {
+  border: var(--border-width) solid var(--color-border-subtle);
+  background: var(--color-accent-soft);
+  color: var(--color-accent-hover);
+}
+
+.blog-markdown pre {
+  border: var(--border-width) solid var(--color-border);
+  background: var(--color-surface-muted);
+  color: var(--color-text-primary);
+}
+
+.blog-markdown pre code {
+  color: inherit;
+}
+
+.blog-markdown blockquote {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+  color: var(--color-text-secondary);
+}
+
+.blog-markdown table {
+  border-color: var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+}
+
+.blog-markdown :is(th, td) {
+  border-color: var(--color-border);
+}
+
+.blog-markdown th,
+.blog-markdown tr:nth-child(2n) {
+  background: var(--color-surface-muted);
+}
+
+.blog-markdown th {
+  color: var(--color-text-primary);
+}
+
+.blog-markdown hr {
+  border-color: var(--color-border-subtle);
 }
 
 /* Reduced motion preserves state changes while removing movement and smooth scrolling. */
@@ -238,6 +275,11 @@
   .blog-card:hover,
   .blog-card:focus-within {
     transform: none;
+  }
+
+  [data-motion="lift"]:hover,
+  [data-motion="lift"]:active {
+    transform: none !important;
   }
 }
 

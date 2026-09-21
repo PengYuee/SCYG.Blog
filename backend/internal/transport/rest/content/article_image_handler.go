@@ -6,21 +6,17 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"mime/multipart"
 	"os"
 
 	"github.com/gin-gonic/gin"
 
 	generated "github.com/PengYuee/SCYG.Blog/backend/internal/generated/openapi"
-	module "github.com/PengYuee/SCYG.Blog/backend/internal/modules/content"
+	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/image"
 )
 
 type (
-	articleImageService interface {
-		UploadArticleImage(context.Context, module.UploadArticleImage) (module.ArticleImageResult, error)
-		CancelArticleImage(context.Context, module.DeleteArticleImage) error
-		GetArticleImageMedia(context.Context, module.GetArticleImage) (module.ArticleImageMedia, error)
-	}
 	requestTempHandle interface {
 		io.Reader
 		io.Writer
@@ -41,8 +37,12 @@ type (
 	}
 )
 
-func (source *requestImageFile) ReadArticleImage(buffer []byte) (int, error) {
+func (source *requestImageFile) Read(buffer []byte) (int, error) {
 	return source.file.Read(buffer)
+}
+
+func (source *requestImageFile) ReadArticleImage(buffer []byte) (int, error) {
+	return source.Read(buffer)
 }
 
 func (source *requestImageFile) closeAndRemove() error {
@@ -54,8 +54,11 @@ type osRequestTempOperations struct{}
 func (osRequestTempOperations) Create() (requestTempHandle, error) {
 	return os.CreateTemp("", "scyg-article-image-request-*.tmp")
 }
+
+//nolint:gosec // path is created and owned by the request temporary-file operations.
 func (osRequestTempOperations) Open(path string) (requestTempHandle, error) { return os.Open(path) }
-func (osRequestTempOperations) Remove(path string) error                    { return os.Remove(path) }
+
+func (osRequestTempOperations) Remove(path string) error { return os.Remove(path) }
 
 type contextPartReader struct {
 	ctx    context.Context
@@ -69,15 +72,12 @@ func (reader contextPartReader) Read(buffer []byte) (int, error) {
 	return reader.reader.Read(buffer)
 }
 
-// CreateArticleImage 将唯一 file part 流式暂存到 0600 请求临时文件后调用图片用例。
-func (handler *Handler) CreateArticleImage(ctx context.Context, request generated.CreateArticleImageRequestObject) (generated.CreateArticleImageResponseObject, error) {
-	service, ok := handler.commands.(articleImageService)
-	if !ok {
-		return nil, errors.New("图片服务不可用")
-	}
-	source, err := handler.spoolUniqueImagePart(ctx, request.Body)
+// CreateManageArticleImage accepts and stores one managed article image upload.
+func (handler *Handler) CreateManageArticleImage(ctx context.Context, request generated.CreateManageArticleImageRequestObject) (generated.CreateManageArticleImageResponseObject, error) {
+	service := handler.images
+	source, err := handler.spoolUniqueImagePart(requestContext(ctx), request.Body)
 	if err != nil {
-		return nil, &module.ApplicationError{Code: module.CodeValidation, Kind: module.KindValidation, Cause: err}
+		return nil, newRESTError(codeValidation, err)
 	}
 	cleaned := false
 	defer func() {
@@ -85,7 +85,7 @@ func (handler *Handler) CreateArticleImage(ctx context.Context, request generate
 			_ = source.closeAndRemove()
 		}
 	}()
-	result, uploadErr := service.UploadArticleImage(requestContext(ctx), module.UploadArticleImage{Content: source})
+	result, uploadErr := service.Upload(requestContext(ctx), image.Upload{Content: source})
 	cleanupErr := source.closeAndRemove()
 	cleaned = true
 	if cleanupErr != nil {
@@ -94,29 +94,31 @@ func (handler *Handler) CreateArticleImage(ctx context.Context, request generate
 	if uploadErr != nil {
 		return nil, uploadErr
 	}
-	dto := generated.ArticleImage{ID: result.ID, StorageKey: result.StorageKey, URL: result.URL, MediaType: generated.ArticleImageMediaType(mediaLabel(result.MediaType)), ByteSize: result.ByteSize, Width: int32(result.Width), Height: int32(result.Height), Status: generated.ArticleImageStatus(result.Status), ExpiresAt: result.ExpiresAt}
-	return generated.CreateArticleImage201JSONResponse{Body: dto, Headers: generated.CreateArticleImage201ResponseHeaders{Location: result.URL}}, nil
+	width, err := generatedImageDimension(result.Width)
+	if err != nil {
+		return nil, err
+	}
+	height, err := generatedImageDimension(result.Height)
+	if err != nil {
+		return nil, err
+	}
+	dto := generated.ArticleImage{ID: result.ID, StorageKey: result.StorageKey, URL: result.URL, MediaType: generated.ArticleImageMediaType(mediaLabel(result.MediaType)), ByteSize: result.ByteSize, Width: width, Height: height, Status: generated.ArticleImageStatus(result.Status), ExpiresAt: result.ExpiresAt}
+	return generated.CreateManageArticleImage201JSONResponse{Body: dto, Headers: generated.CreateManageArticleImage201ResponseHeaders{Location: result.URL}}, nil
 }
 
-// DeleteArticleImage 将所有者的 pending 图片幂等置为 orphaned。
+// DeleteArticleImage cancels one pending article image.
 func (handler *Handler) DeleteArticleImage(ctx context.Context, request generated.DeleteArticleImageRequestObject) (generated.DeleteArticleImageResponseObject, error) {
-	service, ok := handler.commands.(articleImageService)
-	if !ok {
-		return nil, errors.New("图片服务不可用")
-	}
-	if err := service.CancelArticleImage(requestContext(ctx), module.DeleteArticleImage{ID: request.ImageID}); err != nil {
+	service := handler.images
+	if err := service.Cancel(requestContext(ctx), image.Delete{ID: request.ImageID}); err != nil {
 		return nil, err
 	}
 	return generated.DeleteArticleImage204Response{}, nil
 }
 
-// GetArticleImageMedia 返回安全媒体头、强内容摘要 ETag 和有界字节内容。
+// GetArticleImageMedia serves one article image Blob.
 func (handler *Handler) GetArticleImageMedia(ctx context.Context, request generated.GetArticleImageMediaRequestObject) (generated.GetArticleImageMediaResponseObject, error) {
-	service, ok := handler.commands.(articleImageService)
-	if !ok {
-		return nil, errors.New("图片服务不可用")
-	}
-	media, err := service.GetArticleImageMedia(requestContext(ctx), module.GetArticleImage{StorageKey: request.StorageKey})
+	service := handler.images
+	media, err := service.GetMedia(requestContext(ctx), image.Get{StorageKey: request.StorageKey})
 	if err != nil {
 		return nil, err
 	}
@@ -141,6 +143,13 @@ func (handler *Handler) GetArticleImageMedia(ctx context.Context, request genera
 	return generated.GetArticleImageMedia200ImageJpegResponse{Body: bytes.NewReader(media.Content), Headers: headers, ContentLength: media.ByteSize}, nil
 }
 
+func generatedImageDimension(value int) (int32, error) {
+	if value < 0 || value > math.MaxInt32 {
+		return 0, responseMappingError()
+	}
+	return int32(value), nil
+}
+
 func (handler *Handler) spoolUniqueImagePart(ctx context.Context, reader *multipart.Reader) (source *requestImageFile, err error) {
 	if reader == nil {
 		return nil, errors.New("缺少 multipart 请求体")
@@ -152,7 +161,7 @@ func (handler *Handler) spoolUniqueImagePart(ctx context.Context, reader *multip
 	if err != nil {
 		return nil, fmt.Errorf("读取 multipart：%w", err)
 	}
-	defer part.Close()
+	defer func() { _ = part.Close() }()
 	if part.FormName() != "file" {
 		return nil, errors.New("multipart 只能包含一个 file part")
 	}

@@ -5,7 +5,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="SCYG Blog，记录技术实践、创作思考与生活随笔。" />
     <meta name="application-name" content="SCYG Blog" />
-    <meta name="theme-color" content="#F7F9FE" />
+    <meta name="theme-color" content="" />
+    <script>
+      // 在样式和应用模块加载前同步根主题，避免首帧主题闪烁。
+      ;(() => {
+        const storageKey = "scyg-blog-theme"
+        const parseTheme = (value) => (value === "night" || value === "sky" ? value : null)
+        let storedTheme = null
+        try {
+          storedTheme = parseTheme(window.localStorage.getItem(storageKey))
+        } catch {
+          storedTheme = null
+        }
+        const systemTheme = window.matchMedia("(prefers-color-scheme: dark)").matches ? "night" : "sky"
+        document.documentElement.dataset.theme = storedTheme ?? systemTheme
+      })()
+    </script>
     <meta property="og:site_name" content="SCYG Blog" />
     <meta property="og:title" content="SCYG Blog" />
     <meta property="og:description" content="记录技术实践、创作思考与生活随笔。" />

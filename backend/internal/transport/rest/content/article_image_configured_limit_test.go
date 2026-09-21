@@ -9,22 +9,22 @@ import (
 
 	"github.com/gin-gonic/gin"
 
-	module "github.com/PengYuee/SCYG.Blog/backend/internal/modules/content"
+	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/image"
 	restcontent "github.com/PengYuee/SCYG.Blog/backend/internal/transport/rest/content"
 )
 
 func Test_ArticleImageHTTP_rejects_file_above_custom_limit(t *testing.T) {
 	// Given
 	const maxFileBytes = 2
-	policy := module.NewArticleImagePolicy(module.ArticleImagePolicyOptions{MaxFileBytes: maxFileBytes, MaxPixels: 1, MaxDimension: 1, PendingTTL: time.Hour, OrphanGrace: time.Hour})
+	policy := image.NewPolicy(image.PolicyOptions{MaxFileBytes: maxFileBytes, MaxPixels: 1, MaxDimension: 1, PendingTTL: time.Hour, OrphanGrace: time.Hour})
 	service := &imageHTTPService{}
-	handler, err := restcontent.NewHandler(service, service, policy)
+	handler, err := restcontent.NewHandler(service, service, service, service, service, policy)
 	if err != nil {
 		t.Fatal(err)
 	}
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	if err = handler.Register(router); err != nil {
+	if err = handler.Register(router, testLoginHandler{}); err != nil {
 		t.Fatal(err)
 	}
 	recorder := httptest.NewRecorder()

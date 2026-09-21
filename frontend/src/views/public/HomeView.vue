@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import { ExclamationTriangleIcon, InformationCircleIcon } from "@heroicons/vue/24/outline"
+import { ExclamationTriangleIcon } from "@heroicons/vue/24/outline"
 import { computed, onMounted, ref } from "vue"
 import ArticleSection from "@/components/article/ArticleSection.vue"
-import ArticleSearchCard from "@/components/public/ArticleSearchCard.vue"
 import type { ObserverFactory } from "@/components/public/BlogHeader.vue"
+import HeroSearch from "@/components/public/HeroSearch.vue"
 import ProfileCard from "@/components/public/ProfileCard.vue"
 import RecommendedArticles from "@/components/public/RecommendedArticles.vue"
 import TagCloud from "@/components/public/TagCloud.vue"
@@ -14,6 +14,7 @@ import { createTaxonomy, type Taxonomy } from "@/stores/taxonomy"
 import type { ArticleDetail } from "@/types/article"
 import type { ArticleType, Tag } from "@/types/taxonomy"
 import { buildSearchUrl, groupHomepageArticles, selectRecommendations } from "@/utils/search"
+import { useScrollRestoration } from "@/services/scroll-restoration"
 
 /** 首页组合层输入，依赖由路由集成边界注入。 */
 type Props = {
@@ -23,6 +24,8 @@ type Props = {
 }
 
 const props = defineProps<Props>()
+/** 应用级刷新滚动恢复服务。 */
+const scrollRestoration = useScrollRestoration()
 /** 根据显式依赖完整性决定是否读取应用服务容器。 */
 const [articleFeed, taxonomy] = (() => {
   if (props.articleFeed !== undefined && props.taxonomy !== undefined) return [props.articleFeed, props.taxonomy] as const
@@ -91,23 +94,20 @@ const categoryMoreTo = (categoryId: number): string => buildSearchUrl("/articles
 /** 首次挂载并行启动两个相互独立的数据域。 */
 onMounted(async () => {
   await Promise.all([loadTaxonomy(), loadFeed()])
+  scrollRestoration.markReady()
 })
 </script>
 
 <template>
   <BlogLayout v-bind="layoutProps">
-    <section data-testid="home-announcement" class="blog-card mb-8 flex items-center gap-4 px-6 py-5" aria-label="首页数据说明">
-      <span class="inline-flex size-11 shrink-0 items-center justify-center rounded-full bg-accent-soft text-accent"><InformationCircleIcon class="size-6" aria-hidden="true" /></span>
-      <div>
-        <p class="font-semibold text-text-primary">文章发现</p>
-        <p class="text-sm text-text-secondary">当前展示已加载 {{ loadedArticles.length }} 篇文章，推荐与分组均来自真实文章数据。</p>
-      </div>
+    <section aria-labelledby="home-search-title">
+      <h2 id="home-search-title" class="absolute left-0 top-0 -z-10 opacity-0">文章搜索</h2>
+      <HeroSearch class="mb-4" tone="surface" input-id="article-search-input" />
+      <p data-testid="home-announcement" class="mb-8 text-sm text-text-secondary">已加载 {{ loadedArticles.length }} 篇文章</p>
     </section>
-
     <div class="home-content-grid">
       <aside class="blog-sidebar space-y-6" aria-label="作者与文章发现工具">
         <ProfileCard />
-        <ArticleSearchCard />
         <div data-testid="recommended-articles"><RecommendedArticles :articles="recommendations" /></div>
 
         <div v-if="taxonomyState.kind === 'loading' || taxonomyState.kind === 'idle'" data-testid="taxonomy-loading" class="blog-card p-6 text-sm text-text-secondary" role="status">正在加载分类与标签…</div>
@@ -115,7 +115,7 @@ onMounted(async () => {
           <ExclamationTriangleIcon class="size-6 text-error" aria-hidden="true" />
           <h2 id="taxonomy-error-title" class="mt-3 font-semibold text-text-primary">分类与标签加载失败</h2>
           <p class="mt-2 text-sm text-text-secondary">{{ taxonomyState.message }}</p>
-          <button data-testid="taxonomy-retry" type="button" class="mt-4 min-h-11 rounded-lg bg-accent px-4 text-sm font-semibold text-[color:var(--color-hero-text)] hover:bg-accent-hover" @click="retryTaxonomy">重试字典</button>
+          <button data-testid="taxonomy-retry" type="button" class="mt-4 min-h-11 rounded-lg bg-accent px-4 text-sm font-semibold text-canvas hover:bg-accent-hover" @click="retryTaxonomy">重试字典</button>
         </section>
         <TagCloud v-else :tags="tags" />
       </aside>
@@ -126,7 +126,7 @@ onMounted(async () => {
           <ExclamationTriangleIcon class="size-6 text-error" aria-hidden="true" />
           <h2 id="feed-error-title" class="mt-3 font-semibold text-text-primary">文章加载失败</h2>
           <p class="mt-2 text-sm text-text-secondary">{{ feedState.message }}</p>
-          <button data-testid="feed-retry" type="button" class="mt-4 min-h-11 rounded-lg bg-accent px-4 text-sm font-semibold text-[color:var(--color-hero-text)] hover:bg-accent-hover" @click="retryFeed">重试文章</button>
+          <button data-testid="feed-retry" type="button" class="mt-4 min-h-11 rounded-lg bg-accent px-4 text-sm font-semibold text-canvas hover:bg-accent-hover" @click="retryFeed">重试文章</button>
         </section>
         <section v-else-if="feedState.kind === 'empty'" data-testid="feed-empty" class="blog-card flex min-h-48 flex-col items-center justify-center p-8 text-center">
           <h2 class="font-[family-name:var(--font-family-display)] text-[length:var(--font-size-h2)] font-bold text-text-primary">暂无已发布文章</h2>

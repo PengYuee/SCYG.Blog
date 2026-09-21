@@ -14,7 +14,7 @@ import (
 // scopeViolation 描述一个语义范围越界。
 type scopeViolation struct{ Path, Reason string }
 
-// scanScope 使用 Go AST 与 go.mod 语法树扫描运行时范围，注释不参与判定。
+// scanScope 使用 Go AST 扫描运行时范围，注释不参与判定。
 func scanScope(root string) ([]scopeViolation, error) {
 	violations := make([]scopeViolation, 0)
 	err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
@@ -27,16 +27,7 @@ func scanScope(root string) ([]scopeViolation, error) {
 		}
 		normalized := filepath.ToSlash(relative)
 		if entry.IsDir() {
-			if normalized != "." && forbiddenRuntimeDirectory(normalized) {
-				violations = append(violations, scopeViolation{normalized, "当前阶段禁止未来运行时目录"})
-				return filepath.SkipDir
-			}
 			return nil
-		}
-		if normalized == "go.mod" {
-			found, parseErr := scanModule(path)
-			violations = append(violations, found...)
-			return parseErr
 		}
 		if filepath.Ext(path) != ".go" || strings.HasSuffix(path, "_test.go") {
 			return nil
@@ -53,14 +44,11 @@ func scanScope(root string) ([]scopeViolation, error) {
 
 func Test_ScopeScanner_rejects_semantic_fixtures_and_ignores_comments(t *testing.T) {
 	cases := map[string]map[string]string{
-		"模块语法":   {"go.mod": "module fixture\nrequire (\n google.golang.org/grpc v1.0.0\n)"},
-		"导入别名":   {"runtime.go": "package fixture\nimport socket \"github.com/gorilla/websocket\"\nvar _ = socket.IsCloseError"},
 		"选择器调用":  {"database.go": "package fixture\nfunc f(){ db.AutoMigrate ( &Article{} ) }"},
 		"生产声明":   {"auth.go": "package fixture\ntype allow_all struct{}"},
 		"调用参数拼接": {"route.go": "package fixture\nconst prefix = (\"/Article/\"); func mount(){ router.GET(prefix + \"Get\", handler) }"},
 		"实体改名":   {"model.go": "package fixture\ntype Category struct{}"},
 		"拼接旧路由":  {"route.go": "package fixture\nconst route = \"/Article/\" + \"Get\""},
-		"运行时目录":  {"internal/outbox/worker.go": "package outbox"},
 	}
 	for name, files := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -78,6 +66,71 @@ func Test_ScopeScanner_rejects_semantic_fixtures_and_ignores_comments(t *testing
 	found, err := scanScope(root)
 	if err != nil || len(found) != 0 {
 		t.Fatalf("注释错误触发范围门禁：%v %v", err, found)
+	}
+}
+
+func Test_ScopeScanner_futureProtocolConventions_areReviewOnly(t *testing.T) {
+	// Given
+	cases := []struct {
+		name  string
+		files map[string]string
+	}{
+		{
+			name: "grpc directory",
+			files: map[string]string{
+				"internal/grpc/server.go": "package grpc",
+			},
+		},
+		{
+			name: "websocket directory",
+			files: map[string]string{
+				"internal/transport/websocket/handler.go": "package websocket",
+			},
+		},
+		{
+			name: "kafka directory",
+			files: map[string]string{
+				"internal/kafka/producer.go": "package kafka",
+			},
+		},
+		{
+			name: "outbox directory",
+			files: map[string]string{
+				"internal/outbox/worker.go": "package outbox",
+			},
+		},
+		{
+			name: "proto directory",
+			files: map[string]string{
+				"internal/proto/events.go": "package proto",
+			},
+		},
+		{
+			name: "module dependencies",
+			files: map[string]string{
+				"go.mod": "module fixture\nrequire (\n google.golang.org/grpc v1.0.0\n github.com/gorilla/websocket v1.0.0\n github.com/segmentio/kafka-go v1.0.0\n buf.build/gen/go/example/api v1.0.0\n)",
+			},
+		},
+		{
+			name: "runtime imports",
+			files: map[string]string{
+				"future_protocol.go": "package fixture\nimport (\n _ \"google.golang.org/grpc\"\n _ \"github.com/gorilla/websocket\"\n _ \"github.com/segmentio/kafka-go\"\n _ \"buf.build/gen/go/example/api\"\n)",
+			},
+		},
+	}
+
+	// When and Then
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			root := writeFixture(t, testCase.files)
+			found, err := scanScope(root)
+			if err != nil {
+				t.Fatalf("扫描未来协议夹具失败：%v", err)
+			}
+			if len(found) != 0 {
+				t.Errorf("未来协议组织约定仍被范围门禁拒绝：%v", found)
+			}
+		})
 	}
 }
 
@@ -99,6 +152,7 @@ func Test_Scope_current_backend_and_tracked_repository_are_clean(t *testing.T) {
 		t.Fatalf("仓库跟踪了禁止的根 go.mod/C# 路径：%s", output)
 	}
 	if baseline := os.Getenv("SCOPE_BASELINE"); baseline != "" {
+		//nolint:gosec // git receives fixed subcommands and a validated revision selector.
 		diff := exec.Command("git", "diff", "--name-only", baseline, "HEAD", "--", "*.cs")
 		diff.Dir = repositoryRoot(t)
 		changed, diffErr := diff.Output()
@@ -116,7 +170,7 @@ func writeFixture(t *testing.T, files map[string]string) string {
 	root := t.TempDir()
 	for relative, body := range files {
 		path := filepath.Join(root, filepath.FromSlash(relative))
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
 			t.Fatalf("创建夹具目录失败：%v", err)
 		}
 		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {

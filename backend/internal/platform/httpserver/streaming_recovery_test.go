@@ -1,6 +1,7 @@
 package httpserver_test
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -28,8 +29,8 @@ func Test_Recovery_aborts_committed_flush_without_appending_error(t *testing.T) 
 		defer func() { recovered = recover() }()
 		server.Handler().ServeHTTP(response, request)
 	}()
-
-	if recovered != http.ErrAbortHandler {
+	recoveredErr, ok := recovered.(error)
+	if !ok || !errors.Is(recoveredErr, http.ErrAbortHandler) {
 		t.Fatalf("recovered=%v", recovered)
 	}
 	if response.Body.String() != "stream-prefix" || strings.Contains(response.Body.String(), "internal_error") || strings.Contains(response.Body.String(), "secret") {

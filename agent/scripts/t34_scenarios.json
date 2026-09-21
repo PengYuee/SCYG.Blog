@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "scenarios": [
+    {
+      "id": "S1",
+      "name": "authenticated SIMPLE run to terminal SSE",
+      "observation": "authenticated SIMPLE creation and terminal SSE result",
+      "evidence": "scenario-S1"
+    },
+    {
+      "id": "S2",
+      "name": "SSE cursor reconnect replay",
+      "observation": "reconnect from persisted cursor returns no duplicate events",
+      "evidence": "scenario-S2"
+    },
+    {
+      "id": "S3",
+      "name": "idempotent cancel or command replay",
+      "observation": "repeated identity returns the original durable result",
+      "evidence": "scenario-S3"
+    }
+  ]
+}
