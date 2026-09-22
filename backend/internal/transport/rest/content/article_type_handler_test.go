@@ -16,7 +16,7 @@ func Test_ContentREST_ArticleType_create_preserves_image_and_meun(t *testing.T) 
 	image := "hero.png"
 	service := &testService{allowWrites: true, articleType: validArticleTypeResult(image, 7)}
 	router := routerForService(t, service)
-	request := httptest.NewRequest(http.MethodPost, "/api/v1/article-types", strings.NewReader(`{"name":"News","image":"hero.png","meun":7}`))
+	request := httptest.NewRequest(http.MethodPost, "/api/v1/manage/article-types", strings.NewReader(`{"name":"News","image":"hero.png","menu":7}`))
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()
 
@@ -32,12 +32,12 @@ func Test_ContentREST_ArticleType_create_preserves_image_and_meun(t *testing.T) 
 	}
 	var body struct {
 		Image *string `json:"image"`
-		Meun  int32   `json:"meun"`
+		Menu  int32   `json:"menu"`
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &body); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if body.Image == nil || *body.Image != image || body.Meun != 7 {
+	if body.Image == nil || *body.Image != image || body.Menu != 7 {
 		t.Fatalf("body = %#v", body)
 	}
 }
@@ -52,12 +52,12 @@ func Test_ContentREST_ArticleType_patch_preserves_optional_fields(t *testing.T) 
 				t.Fatalf("command = %#v", command)
 			}
 		}},
-		{"meun zero", `{"meun":0}`, func(t *testing.T, command taxonomy.PatchArticleType) {
+		{"menu zero", `{"menu":0}`, func(t *testing.T, command taxonomy.PatchArticleType) {
 			if command.Meun == nil || *command.Meun != 0 || command.Image.Provided {
 				t.Fatalf("command = %#v", command)
 			}
 		}},
-		{"both", `{"image":"next.png","meun":8}`, func(t *testing.T, command taxonomy.PatchArticleType) {
+		{"both", `{"image":"next.png","menu":8}`, func(t *testing.T, command taxonomy.PatchArticleType) {
 			if !command.Image.Provided || command.Image.Value == nil || command.Meun == nil || *command.Meun != 8 {
 				t.Fatalf("command = %#v", command)
 			}
@@ -73,7 +73,7 @@ func Test_ContentREST_ArticleType_patch_preserves_optional_fields(t *testing.T) 
 			// Given
 			service := &testService{allowWrites: true, articleType: validArticleTypeResult("", 0)}
 			router := routerForService(t, service)
-			request := httptest.NewRequest(http.MethodPatch, "/api/v1/article-types/1", strings.NewReader(testCase.body))
+			request := httptest.NewRequest(http.MethodPatch, "/api/v1/manage/article-types/1", strings.NewReader(testCase.body))
 			request.Header.Set("Content-Type", "application/json")
 			request.Header.Set("If-Match", `"1"`)
 			response := httptest.NewRecorder()
@@ -92,7 +92,7 @@ func Test_ContentREST_ArticleType_empty_patch_returns_400(t *testing.T) {
 	// Given
 	service := &testService{allowWrites: true}
 	router := routerForService(t, service)
-	request := httptest.NewRequest(http.MethodPatch, "/api/v1/article-types/1", strings.NewReader(`{}`))
+	request := httptest.NewRequest(http.MethodPatch, "/api/v1/manage/article-types/1", strings.NewReader(`{}`))
 	request.Header.Set("Content-Type", "application/json")
 	request.Header.Set("If-Match", `"1"`)
 	response := httptest.NewRecorder()

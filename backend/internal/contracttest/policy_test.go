@@ -12,13 +12,13 @@ func Test_OpenAPI_operation_policy_matrix(t *testing.T) {
 	// Given
 	document := loadAuthoritativeSpec(t)
 	all := operations(document)
-	if len(all) != 23 {
-		t.Fatalf("expected 23 operations, got %d", len(all))
+	if len(all) != 27 {
+		t.Fatalf("expected 27 operations, got %d", len(all))
 	}
 	public := map[string]struct{}{
 		"login": {}, "listArticles": {}, "getArticle": {},
-		"listArticleTypes": {}, "getArticleType": {}, "listTags": {},
-		"getTag": {}, "getArticleImageMedia": {},
+		"listPublicArticleTypes": {}, "getPublicArticleType": {}, "listPublicTags": {},
+		"getPublicTag": {}, "getArticleImageMedia": {},
 	}
 
 	// When / Then
@@ -57,13 +57,15 @@ func Test_OpenAPI_paths_are_resource_only(t *testing.T) {
 	document := loadAuthoritativeSpec(t)
 	want := map[string]struct{}{
 		"/api/v1/auth/login": {},
-		"/api/v1/articles":   {}, "/api/v1/articles/{article_id}": {},
-		"/api/v1/manage/articles": {}, "/api/v1/manage/articles/{article_id}": {},
-		"/api/v1/manage/articles/{article_id}/publish": {}, "/api/v1/manage/articles/{article_id}/archive": {},
-		"/api/v1/article-types": {}, "/api/v1/article-types/{article_type_id}": {},
-		"/api/v1/tags": {}, "/api/v1/tags/{tag_id}": {},
-		"/api/v1/manage/article-images": {}, "/api/v1/article-images/{image_id}": {},
-		"/media/article-images/{storage_key}": {},
+		"/api/v1/articles":   {}, "/api/v1/articles/{articleId}": {},
+		"/api/v1/manage/articles": {}, "/api/v1/manage/articles/{articleId}": {},
+		"/api/v1/manage/articles/{articleId}/publish": {}, "/api/v1/manage/articles/{articleId}/archive": {},
+		"/api/v1/article-types": {}, "/api/v1/article-types/{articleTypeId}": {},
+		"/api/v1/tags": {}, "/api/v1/tags/{tagId}": {},
+		"/api/v1/manage/article-types": {}, "/api/v1/manage/article-types/{articleTypeId}": {},
+		"/api/v1/manage/tags": {}, "/api/v1/manage/tags/{tagId}": {},
+		"/api/v1/manage/article-images": {}, "/api/v1/article-images/{imageId}": {},
+		"/media/article-images/{storageKey}": {},
 	}
 
 	// When / Then

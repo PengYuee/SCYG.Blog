@@ -27,11 +27,11 @@ func (probe *tagPatchProbe) CreateManageArticle(_ context.Context, _ generated.C
 	}, nil
 }
 
-// PatchTag records successful traversal through validation and generated binding.
-func (probe *tagPatchProbe) PatchTag(_ context.Context, _ generated.PatchTagRequestObject) (generated.PatchTagResponseObject, error) {
+// PatchManageTag records successful traversal through validation and generated binding.
+func (probe *tagPatchProbe) PatchManageTag(_ context.Context, _ generated.PatchManageTagRequestObject) (generated.PatchManageTagResponseObject, error) {
 	probe.reached = true
-	return generated.PatchTag200JSONResponse{
-		Headers: generated.PatchTag200ResponseHeaders{ETag: `"2"`},
+	return generated.PatchManageTag200JSONResponse{
+		Headers: generated.PatchManageTag200ResponseHeaders{ETag: `"2"`},
 	}, nil
 }
 
@@ -159,7 +159,7 @@ func newValidationEngine(t *testing.T, options Options) (*tagPatchProbe, *gin.En
 
 // articleCreateRequest 构造经过真实 OpenAPI 中间件的管理端文章创建请求。
 func articleCreateRequest(status int) *http.Request {
-	body := fmt.Sprintf(`{"article_type_id":1,"title":"标题","slug":"title","digest":"摘要","content":"正文","tag_ids":[1],"status":%d}`, status)
+	body := fmt.Sprintf(`{"articleTypeId":1,"title":"标题","slug":"title","digest":"摘要","content":"正文","tagIds":[1],"status":%d}`, status)
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/manage/articles", strings.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
 	return request
@@ -167,7 +167,7 @@ func articleCreateRequest(status int) *http.Request {
 
 // patchTagRequest builds one real Gin request against the generated route.
 func patchTagRequest(body string, ifMatch string) *http.Request {
-	request := httptest.NewRequest(http.MethodPatch, "/api/v1/tags/1", strings.NewReader(body))
+	request := httptest.NewRequest(http.MethodPatch, "/api/v1/manage/tags/1", strings.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
 	if ifMatch != "" {
 		request.Header.Set("If-Match", ifMatch)

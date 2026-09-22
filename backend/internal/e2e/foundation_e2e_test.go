@@ -223,7 +223,7 @@ const (
 )
 
 func articleCreatePayload(suffix string, articleTypeID, tagID int64, status articleStatus) string {
-	return fmt.Sprintf("{\"title\":\"e2e-%s\",\"slug\":\"e2e-%s\",\"digest\":\"digest\",\"content\":\"content\",\"article_type_id\":%d,\"tag_ids\":[%d],\"status\":%d}", suffix, suffix, articleTypeID, tagID, status)
+	return fmt.Sprintf("{\"title\":\"e2e-%s\",\"slug\":\"e2e-%s\",\"digest\":\"digest\",\"content\":\"content\",\"articleTypeId\":%d,\"tagIds\":[%d],\"status\":%d}", suffix, suffix, articleTypeID, tagID, status)
 }
 
 func staleReplayETag(created, updated string) (string, error) {

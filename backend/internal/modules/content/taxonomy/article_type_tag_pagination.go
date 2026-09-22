@@ -12,17 +12,17 @@ func validPage(page, size int, sortKey string) error {
 
 func taxonomyOrder(sortKey string) (string, error) {
 	switch sortKey {
-	case "created_at":
+	case "createdAt":
 		return "created_at ASC, id ASC", nil
-	case "-created_at":
+	case "-createdAt":
 		return "created_at DESC, id DESC", nil
 	case "title":
 		return "name ASC, id ASC", nil
 	case "-title":
 		return "name DESC, id DESC", nil
-	case "updated_at":
+	case "updatedAt":
 		return "COALESCE(updated_at, created_at) ASC, id ASC", nil
-	case "-updated_at":
+	case "-updatedAt":
 		return "COALESCE(updated_at, created_at) DESC, id DESC", nil
 	default:
 		return "", invalid("sort")

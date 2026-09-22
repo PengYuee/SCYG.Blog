@@ -172,13 +172,17 @@ func (query *Query) List(ctx context.Context, input List) (Page, error) {
 
 func projectionOrder(sort string) (string, error) {
 	switch sort {
-	case "", "newest":
+	case "", "-createdAt":
 		return "a.created_at DESC, a.id DESC", nil
-	case "oldest":
+	case "createdAt":
 		return "a.created_at ASC, a.id ASC", nil
+	case "updatedAt":
+		return "COALESCE(a.updated_at, a.created_at) ASC, a.id ASC", nil
+	case "-updatedAt":
+		return "COALESCE(a.updated_at, a.created_at) DESC, a.id DESC", nil
 	case "title":
 		return "a.title ASC, a.id ASC", nil
-	case "title_desc":
+	case "-title":
 		return "a.title DESC, a.id DESC", nil
 	default:
 		return "", fmt.Errorf("sort: %w", ErrInvalidValue)

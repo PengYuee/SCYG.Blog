@@ -31,11 +31,11 @@ func Test_OpenAPI_article_image_contracts_when_spec_loaded(t *testing.T) {
 	if upload == nil || upload.OperationID != "createManageArticleImage" {
 		t.Fatal("正文图片上传操作缺失或 operationId 不稳定")
 	}
-	remove := all[http.MethodDelete+" /api/v1/article-images/{image_id}"]
+	remove := all[http.MethodDelete+" /api/v1/article-images/{imageId}"]
 	if remove == nil || remove.OperationID != "deleteArticleImage" {
 		t.Fatal("正文图片删除操作缺失或 operationId 不稳定")
 	}
-	media := all[http.MethodGet+" /media/article-images/{storage_key}"]
+	media := all[http.MethodGet+" /media/article-images/{storageKey}"]
 	if media == nil || media.OperationID != "getArticleImageMedia" {
 		t.Fatal("正文图片读取操作缺失或 operationId 不稳定")
 	}
@@ -155,9 +155,9 @@ func Test_OpenAPI_article_DTOs_when_image_contract_added(t *testing.T) {
 	document := loadAuthoritativeSpec(t)
 
 	// When / Then
-	assertExactProperties(t, document, "Article", []string{"id", "title", "slug", "digest", "content", "article_type_id", "tag_ids", "status", "support", "comment", "visited", "version", "created_at", "updated_at"})
-	assertExactProperties(t, document, "ArticleCreate", []string{"title", "slug", "digest", "content", "article_type_id", "tag_ids", "status"})
-	assertExactProperties(t, document, "ArticlePatch", []string{"title", "slug", "digest", "content", "article_type_id", "tag_ids"})
+	assertExactProperties(t, document, "Article", []string{"id", "title", "slug", "digest", "content", "articleTypeId", "articleType", "tagIds", "status", "support", "comment", "visited", "version", "createdAt", "updatedAt"})
+	assertExactProperties(t, document, "ArticleCreate", []string{"title", "slug", "digest", "content", "articleTypeId", "tagIds", "status"})
+	assertExactProperties(t, document, "ArticlePatch", []string{"title", "slug", "digest", "content", "articleTypeId", "tagIds"})
 }
 
 func assertExactProperties(t *testing.T, document *openapi3.T, name string, expected []string) {

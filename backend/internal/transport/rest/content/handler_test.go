@@ -33,14 +33,16 @@ func (testLoginHandler) Login(context.Context, generated.LoginRequestObject) (ge
 const permissionDenied testFailure = "permission_denied"
 
 type testService struct {
-	writeCalls        int
-	allowWrites       bool
-	articlePage       article.Page
-	article           article.Result
-	articleType       taxonomy.ArticleTypeResult
-	lastArticleCreate article.Create
-	lastTypeCreate    taxonomy.CreateArticleType
-	lastTypePatch     taxonomy.PatchArticleType
+	writeCalls            int
+	allowWrites           bool
+	articlePage           article.Page
+	article               article.Result
+	articleType           taxonomy.ArticleTypeResult
+	publicArticleTypePage taxonomy.PublicArticleTypePage
+	publicTagPage         taxonomy.PublicTagPage
+	lastArticleCreate     article.Create
+	lastTypeCreate        taxonomy.CreateArticleType
+	lastTypePatch         taxonomy.PatchArticleType
 }
 
 func (*testService) Get(context.Context, article.Get) (article.Result, error) {
@@ -67,12 +69,28 @@ func (*testService) ListArticleTypes(context.Context, taxonomy.ListArticleTypes)
 	return taxonomy.ArticleTypePage{}, nil
 }
 
+func (*testService) GetPublicArticleType(context.Context, taxonomy.GetPublicArticleType) (taxonomy.PublicArticleTypeResult, error) {
+	return taxonomy.PublicArticleTypeResult{ID: 1, Name: "News", ArticleCount: 1, Version: 1}, nil
+}
+
+func (service *testService) ListPublicArticleTypes(context.Context, taxonomy.ListPublicArticleTypes) (taxonomy.PublicArticleTypePage, error) {
+	return service.publicArticleTypePage, nil
+}
+
 func (*testService) GetTag(context.Context, taxonomy.GetTag) (taxonomy.TagResult, error) {
 	return taxonomy.TagResult{}, errors.New("not found")
 }
 
 func (*testService) ListTags(context.Context, taxonomy.ListTags) (taxonomy.TagPage, error) {
 	return taxonomy.TagPage{}, nil
+}
+
+func (*testService) GetPublicTag(context.Context, taxonomy.GetPublicTag) (taxonomy.PublicTagResult, error) {
+	return taxonomy.PublicTagResult{ID: 1, Name: "Go", ArticleCount: 1, Version: 1}, nil
+}
+
+func (service *testService) ListPublicTags(context.Context, taxonomy.ListPublicTags) (taxonomy.PublicTagPage, error) {
+	return service.publicTagPage, nil
 }
 
 func (service *testService) denied() error {
@@ -170,7 +188,7 @@ func Test_ContentREST_missing_If_Match_returns_RFC9457_428(t *testing.T) {
 	}
 	var problem struct {
 		Instance  string              `json:"instance"`
-		RequestID string              `json:"request_id"`
+		RequestID string              `json:"requestId"`
 		Errors    map[string][]string `json:"errors"`
 	}
 	if err := json.Unmarshal(response.Body.Bytes(), &problem); err != nil {
@@ -190,7 +208,7 @@ func Test_ContentREST_missing_If_Match_returns_RFC9457_428(t *testing.T) {
 func Test_ContentREST_default_DenyAll_returns_403_without_persistence(t *testing.T) {
 	// Given
 	router, service := testRouter(t)
-	body := `{"article_type_id":1,"title":"Title","slug":"title","digest":"Digest","content":"Body","tag_ids":[1],"status":1}`
+	body := `{"articleTypeId":1,"title":"Title","slug":"title","digest":"Digest","content":"Body","tagIds":[1],"status":1}`
 	request := httptest.NewRequest(http.MethodPost, "/api/v1/manage/articles", strings.NewReader(body))
 	request.Header.Set("Content-Type", "application/json")
 	response := httptest.NewRecorder()

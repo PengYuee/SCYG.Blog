@@ -45,8 +45,12 @@ type ArticleDeleteService interface {
 type TaxonomyService interface {
 	GetArticleType(context.Context, taxonomy.GetArticleType) (taxonomy.ArticleTypeResult, error)
 	ListArticleTypes(context.Context, taxonomy.ListArticleTypes) (taxonomy.ArticleTypePage, error)
+	GetPublicArticleType(context.Context, taxonomy.GetPublicArticleType) (taxonomy.PublicArticleTypeResult, error)
+	ListPublicArticleTypes(context.Context, taxonomy.ListPublicArticleTypes) (taxonomy.PublicArticleTypePage, error)
 	GetTag(context.Context, taxonomy.GetTag) (taxonomy.TagResult, error)
 	ListTags(context.Context, taxonomy.ListTags) (taxonomy.TagPage, error)
+	GetPublicTag(context.Context, taxonomy.GetPublicTag) (taxonomy.PublicTagResult, error)
+	ListPublicTags(context.Context, taxonomy.ListPublicTags) (taxonomy.PublicTagPage, error)
 	CreateArticleType(context.Context, taxonomy.CreateArticleType) (taxonomy.ArticleTypeResult, error)
 	PatchArticleType(context.Context, taxonomy.PatchArticleType) (taxonomy.ArticleTypeResult, error)
 	DeleteArticleType(context.Context, taxonomy.DeleteArticleType) error
@@ -122,7 +126,7 @@ type imagePatch struct {
 func captureArticleTypeImagePatch() gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		// PATCH 的 image 需要区分省略、null 与字符串，生成 DTO 无法单独保留该信息。
-		if ctx.Request.Method == "PATCH" && strings.HasPrefix(ctx.Request.URL.Path, "/api/v1/article-types/") && ctx.Request.Body != nil {
+		if ctx.Request.Method == "PATCH" && (strings.HasPrefix(ctx.Request.URL.Path, "/api/v1/article-types/") || strings.HasPrefix(ctx.Request.URL.Path, "/api/v1/manage/article-types/")) && ctx.Request.Body != nil {
 			body, err := io.ReadAll(ctx.Request.Body)
 			if err == nil {
 				ctx.Request.Body = io.NopCloser(bytes.NewReader(body))

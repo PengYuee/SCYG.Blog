@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"testing"
@@ -159,5 +160,80 @@ func Test_TaxonomyService_Postgres_preservesConstraintsAndDeletionRules(t *testi
 	}
 	if err := fixture.service.DeleteTag(ctx, DeleteTag{ID: tagResult.ID, Version: 1}); err != nil {
 		t.Fatalf("soft-deleted article reference blocked tag deletion: %v", err)
+	}
+}
+
+func Test_TaxonomyService_Postgres_publicQueriesCountOnlyPublishedArticles(t *testing.T) {
+	fixture := openPostgresFixture(t)
+	ctx := context.Background()
+
+	news, err := fixture.service.CreateArticleType(ctx, CreateArticleType{Name: "News"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	guides, err := fixture.service.CreateArticleType(ctx, CreateArticleType{Name: "Guides"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hidden, err := fixture.service.CreateArticleType(ctx, CreateArticleType{Name: "Hidden"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	goTag, err := fixture.service.CreateTag(ctx, CreateTag{Name: "Go"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	draftTag, err := fixture.service.CreateTag(ctx, CreateTag{Name: "Draft"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	created := time.Date(2026, 7, 12, 12, 0, 0, 0, time.UTC)
+	articles := []struct {
+		id, articleTypeID int64
+		status            int
+		deleted           bool
+	}{
+		{id: 101, articleTypeID: news.ID, status: 2},
+		{id: 102, articleTypeID: news.ID, status: 2},
+		{id: 103, articleTypeID: guides.ID, status: 2},
+		{id: 104, articleTypeID: hidden.ID, status: 1},
+		{id: 105, articleTypeID: hidden.ID, status: 2, deleted: true},
+	}
+	for _, value := range articles {
+		var deletedAt *time.Time
+		if value.deleted {
+			deletedAt = &created
+		}
+		if err := fixture.db.GORM().Exec(`INSERT INTO articles (id, article_type_id, title, slug, digest, content, status, version, created_at, deleted_at, is_deleted) VALUES (?, ?, ?, ?, 'digest', 'content', ?, 1, ?, ?, ?)`, value.id, value.articleTypeID, fmt.Sprintf("Title %d", value.id), fmt.Sprintf("title-%d", value.id), value.status, created, deletedAt, value.deleted).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, relation := range [][2]int64{{101, goTag.ID}, {102, goTag.ID}, {103, goTag.ID}, {104, draftTag.ID}, {105, draftTag.ID}} {
+		if err := fixture.db.GORM().Exec(`INSERT INTO article_tags (article_id, tag_id) VALUES (?, ?)`, relation[0], relation[1]).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	types, err := fixture.service.ListPublicArticleTypes(ctx, ListPublicArticleTypes{Page: 1, PageSize: 10})
+	if err != nil || types.TotalItems != 2 || len(types.Items) != 2 || types.Items[0].ID != news.ID || types.Items[0].ArticleCount != 2 || types.Items[1].ID != guides.ID || types.Items[1].ArticleCount != 1 {
+		t.Fatalf("public article types=%#v err=%v", types, err)
+	}
+	tags, err := fixture.service.ListPublicTags(ctx, ListPublicTags{Page: 1, PageSize: 10})
+	if err != nil || tags.TotalItems != 1 || len(tags.Items) != 1 || tags.Items[0].ID != goTag.ID || tags.Items[0].ArticleCount != 3 {
+		t.Fatalf("public tags=%#v err=%v", tags, err)
+	}
+	detail, err := fixture.service.GetPublicArticleType(ctx, GetPublicArticleType{ID: news.ID})
+	if err != nil || detail.ArticleCount != 2 {
+		t.Fatalf("public article type detail=%#v err=%v", detail, err)
+	}
+	if _, err := fixture.service.GetPublicArticleType(ctx, GetPublicArticleType{ID: hidden.ID}); err == nil {
+		t.Fatal("article type without published articles was publicly visible")
+	} else {
+		taxonomyFailure(t, err, CodeNotFound)
+	}
+	if _, err := fixture.service.GetPublicTag(ctx, GetPublicTag{ID: draftTag.ID}); err == nil {
+		t.Fatal("tag without published articles was publicly visible")
+	} else {
+		taxonomyFailure(t, err, CodeNotFound)
 	}
 }

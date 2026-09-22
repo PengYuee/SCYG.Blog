@@ -15,8 +15,8 @@ func Test_ContractFlow_article_payload_uses_numeric_status(t *testing.T) {
 	payload := articleCreatePayload("contract", 1, 2, articleStatusDraft)
 	var document struct {
 		Status        int     `json:"status"`
-		ArticleTypeID int64   `json:"article_type_id"`
-		TagIDs        []int64 `json:"tag_ids"`
+		ArticleTypeID int64   `json:"articleTypeId"`
+		TagIDs        []int64 `json:"tagIds"`
 	}
 	if err := json.Unmarshal([]byte(payload), &document); err != nil {
 		t.Fatalf("解析 Article payload 失败：%v", err)

@@ -117,12 +117,12 @@ func (e LoginResponseTokenType) Valid() bool {
 
 // Defines values for Sort.
 const (
-	SortCreatedAt      Sort = "created_at"
-	SortMinusCreatedAt Sort = "-created_at"
+	SortCreatedAt      Sort = "createdAt"
+	SortMinusCreatedAt Sort = "-createdAt"
 	SortMinusTitle     Sort = "-title"
-	SortMinusUpdatedAt Sort = "-updated_at"
+	SortMinusUpdatedAt Sort = "-updatedAt"
 	SortTitle          Sort = "title"
-	SortUpdatedAt      Sort = "updated_at"
+	SortUpdatedAt      Sort = "updatedAt"
 )
 
 // Valid indicates whether the value is a known member of the Sort enum.
@@ -145,44 +145,14 @@ func (e Sort) Valid() bool {
 	}
 }
 
-// Defines values for ListArticleTypesParamsSort.
-const (
-	ListArticleTypesParamsSortCreatedAt      ListArticleTypesParamsSort = "created_at"
-	ListArticleTypesParamsSortMinusCreatedAt ListArticleTypesParamsSort = "-created_at"
-	ListArticleTypesParamsSortMinusTitle     ListArticleTypesParamsSort = "-title"
-	ListArticleTypesParamsSortMinusUpdatedAt ListArticleTypesParamsSort = "-updated_at"
-	ListArticleTypesParamsSortTitle          ListArticleTypesParamsSort = "title"
-	ListArticleTypesParamsSortUpdatedAt      ListArticleTypesParamsSort = "updated_at"
-)
-
-// Valid indicates whether the value is a known member of the ListArticleTypesParamsSort enum.
-func (e ListArticleTypesParamsSort) Valid() bool {
-	switch e {
-	case ListArticleTypesParamsSortCreatedAt:
-		return true
-	case ListArticleTypesParamsSortMinusCreatedAt:
-		return true
-	case ListArticleTypesParamsSortMinusTitle:
-		return true
-	case ListArticleTypesParamsSortMinusUpdatedAt:
-		return true
-	case ListArticleTypesParamsSortTitle:
-		return true
-	case ListArticleTypesParamsSortUpdatedAt:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for ListArticlesParamsSort.
 const (
-	ListArticlesParamsSortCreatedAt      ListArticlesParamsSort = "created_at"
-	ListArticlesParamsSortMinusCreatedAt ListArticlesParamsSort = "-created_at"
+	ListArticlesParamsSortCreatedAt      ListArticlesParamsSort = "createdAt"
+	ListArticlesParamsSortMinusCreatedAt ListArticlesParamsSort = "-createdAt"
 	ListArticlesParamsSortMinusTitle     ListArticlesParamsSort = "-title"
-	ListArticlesParamsSortMinusUpdatedAt ListArticlesParamsSort = "-updated_at"
+	ListArticlesParamsSortMinusUpdatedAt ListArticlesParamsSort = "-updatedAt"
 	ListArticlesParamsSortTitle          ListArticlesParamsSort = "title"
-	ListArticlesParamsSortUpdatedAt      ListArticlesParamsSort = "updated_at"
+	ListArticlesParamsSortUpdatedAt      ListArticlesParamsSort = "updatedAt"
 )
 
 // Valid indicates whether the value is a known member of the ListArticlesParamsSort enum.
@@ -205,14 +175,44 @@ func (e ListArticlesParamsSort) Valid() bool {
 	}
 }
 
+// Defines values for ListManageArticleTypesParamsSort.
+const (
+	ListManageArticleTypesParamsSortCreatedAt      ListManageArticleTypesParamsSort = "createdAt"
+	ListManageArticleTypesParamsSortMinusCreatedAt ListManageArticleTypesParamsSort = "-createdAt"
+	ListManageArticleTypesParamsSortMinusTitle     ListManageArticleTypesParamsSort = "-title"
+	ListManageArticleTypesParamsSortMinusUpdatedAt ListManageArticleTypesParamsSort = "-updatedAt"
+	ListManageArticleTypesParamsSortTitle          ListManageArticleTypesParamsSort = "title"
+	ListManageArticleTypesParamsSortUpdatedAt      ListManageArticleTypesParamsSort = "updatedAt"
+)
+
+// Valid indicates whether the value is a known member of the ListManageArticleTypesParamsSort enum.
+func (e ListManageArticleTypesParamsSort) Valid() bool {
+	switch e {
+	case ListManageArticleTypesParamsSortCreatedAt:
+		return true
+	case ListManageArticleTypesParamsSortMinusCreatedAt:
+		return true
+	case ListManageArticleTypesParamsSortMinusTitle:
+		return true
+	case ListManageArticleTypesParamsSortMinusUpdatedAt:
+		return true
+	case ListManageArticleTypesParamsSortTitle:
+		return true
+	case ListManageArticleTypesParamsSortUpdatedAt:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ListManageArticlesParamsSort.
 const (
-	ListManageArticlesParamsSortCreatedAt      ListManageArticlesParamsSort = "created_at"
-	ListManageArticlesParamsSortMinusCreatedAt ListManageArticlesParamsSort = "-created_at"
+	ListManageArticlesParamsSortCreatedAt      ListManageArticlesParamsSort = "createdAt"
+	ListManageArticlesParamsSortMinusCreatedAt ListManageArticlesParamsSort = "-createdAt"
 	ListManageArticlesParamsSortMinusTitle     ListManageArticlesParamsSort = "-title"
-	ListManageArticlesParamsSortMinusUpdatedAt ListManageArticlesParamsSort = "-updated_at"
+	ListManageArticlesParamsSortMinusUpdatedAt ListManageArticlesParamsSort = "-updatedAt"
 	ListManageArticlesParamsSortTitle          ListManageArticlesParamsSort = "title"
-	ListManageArticlesParamsSortUpdatedAt      ListManageArticlesParamsSort = "updated_at"
+	ListManageArticlesParamsSortUpdatedAt      ListManageArticlesParamsSort = "updatedAt"
 )
 
 // Valid indicates whether the value is a known member of the ListManageArticlesParamsSort enum.
@@ -235,18 +235,18 @@ func (e ListManageArticlesParamsSort) Valid() bool {
 	}
 }
 
-// Defines values for ListTagsParamsSort.
+// Defines values for ListManageTagsParamsSort.
 const (
-	CreatedAt      ListTagsParamsSort = "created_at"
-	MinusCreatedAt ListTagsParamsSort = "-created_at"
-	MinusTitle     ListTagsParamsSort = "-title"
-	MinusUpdatedAt ListTagsParamsSort = "-updated_at"
-	Title          ListTagsParamsSort = "title"
-	UpdatedAt      ListTagsParamsSort = "updated_at"
+	CreatedAt      ListManageTagsParamsSort = "createdAt"
+	MinusCreatedAt ListManageTagsParamsSort = "-createdAt"
+	MinusTitle     ListManageTagsParamsSort = "-title"
+	MinusUpdatedAt ListManageTagsParamsSort = "-updatedAt"
+	Title          ListManageTagsParamsSort = "title"
+	UpdatedAt      ListManageTagsParamsSort = "updatedAt"
 )
 
-// Valid indicates whether the value is a known member of the ListTagsParamsSort enum.
-func (e ListTagsParamsSort) Valid() bool {
+// Valid indicates whether the value is a known member of the ListManageTagsParamsSort enum.
+func (e ListManageTagsParamsSort) Valid() bool {
 	switch e {
 	case CreatedAt:
 		return true
@@ -267,8 +267,11 @@ func (e ListTagsParamsSort) Valid() bool {
 
 // Article 文章资源，包含所属类型、标签关系、状态、计数、版本和 UTC 时间。
 type Article struct {
+	// ArticleType 文章所属类型的公开摘要。
+	ArticleType PublicArticleTypeSummary `json:"articleType"`
+
 	// ArticleTypeID 资源正整数标识，示例 `1`。
-	ArticleTypeID PositiveID `json:"article_type_id"`
+	ArticleTypeID PositiveID `json:"articleTypeId"`
 
 	// Comment 评论次数，非负。
 	Comment int64 `json:"comment"`
@@ -277,7 +280,7 @@ type Article struct {
 	Content string `json:"content"`
 
 	// CreatedAt UTC 创建时间，例如 `2026-01-01T00:00:00Z`。
-	CreatedAt time.Time `json:"created_at"`
+	CreatedAt time.Time `json:"createdAt"`
 
 	// Digest 文章摘要。
 	Digest string `json:"digest"`
@@ -295,13 +298,13 @@ type Article struct {
 	Support int64 `json:"support"`
 
 	// TagIds 关联标签正整数标识数组，值不重复。
-	TagIds []PositiveID `json:"tag_ids"`
+	TagIds []PositiveID `json:"tagIds"`
 
 	// Title 标题。
 	Title string `json:"title"`
 
 	// UpdatedAt UTC 更新时间，从未更新时为 `null`。
-	UpdatedAt *time.Time `json:"updated_at"`
+	UpdatedAt *time.Time `json:"updatedAt"`
 
 	// Version 资源当前正整数版本，用于并发控制，示例 `1`。
 	Version Version `json:"version"`
@@ -313,7 +316,7 @@ type Article struct {
 // ArticleCreate 创建文章的完整输入。
 type ArticleCreate struct {
 	// ArticleTypeID 资源正整数标识，示例 `1`。
-	ArticleTypeID PositiveID `json:"article_type_id"`
+	ArticleTypeID PositiveID `json:"articleTypeId"`
 
 	// Content 文章正文。
 	Content string `json:"content"`
@@ -328,7 +331,7 @@ type ArticleCreate struct {
 	Status ArticleCreateStatus `json:"status"`
 
 	// TagIds 关联标签正整数标识数组，值不重复。
-	TagIds []PositiveID `json:"tag_ids"`
+	TagIds []PositiveID `json:"tagIds"`
 
 	// Title 标题。
 	Title string `json:"title"`
@@ -391,7 +394,7 @@ type ArticleList struct {
 // ArticlePatch 文章局部更新输入，至少提供一个字段，其他字段保持不变。
 type ArticlePatch struct {
 	// ArticleTypeID 资源正整数标识，示例 `1`。
-	ArticleTypeID *PositiveID `json:"article_type_id,omitempty"`
+	ArticleTypeID *PositiveID `json:"articleTypeId,omitempty"`
 
 	// Content 文章正文。
 	Content *string `json:"content,omitempty"`
@@ -403,7 +406,7 @@ type ArticlePatch struct {
 	Slug *string `json:"slug,omitempty"`
 
 	// TagIds 关联标签正整数标识数组，值不重复。
-	TagIds *[]PositiveID `json:"tag_ids,omitempty"`
+	TagIds *[]PositiveID `json:"tagIds,omitempty"`
 
 	// Title 标题。
 	Title *string `json:"title,omitempty"`
@@ -415,7 +418,7 @@ type ArticleStatus int32
 // ArticleType 文章类型资源，包含可空图片、非负菜单排序值、版本和 UTC 时间。
 type ArticleType struct {
 	// CreatedAt UTC 创建时间，例如 `2026-01-01T00:00:00Z`。
-	CreatedAt time.Time `json:"created_at"`
+	CreatedAt time.Time `json:"createdAt"`
 
 	// ID 资源正整数标识，示例 `1`。
 	ID PositiveID `json:"id"`
@@ -423,14 +426,14 @@ type ArticleType struct {
 	// Image 图片地址，未设置时为 `null`，例如 `https://example.com/type.png`。
 	Image *string `json:"image"`
 
-	// Meun 非负菜单排序值，不约定排序方向。
-	Meun int32 `json:"meun"`
+	// Menu 非负菜单排序值，不约定排序方向。
+	Menu int32 `json:"menu"`
 
 	// Name 资源名称。
 	Name string `json:"name"`
 
 	// UpdatedAt UTC 更新时间，从未更新时为 `null`。
-	UpdatedAt *time.Time `json:"updated_at"`
+	UpdatedAt *time.Time `json:"updatedAt"`
 
 	// Version 资源当前正整数版本，用于并发控制，示例 `1`。
 	Version Version `json:"version"`
@@ -441,8 +444,8 @@ type ArticleTypeCreate struct {
 	// Image 图片地址，未设置时为 `null`，例如 `https://example.com/type.png`。
 	Image *string `json:"image,omitempty"`
 
-	// Meun 非负菜单排序值，不约定排序方向。
-	Meun int32 `json:"meun"`
+	// Menu 非负菜单排序值，不约定排序方向。
+	Menu int32 `json:"menu"`
 
 	// Name 资源名称。
 	Name string `json:"name"`
@@ -462,8 +465,8 @@ type ArticleTypePatch struct {
 	// Image 图片地址，未设置时为 `null`，例如 `https://example.com/type.png`。
 	Image *string `json:"image,omitempty"`
 
-	// Meun 非负菜单排序值，不约定排序方向。
-	Meun *int32 `json:"meun,omitempty"`
+	// Menu 非负菜单排序值，不约定排序方向。
+	Menu *int32 `json:"menu,omitempty"`
 
 	// Name 资源名称。
 	Name *string `json:"name,omitempty"`
@@ -481,13 +484,13 @@ type LoginRequest struct {
 // LoginResponse 短期访问令牌。
 type LoginResponse struct {
 	// AccessToken 短期 Bearer 访问令牌。
-	AccessToken string `json:"access_token"`
+	AccessToken string `json:"accessToken"`
 
 	// ExpiresAt 令牌过期时间。
-	ExpiresAt time.Time `json:"expires_at"`
+	ExpiresAt time.Time `json:"expiresAt"`
 
 	// TokenType 令牌类型：`Bearer` 表示 HTTP Bearer 认证。
-	TokenType LoginResponseTokenType `json:"token_type"`
+	TokenType LoginResponseTokenType `json:"tokenType"`
 }
 
 // LoginResponseTokenType 令牌类型：`Bearer` 表示 HTTP Bearer 认证。
@@ -502,10 +505,10 @@ type PageInfo struct {
 	Size int32 `json:"size"`
 
 	// TotalItems 符合条件的资源总数，可为 `0`。
-	TotalItems int64 `json:"total_items"`
+	TotalItems int64 `json:"totalItems"`
 
 	// TotalPages 总页数，无结果时为 `0`。
-	TotalPages int64 `json:"total_pages"`
+	TotalPages int64 `json:"totalPages"`
 }
 
 // PositiveID 资源正整数标识，示例 `1`。
@@ -523,7 +526,7 @@ type Problem struct {
 	Instance string `json:"instance"`
 
 	// RequestID 请求追踪标识。
-	RequestID string `json:"request_id"`
+	RequestID string `json:"requestId"`
 
 	// Status 文章状态或问题的 HTTP 状态码。
 	Status int32 `json:"status"`
@@ -535,10 +538,67 @@ type Problem struct {
 	Type string `json:"type"`
 }
 
+// PublicArticleType 公开文章类型资源。
+type PublicArticleType struct {
+	// ArticleCount 满足公开条件的文章数量。
+	ArticleCount int64 `json:"articleCount"`
+
+	// ID 资源正整数标识，示例 `1`。
+	ID PositiveID `json:"id"`
+
+	// Image 分类图片地址，未设置时为 `null`。
+	Image *string `json:"image"`
+
+	// Name 文章类型名称。
+	Name string `json:"name"`
+}
+
+// PublicArticleTypeList 公开文章类型分页响应信封。
+type PublicArticleTypeList struct {
+	// Items 当前页公开文章类型数组。
+	Items []PublicArticleType `json:"items"`
+
+	// Page 分页页码、每页数量和总量信息。
+	Page PageInfo `json:"page"`
+}
+
+// PublicArticleTypeSummary 文章所属类型的公开摘要。
+type PublicArticleTypeSummary struct {
+	// ID 资源正整数标识，示例 `1`。
+	ID PositiveID `json:"id"`
+
+	// Image 分类图片地址，未设置时为 `null`。
+	Image *string `json:"image"`
+
+	// Name 文章类型名称。
+	Name string `json:"name"`
+}
+
+// PublicTag 公开标签资源。
+type PublicTag struct {
+	// ArticleCount 满足公开条件的文章数量。
+	ArticleCount int64 `json:"articleCount"`
+
+	// ID 资源正整数标识，示例 `1`。
+	ID PositiveID `json:"id"`
+
+	// Name 标签名称。
+	Name string `json:"name"`
+}
+
+// PublicTagList 公开标签分页响应信封。
+type PublicTagList struct {
+	// Items 当前页公开标签数组。
+	Items []PublicTag `json:"items"`
+
+	// Page 分页页码、每页数量和总量信息。
+	Page PageInfo `json:"page"`
+}
+
 // Tag 标签资源，包含版本和 UTC 时间。
 type Tag struct {
 	// CreatedAt UTC 创建时间，例如 `2026-01-01T00:00:00Z`。
-	CreatedAt time.Time `json:"created_at"`
+	CreatedAt time.Time `json:"createdAt"`
 
 	// ID 资源正整数标识，示例 `1`。
 	ID PositiveID `json:"id"`
@@ -547,7 +607,7 @@ type Tag struct {
 	Name string `json:"name"`
 
 	// UpdatedAt UTC 更新时间，从未更新时为 `null`。
-	UpdatedAt *time.Time `json:"updated_at"`
+	UpdatedAt *time.Time `json:"updatedAt"`
 
 	// Version 资源当前正整数版本，用于并发控制，示例 `1`。
 	Version Version `json:"version"`
@@ -595,10 +655,19 @@ type Page = int32
 // PageSize defines model for PageSize.
 type PageSize = int32
 
+// PublicPage defines model for PublicPage.
+type PublicPage = int32
+
+// PublicPageSize defines model for PublicPageSize.
+type PublicPageSize = int32
+
+// PublicSearchFilter defines model for PublicSearchFilter.
+type PublicSearchFilter = string
+
 // SearchFilter defines model for SearchFilter.
 type SearchFilter = string
 
-// Sort `created_at` 创建时间升序，`-created_at` 创建时间降序，`updated_at` 更新时间升序，`-updated_at` 更新时间降序，`title` 标题升序，`-title` 标题降序。
+// Sort `createdAt` 创建时间升序，`-createdAt` 创建时间降序，`updatedAt` 更新时间升序，`-updatedAt` 更新时间降序，`title` 标题升序，`-title` 标题降序。
 type Sort string
 
 // TagFilter 资源正整数标识，示例 `1`。
@@ -634,34 +703,16 @@ type Unauthorized = Problem
 // bearerAuthContextKey is the context key for bearerAuth security scheme
 type bearerAuthContextKey string
 
-// ListArticleTypesParams defines parameters for ListArticleTypes.
-type ListArticleTypesParams struct {
-	// Page 从 `1` 开始的页码，默认 `1`。
-	Page *Page `form:"page,omitempty" json:"page,omitempty"`
+// ListPublicArticleTypesParams defines parameters for ListPublicArticleTypes.
+type ListPublicArticleTypesParams struct {
+	// Page 从 `1` 开始的必填页码。
+	Page PublicPage `form:"page" json:"page"`
 
-	// PageSize 每页数量，默认 `20`，范围 `1` 至 `100`。
-	PageSize *PageSize `form:"page_size,omitempty" json:"page_size,omitempty"`
+	// PageSize 必填的每页数量，范围 `1` 至 `100`。
+	PageSize PublicPageSize `form:"pageSize" json:"pageSize"`
 
-	// Sort 排序：`created_at` 创建时间升序，`-created_at` 降序，`updated_at` 更新时间升序，`-updated_at` 降序，`title` 标题升序，`-title` 降序。
-	Sort *ListArticleTypesParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
-
-	// Q 按关键词筛选可搜索文本，例如 `Go`。
-	Q *SearchFilter `form:"q,omitempty" json:"q,omitempty"`
-}
-
-// ListArticleTypesParamsSort defines parameters for ListArticleTypes.
-type ListArticleTypesParamsSort string
-
-// DeleteArticleTypeParams defines parameters for DeleteArticleType.
-type DeleteArticleTypeParams struct {
-	// IfMatch 强实体标签，内容为当前正整数版本，必须原样提交，例如 `"1"`。
-	IfMatch IfMatch `json:"If-Match"`
-}
-
-// PatchArticleTypeParams defines parameters for PatchArticleType.
-type PatchArticleTypeParams struct {
-	// IfMatch 强实体标签，内容为当前正整数版本，必须原样提交，例如 `"1"`。
-	IfMatch IfMatch `json:"If-Match"`
+	// Q 按名称筛选；服务端先去除首尾空白，再进行不区分大小写的包含匹配。
+	Q *PublicSearchFilter `form:"q,omitempty" json:"q,omitempty"`
 }
 
 // ListArticlesParams defines parameters for ListArticles.
@@ -670,16 +721,16 @@ type ListArticlesParams struct {
 	Page *Page `form:"page,omitempty" json:"page,omitempty"`
 
 	// PageSize 每页数量，默认 `20`，范围 `1` 至 `100`。
-	PageSize *PageSize `form:"page_size,omitempty" json:"page_size,omitempty"`
+	PageSize *PageSize `form:"pageSize,omitempty" json:"pageSize,omitempty"`
 
-	// Sort 排序：`created_at` 创建时间升序，`-created_at` 降序，`updated_at` 更新时间升序，`-updated_at` 降序，`title` 标题升序，`-title` 降序。
+	// Sort 排序：`createdAt` 创建时间升序，`-createdAt` 降序，`updatedAt` 更新时间升序，`-updatedAt` 降序，`title` 标题升序，`-title` 降序。
 	Sort *ListArticlesParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
 
 	// ArticleTypeID 按文章类型标识筛选文章，例如 `1`。
-	ArticleTypeID *ArticleTypeFilter `form:"article_type_id,omitempty" json:"article_type_id,omitempty"`
+	ArticleTypeID *ArticleTypeFilter `form:"articleTypeId,omitempty" json:"articleTypeId,omitempty"`
 
 	// TagID 按标签标识筛选文章，例如 `1`。
-	TagID *TagFilter `form:"tag_id,omitempty" json:"tag_id,omitempty"`
+	TagID *TagFilter `form:"tagId,omitempty" json:"tagId,omitempty"`
 
 	// Q 按关键词筛选可搜索文本，例如 `Go`。
 	Q *SearchFilter `form:"q,omitempty" json:"q,omitempty"`
@@ -694,22 +745,52 @@ type CreateManageArticleImageMultipartBody struct {
 	File openapi_types.File `json:"file"`
 }
 
+// ListManageArticleTypesParams defines parameters for ListManageArticleTypes.
+type ListManageArticleTypesParams struct {
+	// Page 从 `1` 开始的页码，默认 `1`。
+	Page *Page `form:"page,omitempty" json:"page,omitempty"`
+
+	// PageSize 每页数量，默认 `20`，范围 `1` 至 `100`。
+	PageSize *PageSize `form:"pageSize,omitempty" json:"pageSize,omitempty"`
+
+	// Sort 排序：`createdAt` 创建时间升序，`-createdAt` 降序，`updatedAt` 更新时间升序，`-updatedAt` 降序，`title` 标题升序，`-title` 降序。
+	Sort *ListManageArticleTypesParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
+
+	// Q 按关键词筛选可搜索文本，例如 `Go`。
+	Q *SearchFilter `form:"q,omitempty" json:"q,omitempty"`
+}
+
+// ListManageArticleTypesParamsSort defines parameters for ListManageArticleTypes.
+type ListManageArticleTypesParamsSort string
+
+// DeleteManageArticleTypeParams defines parameters for DeleteManageArticleType.
+type DeleteManageArticleTypeParams struct {
+	// IfMatch 强实体标签，内容为当前正整数版本，必须原样提交，例如 `"1"`。
+	IfMatch IfMatch `json:"If-Match"`
+}
+
+// PatchManageArticleTypeParams defines parameters for PatchManageArticleType.
+type PatchManageArticleTypeParams struct {
+	// IfMatch 强实体标签，内容为当前正整数版本，必须原样提交，例如 `"1"`。
+	IfMatch IfMatch `json:"If-Match"`
+}
+
 // ListManageArticlesParams defines parameters for ListManageArticles.
 type ListManageArticlesParams struct {
 	// Page 从 `1` 开始的页码，默认 `1`。
 	Page *Page `form:"page,omitempty" json:"page,omitempty"`
 
 	// PageSize 每页数量，默认 `20`，范围 `1` 至 `100`。
-	PageSize *PageSize `form:"page_size,omitempty" json:"page_size,omitempty"`
+	PageSize *PageSize `form:"pageSize,omitempty" json:"pageSize,omitempty"`
 
-	// Sort 排序：`created_at` 创建时间升序，`-created_at` 降序，`updated_at` 更新时间升序，`-updated_at` 降序，`title` 标题升序，`-title` 降序。
+	// Sort 排序：`createdAt` 创建时间升序，`-createdAt` 降序，`updatedAt` 更新时间升序，`-updatedAt` 降序，`title` 标题升序，`-title` 降序。
 	Sort *ListManageArticlesParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
 
 	// ArticleTypeID 按文章类型标识筛选文章，例如 `1`。
-	ArticleTypeID *ArticleTypeFilter `form:"article_type_id,omitempty" json:"article_type_id,omitempty"`
+	ArticleTypeID *ArticleTypeFilter `form:"articleTypeId,omitempty" json:"articleTypeId,omitempty"`
 
 	// TagID 按标签标识筛选文章，例如 `1`。
-	TagID *TagFilter `form:"tag_id,omitempty" json:"tag_id,omitempty"`
+	TagID *TagFilter `form:"tagId,omitempty" json:"tagId,omitempty"`
 
 	// Q 按关键词筛选可搜索文本，例如 `Go`。
 	Q *SearchFilter `form:"q,omitempty" json:"q,omitempty"`
@@ -742,41 +823,47 @@ type PublishManageArticleParams struct {
 	IfMatch IfMatch `json:"If-Match"`
 }
 
-// ListTagsParams defines parameters for ListTags.
-type ListTagsParams struct {
+// ListManageTagsParams defines parameters for ListManageTags.
+type ListManageTagsParams struct {
 	// Page 从 `1` 开始的页码，默认 `1`。
 	Page *Page `form:"page,omitempty" json:"page,omitempty"`
 
 	// PageSize 每页数量，默认 `20`，范围 `1` 至 `100`。
-	PageSize *PageSize `form:"page_size,omitempty" json:"page_size,omitempty"`
+	PageSize *PageSize `form:"pageSize,omitempty" json:"pageSize,omitempty"`
 
-	// Sort 排序：`created_at` 创建时间升序，`-created_at` 降序，`updated_at` 更新时间升序，`-updated_at` 降序，`title` 标题升序，`-title` 降序。
-	Sort *ListTagsParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
+	// Sort 排序：`createdAt` 创建时间升序，`-createdAt` 降序，`updatedAt` 更新时间升序，`-updatedAt` 降序，`title` 标题升序，`-title` 降序。
+	Sort *ListManageTagsParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
 
 	// Q 按关键词筛选可搜索文本，例如 `Go`。
 	Q *SearchFilter `form:"q,omitempty" json:"q,omitempty"`
 }
 
-// ListTagsParamsSort defines parameters for ListTags.
-type ListTagsParamsSort string
+// ListManageTagsParamsSort defines parameters for ListManageTags.
+type ListManageTagsParamsSort string
 
-// DeleteTagParams defines parameters for DeleteTag.
-type DeleteTagParams struct {
+// DeleteManageTagParams defines parameters for DeleteManageTag.
+type DeleteManageTagParams struct {
 	// IfMatch 强实体标签，内容为当前正整数版本，必须原样提交，例如 `"1"`。
 	IfMatch IfMatch `json:"If-Match"`
 }
 
-// PatchTagParams defines parameters for PatchTag.
-type PatchTagParams struct {
+// PatchManageTagParams defines parameters for PatchManageTag.
+type PatchManageTagParams struct {
 	// IfMatch 强实体标签，内容为当前正整数版本，必须原样提交，例如 `"1"`。
 	IfMatch IfMatch `json:"If-Match"`
 }
 
-// CreateArticleTypeJSONRequestBody defines body for CreateArticleType for application/json ContentType.
-type CreateArticleTypeJSONRequestBody = ArticleTypeCreate
+// ListPublicTagsParams defines parameters for ListPublicTags.
+type ListPublicTagsParams struct {
+	// Page 从 `1` 开始的必填页码。
+	Page PublicPage `form:"page" json:"page"`
 
-// PatchArticleTypeJSONRequestBody defines body for PatchArticleType for application/json ContentType.
-type PatchArticleTypeJSONRequestBody = ArticleTypePatch
+	// PageSize 必填的每页数量，范围 `1` 至 `100`。
+	PageSize PublicPageSize `form:"pageSize" json:"pageSize"`
+
+	// Q 按名称筛选；服务端先去除首尾空白，再进行不区分大小写的包含匹配。
+	Q *PublicSearchFilter `form:"q,omitempty" json:"q,omitempty"`
+}
 
 // LoginJSONRequestBody defines body for Login for application/json ContentType.
 type LoginJSONRequestBody = LoginRequest
@@ -784,43 +871,40 @@ type LoginJSONRequestBody = LoginRequest
 // CreateManageArticleImageMultipartRequestBody defines body for CreateManageArticleImage for multipart/form-data ContentType.
 type CreateManageArticleImageMultipartRequestBody CreateManageArticleImageMultipartBody
 
+// CreateManageArticleTypeJSONRequestBody defines body for CreateManageArticleType for application/json ContentType.
+type CreateManageArticleTypeJSONRequestBody = ArticleTypeCreate
+
+// PatchManageArticleTypeJSONRequestBody defines body for PatchManageArticleType for application/json ContentType.
+type PatchManageArticleTypeJSONRequestBody = ArticleTypePatch
+
 // CreateManageArticleJSONRequestBody defines body for CreateManageArticle for application/json ContentType.
 type CreateManageArticleJSONRequestBody = ArticleCreate
 
 // PatchManageArticleJSONRequestBody defines body for PatchManageArticle for application/json ContentType.
 type PatchManageArticleJSONRequestBody = ArticlePatch
 
-// CreateTagJSONRequestBody defines body for CreateTag for application/json ContentType.
-type CreateTagJSONRequestBody = TagCreate
+// CreateManageTagJSONRequestBody defines body for CreateManageTag for application/json ContentType.
+type CreateManageTagJSONRequestBody = TagCreate
 
-// PatchTagJSONRequestBody defines body for PatchTag for application/json ContentType.
-type PatchTagJSONRequestBody = TagPatch
+// PatchManageTagJSONRequestBody defines body for PatchManageTag for application/json ContentType.
+type PatchManageTagJSONRequestBody = TagPatch
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// 取消正文图片
-	// (DELETE /api/v1/article-images/{image_id})
+	// (DELETE /api/v1/article-images/{imageId})
 	DeleteArticleImage(c *gin.Context, imageID ArticleImageID)
-	// 查询文章类型
+	// 查询公开文章类型
 	// (GET /api/v1/article-types)
-	ListArticleTypes(c *gin.Context, params ListArticleTypesParams)
-	// 创建文章类型
-	// (POST /api/v1/article-types)
-	CreateArticleType(c *gin.Context)
-	// 删除文章类型
-	// (DELETE /api/v1/article-types/{article_type_id})
-	DeleteArticleType(c *gin.Context, articleTypeID ArticleTypeID, params DeleteArticleTypeParams)
-	// 获取文章类型
-	// (GET /api/v1/article-types/{article_type_id})
-	GetArticleType(c *gin.Context, articleTypeID ArticleTypeID)
-	// 更新文章类型
-	// (PATCH /api/v1/article-types/{article_type_id})
-	PatchArticleType(c *gin.Context, articleTypeID ArticleTypeID, params PatchArticleTypeParams)
+	ListPublicArticleTypes(c *gin.Context, params ListPublicArticleTypesParams)
+	// 获取公开文章类型
+	// (GET /api/v1/article-types/{articleTypeId})
+	GetPublicArticleType(c *gin.Context, articleTypeID ArticleTypeID)
 	// 查询已发布文章
 	// (GET /api/v1/articles)
 	ListArticles(c *gin.Context, params ListArticlesParams)
 	// 获取已发布文章
-	// (GET /api/v1/articles/{article_id})
+	// (GET /api/v1/articles/{articleId})
 	GetArticle(c *gin.Context, articleID ArticleID)
 	// 登录并获取访问令牌
 	// (POST /api/v1/auth/login)
@@ -828,6 +912,21 @@ type ServerInterface interface {
 	// 管理端上传正文图片
 	// (POST /api/v1/manage/article-images)
 	CreateManageArticleImage(c *gin.Context)
+	// 管理端查询文章类型
+	// (GET /api/v1/manage/article-types)
+	ListManageArticleTypes(c *gin.Context, params ListManageArticleTypesParams)
+	// 管理端创建文章类型
+	// (POST /api/v1/manage/article-types)
+	CreateManageArticleType(c *gin.Context)
+	// 管理端删除文章类型
+	// (DELETE /api/v1/manage/article-types/{articleTypeId})
+	DeleteManageArticleType(c *gin.Context, articleTypeID ArticleTypeID, params DeleteManageArticleTypeParams)
+	// 管理端获取文章类型
+	// (GET /api/v1/manage/article-types/{articleTypeId})
+	GetManageArticleType(c *gin.Context, articleTypeID ArticleTypeID)
+	// 管理端更新文章类型
+	// (PATCH /api/v1/manage/article-types/{articleTypeId})
+	PatchManageArticleType(c *gin.Context, articleTypeID ArticleTypeID, params PatchManageArticleTypeParams)
 	// 管理端查询文章
 	// (GET /api/v1/manage/articles)
 	ListManageArticles(c *gin.Context, params ListManageArticlesParams)
@@ -835,37 +934,43 @@ type ServerInterface interface {
 	// (POST /api/v1/manage/articles)
 	CreateManageArticle(c *gin.Context)
 	// 管理端删除文章
-	// (DELETE /api/v1/manage/articles/{article_id})
+	// (DELETE /api/v1/manage/articles/{articleId})
 	DeleteManageArticle(c *gin.Context, articleID ArticleID, params DeleteManageArticleParams)
 	// 管理端获取文章
-	// (GET /api/v1/manage/articles/{article_id})
+	// (GET /api/v1/manage/articles/{articleId})
 	GetManageArticle(c *gin.Context, articleID ArticleID)
 	// 管理端部分更新文章
-	// (PATCH /api/v1/manage/articles/{article_id})
+	// (PATCH /api/v1/manage/articles/{articleId})
 	PatchManageArticle(c *gin.Context, articleID ArticleID, params PatchManageArticleParams)
 	// 管理端归档文章
-	// (POST /api/v1/manage/articles/{article_id}/archive)
+	// (POST /api/v1/manage/articles/{articleId}/archive)
 	ArchiveManageArticle(c *gin.Context, articleID ArticleID, params ArchiveManageArticleParams)
 	// 管理端发布文章
-	// (POST /api/v1/manage/articles/{article_id}/publish)
+	// (POST /api/v1/manage/articles/{articleId}/publish)
 	PublishManageArticle(c *gin.Context, articleID ArticleID, params PublishManageArticleParams)
-	// 查询标签
+	// 管理端查询标签
+	// (GET /api/v1/manage/tags)
+	ListManageTags(c *gin.Context, params ListManageTagsParams)
+	// 管理端创建标签
+	// (POST /api/v1/manage/tags)
+	CreateManageTag(c *gin.Context)
+	// 管理端删除标签
+	// (DELETE /api/v1/manage/tags/{tagId})
+	DeleteManageTag(c *gin.Context, tagID TagID, params DeleteManageTagParams)
+	// 管理端获取标签
+	// (GET /api/v1/manage/tags/{tagId})
+	GetManageTag(c *gin.Context, tagID TagID)
+	// 管理端更新标签
+	// (PATCH /api/v1/manage/tags/{tagId})
+	PatchManageTag(c *gin.Context, tagID TagID, params PatchManageTagParams)
+	// 查询公开标签
 	// (GET /api/v1/tags)
-	ListTags(c *gin.Context, params ListTagsParams)
-	// 创建标签
-	// (POST /api/v1/tags)
-	CreateTag(c *gin.Context)
-	// 删除标签
-	// (DELETE /api/v1/tags/{tag_id})
-	DeleteTag(c *gin.Context, tagID TagID, params DeleteTagParams)
-	// 获取标签
-	// (GET /api/v1/tags/{tag_id})
-	GetTag(c *gin.Context, tagID TagID)
-	// 更新标签
-	// (PATCH /api/v1/tags/{tag_id})
-	PatchTag(c *gin.Context, tagID TagID, params PatchTagParams)
+	ListPublicTags(c *gin.Context, params ListPublicTagsParams)
+	// 获取公开标签
+	// (GET /api/v1/tags/{tagId})
+	GetPublicTag(c *gin.Context, tagID TagID)
 	// 读取正文图片媒体
-	// (GET /media/article-images/{storage_key})
+	// (GET /media/article-images/{storageKey})
 	GetArticleImageMedia(c *gin.Context, storageKey ArticleImageStorageKey)
 }
 
@@ -884,12 +989,12 @@ func (siw *ServerInterfaceWrapper) DeleteArticleImage(c *gin.Context) {
 	var err error
 	_ = err
 
-	// ------------- Path parameter "image_id" -------------
+	// ------------- Path parameter "imageId" -------------
 	var imageID ArticleImageID
 
-	err = runtime.BindStyledParameterWithOptions("simple", "image_id", c.Param("image_id"), &imageID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	err = runtime.BindStyledParameterWithOptions("simple", "imageId", c.Param("imageId"), &imageID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter image_id: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter imageId: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -905,36 +1010,28 @@ func (siw *ServerInterfaceWrapper) DeleteArticleImage(c *gin.Context) {
 	siw.Handler.DeleteArticleImage(c, imageID)
 }
 
-// ListArticleTypes operation middleware
-func (siw *ServerInterfaceWrapper) ListArticleTypes(c *gin.Context) {
+// ListPublicArticleTypes operation middleware
+func (siw *ServerInterfaceWrapper) ListPublicArticleTypes(c *gin.Context) {
 
 	var err error
 	_ = err
 
 	// Parameter object where we will unmarshal all parameters from the context
-	var params ListArticleTypesParams
+	var params ListPublicArticleTypesParams
 
-	// ------------- Optional query parameter "page" -------------
+	// ------------- Required query parameter "page" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", c.Request.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "page", c.Request.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
 	if err != nil {
 		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter page: %w", err), http.StatusBadRequest)
 		return
 	}
 
-	// ------------- Optional query parameter "page_size" -------------
+	// ------------- Required query parameter "pageSize" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "page_size", c.Request.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "pageSize", c.Request.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter page_size: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	// ------------- Optional query parameter "sort" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", c.Request.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter sort: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter pageSize: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -953,65 +1050,21 @@ func (siw *ServerInterfaceWrapper) ListArticleTypes(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.ListArticleTypes(c, params)
+	siw.Handler.ListPublicArticleTypes(c, params)
 }
 
-// CreateArticleType operation middleware
-func (siw *ServerInterfaceWrapper) CreateArticleType(c *gin.Context) {
-
-	c.Set(string(BearerAuthScopes), []string{})
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.CreateArticleType(c)
-}
-
-// DeleteArticleType operation middleware
-func (siw *ServerInterfaceWrapper) DeleteArticleType(c *gin.Context) {
+// GetPublicArticleType operation middleware
+func (siw *ServerInterfaceWrapper) GetPublicArticleType(c *gin.Context) {
 
 	var err error
 	_ = err
 
-	// ------------- Path parameter "article_type_id" -------------
+	// ------------- Path parameter "articleTypeId" -------------
 	var articleTypeID ArticleTypeID
 
-	err = runtime.BindStyledParameterWithOptions("simple", "article_type_id", c.Param("article_type_id"), &articleTypeID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
+	err = runtime.BindStyledParameterWithOptions("simple", "articleTypeId", c.Param("articleTypeId"), &articleTypeID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter article_type_id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(string(BearerAuthScopes), []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params DeleteArticleTypeParams
-
-	headers := c.Request.Header
-
-	// ------------- Required header parameter "If-Match" -------------
-	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
-		var IfMatch IfMatch
-		n := len(valueList)
-		if n != 1 {
-			siw.ErrorHandler(c, fmt.Errorf("Expected one value for If-Match, got %d", n), http.StatusBadRequest)
-			return
-		}
-
-		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
-		if err != nil {
-			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter If-Match: %w", err), http.StatusBadRequest)
-			return
-		}
-
-		params.IfMatch = IfMatch
-
-	} else {
-		siw.ErrorHandler(c, fmt.Errorf("Header parameter If-Match is required, but not found"), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter articleTypeId: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -1022,86 +1075,7 @@ func (siw *ServerInterfaceWrapper) DeleteArticleType(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.DeleteArticleType(c, articleTypeID, params)
-}
-
-// GetArticleType operation middleware
-func (siw *ServerInterfaceWrapper) GetArticleType(c *gin.Context) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "article_type_id" -------------
-	var articleTypeID ArticleTypeID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "article_type_id", c.Param("article_type_id"), &articleTypeID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter article_type_id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.GetArticleType(c, articleTypeID)
-}
-
-// PatchArticleType operation middleware
-func (siw *ServerInterfaceWrapper) PatchArticleType(c *gin.Context) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "article_type_id" -------------
-	var articleTypeID ArticleTypeID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "article_type_id", c.Param("article_type_id"), &articleTypeID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
-	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter article_type_id: %w", err), http.StatusBadRequest)
-		return
-	}
-
-	c.Set(string(BearerAuthScopes), []string{})
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params PatchArticleTypeParams
-
-	headers := c.Request.Header
-
-	// ------------- Required header parameter "If-Match" -------------
-	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
-		var IfMatch IfMatch
-		n := len(valueList)
-		if n != 1 {
-			siw.ErrorHandler(c, fmt.Errorf("Expected one value for If-Match, got %d", n), http.StatusBadRequest)
-			return
-		}
-
-		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
-		if err != nil {
-			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter If-Match: %w", err), http.StatusBadRequest)
-			return
-		}
-
-		params.IfMatch = IfMatch
-
-	} else {
-		siw.ErrorHandler(c, fmt.Errorf("Header parameter If-Match is required, but not found"), http.StatusBadRequest)
-		return
-	}
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		middleware(c)
-		if c.IsAborted() {
-			return
-		}
-	}
-
-	siw.Handler.PatchArticleType(c, articleTypeID, params)
+	siw.Handler.GetPublicArticleType(c, articleTypeID)
 }
 
 // ListArticles operation middleware
@@ -1121,11 +1095,11 @@ func (siw *ServerInterfaceWrapper) ListArticles(c *gin.Context) {
 		return
 	}
 
-	// ------------- Optional query parameter "page_size" -------------
+	// ------------- Optional query parameter "pageSize" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "page_size", c.Request.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "pageSize", c.Request.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter page_size: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter pageSize: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -1137,19 +1111,19 @@ func (siw *ServerInterfaceWrapper) ListArticles(c *gin.Context) {
 		return
 	}
 
-	// ------------- Optional query parameter "article_type_id" -------------
+	// ------------- Optional query parameter "articleTypeId" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "article_type_id", c.Request.URL.Query(), &params.ArticleTypeID, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "articleTypeId", c.Request.URL.Query(), &params.ArticleTypeID, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter article_type_id: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter articleTypeId: %w", err), http.StatusBadRequest)
 		return
 	}
 
-	// ------------- Optional query parameter "tag_id" -------------
+	// ------------- Optional query parameter "tagId" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "tag_id", c.Request.URL.Query(), &params.TagID, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tagId", c.Request.URL.Query(), &params.TagID, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter tag_id: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter tagId: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -1177,12 +1151,12 @@ func (siw *ServerInterfaceWrapper) GetArticle(c *gin.Context) {
 	var err error
 	_ = err
 
-	// ------------- Path parameter "article_id" -------------
+	// ------------- Path parameter "articleId" -------------
 	var articleID ArticleID
 
-	err = runtime.BindStyledParameterWithOptions("simple", "article_id", c.Param("article_id"), &articleID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
+	err = runtime.BindStyledParameterWithOptions("simple", "articleId", c.Param("articleId"), &articleID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter article_id: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter articleId: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -1224,6 +1198,209 @@ func (siw *ServerInterfaceWrapper) CreateManageArticleImage(c *gin.Context) {
 	siw.Handler.CreateManageArticleImage(c)
 }
 
+// ListManageArticleTypes operation middleware
+func (siw *ServerInterfaceWrapper) ListManageArticleTypes(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	c.Set(string(BearerAuthScopes), []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListManageArticleTypesParams
+
+	// ------------- Optional query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "page", c.Request.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter page: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "pageSize" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "pageSize", c.Request.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter pageSize: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", c.Request.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter sort: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", c.Request.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter q: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListManageArticleTypes(c, params)
+}
+
+// CreateManageArticleType operation middleware
+func (siw *ServerInterfaceWrapper) CreateManageArticleType(c *gin.Context) {
+
+	c.Set(string(BearerAuthScopes), []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.CreateManageArticleType(c)
+}
+
+// DeleteManageArticleType operation middleware
+func (siw *ServerInterfaceWrapper) DeleteManageArticleType(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "articleTypeId" -------------
+	var articleTypeID ArticleTypeID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "articleTypeId", c.Param("articleTypeId"), &articleTypeID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter articleTypeId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(string(BearerAuthScopes), []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteManageArticleTypeParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for If-Match, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter If-Match: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter If-Match is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.DeleteManageArticleType(c, articleTypeID, params)
+}
+
+// GetManageArticleType operation middleware
+func (siw *ServerInterfaceWrapper) GetManageArticleType(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "articleTypeId" -------------
+	var articleTypeID ArticleTypeID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "articleTypeId", c.Param("articleTypeId"), &articleTypeID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter articleTypeId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(string(BearerAuthScopes), []string{})
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetManageArticleType(c, articleTypeID)
+}
+
+// PatchManageArticleType operation middleware
+func (siw *ServerInterfaceWrapper) PatchManageArticleType(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "articleTypeId" -------------
+	var articleTypeID ArticleTypeID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "articleTypeId", c.Param("articleTypeId"), &articleTypeID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter articleTypeId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	c.Set(string(BearerAuthScopes), []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params PatchManageArticleTypeParams
+
+	headers := c.Request.Header
+
+	// ------------- Required header parameter "If-Match" -------------
+	if valueList, found := headers[http.CanonicalHeaderKey("If-Match")]; found {
+		var IfMatch IfMatch
+		n := len(valueList)
+		if n != 1 {
+			siw.ErrorHandler(c, fmt.Errorf("Expected one value for If-Match, got %d", n), http.StatusBadRequest)
+			return
+		}
+
+		err = runtime.BindStyledParameterWithOptions("simple", "If-Match", valueList[0], &IfMatch, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationHeader, Explode: false, Required: true, Type: "string", Format: ""})
+		if err != nil {
+			siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter If-Match: %w", err), http.StatusBadRequest)
+			return
+		}
+
+		params.IfMatch = IfMatch
+
+	} else {
+		siw.ErrorHandler(c, fmt.Errorf("Header parameter If-Match is required, but not found"), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.PatchManageArticleType(c, articleTypeID, params)
+}
+
 // ListManageArticles operation middleware
 func (siw *ServerInterfaceWrapper) ListManageArticles(c *gin.Context) {
 
@@ -1243,11 +1420,11 @@ func (siw *ServerInterfaceWrapper) ListManageArticles(c *gin.Context) {
 		return
 	}
 
-	// ------------- Optional query parameter "page_size" -------------
+	// ------------- Optional query parameter "pageSize" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "page_size", c.Request.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "pageSize", c.Request.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter page_size: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter pageSize: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -1259,19 +1436,19 @@ func (siw *ServerInterfaceWrapper) ListManageArticles(c *gin.Context) {
 		return
 	}
 
-	// ------------- Optional query parameter "article_type_id" -------------
+	// ------------- Optional query parameter "articleTypeId" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "article_type_id", c.Request.URL.Query(), &params.ArticleTypeID, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "articleTypeId", c.Request.URL.Query(), &params.ArticleTypeID, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter article_type_id: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter articleTypeId: %w", err), http.StatusBadRequest)
 		return
 	}
 
-	// ------------- Optional query parameter "tag_id" -------------
+	// ------------- Optional query parameter "tagId" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "tag_id", c.Request.URL.Query(), &params.TagID, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tagId", c.Request.URL.Query(), &params.TagID, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter tag_id: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter tagId: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -1314,12 +1491,12 @@ func (siw *ServerInterfaceWrapper) DeleteManageArticle(c *gin.Context) {
 	var err error
 	_ = err
 
-	// ------------- Path parameter "article_id" -------------
+	// ------------- Path parameter "articleId" -------------
 	var articleID ArticleID
 
-	err = runtime.BindStyledParameterWithOptions("simple", "article_id", c.Param("article_id"), &articleID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
+	err = runtime.BindStyledParameterWithOptions("simple", "articleId", c.Param("articleId"), &articleID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter article_id: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter articleId: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -1368,12 +1545,12 @@ func (siw *ServerInterfaceWrapper) GetManageArticle(c *gin.Context) {
 	var err error
 	_ = err
 
-	// ------------- Path parameter "article_id" -------------
+	// ------------- Path parameter "articleId" -------------
 	var articleID ArticleID
 
-	err = runtime.BindStyledParameterWithOptions("simple", "article_id", c.Param("article_id"), &articleID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
+	err = runtime.BindStyledParameterWithOptions("simple", "articleId", c.Param("articleId"), &articleID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter article_id: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter articleId: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -1395,12 +1572,12 @@ func (siw *ServerInterfaceWrapper) PatchManageArticle(c *gin.Context) {
 	var err error
 	_ = err
 
-	// ------------- Path parameter "article_id" -------------
+	// ------------- Path parameter "articleId" -------------
 	var articleID ArticleID
 
-	err = runtime.BindStyledParameterWithOptions("simple", "article_id", c.Param("article_id"), &articleID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
+	err = runtime.BindStyledParameterWithOptions("simple", "articleId", c.Param("articleId"), &articleID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter article_id: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter articleId: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -1449,12 +1626,12 @@ func (siw *ServerInterfaceWrapper) ArchiveManageArticle(c *gin.Context) {
 	var err error
 	_ = err
 
-	// ------------- Path parameter "article_id" -------------
+	// ------------- Path parameter "articleId" -------------
 	var articleID ArticleID
 
-	err = runtime.BindStyledParameterWithOptions("simple", "article_id", c.Param("article_id"), &articleID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
+	err = runtime.BindStyledParameterWithOptions("simple", "articleId", c.Param("articleId"), &articleID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter article_id: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter articleId: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -1503,12 +1680,12 @@ func (siw *ServerInterfaceWrapper) PublishManageArticle(c *gin.Context) {
 	var err error
 	_ = err
 
-	// ------------- Path parameter "article_id" -------------
+	// ------------- Path parameter "articleId" -------------
 	var articleID ArticleID
 
-	err = runtime.BindStyledParameterWithOptions("simple", "article_id", c.Param("article_id"), &articleID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
+	err = runtime.BindStyledParameterWithOptions("simple", "articleId", c.Param("articleId"), &articleID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter article_id: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter articleId: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -1551,14 +1728,16 @@ func (siw *ServerInterfaceWrapper) PublishManageArticle(c *gin.Context) {
 	siw.Handler.PublishManageArticle(c, articleID, params)
 }
 
-// ListTags operation middleware
-func (siw *ServerInterfaceWrapper) ListTags(c *gin.Context) {
+// ListManageTags operation middleware
+func (siw *ServerInterfaceWrapper) ListManageTags(c *gin.Context) {
 
 	var err error
 	_ = err
 
+	c.Set(string(BearerAuthScopes), []string{})
+
 	// Parameter object where we will unmarshal all parameters from the context
-	var params ListTagsParams
+	var params ListManageTagsParams
 
 	// ------------- Optional query parameter "page" -------------
 
@@ -1568,11 +1747,11 @@ func (siw *ServerInterfaceWrapper) ListTags(c *gin.Context) {
 		return
 	}
 
-	// ------------- Optional query parameter "page_size" -------------
+	// ------------- Optional query parameter "pageSize" -------------
 
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "page_size", c.Request.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "pageSize", c.Request.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter page_size: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter pageSize: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -1599,11 +1778,11 @@ func (siw *ServerInterfaceWrapper) ListTags(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.ListTags(c, params)
+	siw.Handler.ListManageTags(c, params)
 }
 
-// CreateTag operation middleware
-func (siw *ServerInterfaceWrapper) CreateTag(c *gin.Context) {
+// CreateManageTag operation middleware
+func (siw *ServerInterfaceWrapper) CreateManageTag(c *gin.Context) {
 
 	c.Set(string(BearerAuthScopes), []string{})
 
@@ -1614,28 +1793,28 @@ func (siw *ServerInterfaceWrapper) CreateTag(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.CreateTag(c)
+	siw.Handler.CreateManageTag(c)
 }
 
-// DeleteTag operation middleware
-func (siw *ServerInterfaceWrapper) DeleteTag(c *gin.Context) {
+// DeleteManageTag operation middleware
+func (siw *ServerInterfaceWrapper) DeleteManageTag(c *gin.Context) {
 
 	var err error
 	_ = err
 
-	// ------------- Path parameter "tag_id" -------------
+	// ------------- Path parameter "tagId" -------------
 	var tagID TagID
 
-	err = runtime.BindStyledParameterWithOptions("simple", "tag_id", c.Param("tag_id"), &tagID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
+	err = runtime.BindStyledParameterWithOptions("simple", "tagId", c.Param("tagId"), &tagID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter tag_id: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter tagId: %w", err), http.StatusBadRequest)
 		return
 	}
 
 	c.Set(string(BearerAuthScopes), []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
-	var params DeleteTagParams
+	var params DeleteManageTagParams
 
 	headers := c.Request.Header
 
@@ -1668,23 +1847,25 @@ func (siw *ServerInterfaceWrapper) DeleteTag(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.DeleteTag(c, tagID, params)
+	siw.Handler.DeleteManageTag(c, tagID, params)
 }
 
-// GetTag operation middleware
-func (siw *ServerInterfaceWrapper) GetTag(c *gin.Context) {
+// GetManageTag operation middleware
+func (siw *ServerInterfaceWrapper) GetManageTag(c *gin.Context) {
 
 	var err error
 	_ = err
 
-	// ------------- Path parameter "tag_id" -------------
+	// ------------- Path parameter "tagId" -------------
 	var tagID TagID
 
-	err = runtime.BindStyledParameterWithOptions("simple", "tag_id", c.Param("tag_id"), &tagID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
+	err = runtime.BindStyledParameterWithOptions("simple", "tagId", c.Param("tagId"), &tagID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter tag_id: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter tagId: %w", err), http.StatusBadRequest)
 		return
 	}
+
+	c.Set(string(BearerAuthScopes), []string{})
 
 	for _, middleware := range siw.HandlerMiddlewares {
 		middleware(c)
@@ -1693,28 +1874,28 @@ func (siw *ServerInterfaceWrapper) GetTag(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.GetTag(c, tagID)
+	siw.Handler.GetManageTag(c, tagID)
 }
 
-// PatchTag operation middleware
-func (siw *ServerInterfaceWrapper) PatchTag(c *gin.Context) {
+// PatchManageTag operation middleware
+func (siw *ServerInterfaceWrapper) PatchManageTag(c *gin.Context) {
 
 	var err error
 	_ = err
 
-	// ------------- Path parameter "tag_id" -------------
+	// ------------- Path parameter "tagId" -------------
 	var tagID TagID
 
-	err = runtime.BindStyledParameterWithOptions("simple", "tag_id", c.Param("tag_id"), &tagID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
+	err = runtime.BindStyledParameterWithOptions("simple", "tagId", c.Param("tagId"), &tagID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter tag_id: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter tagId: %w", err), http.StatusBadRequest)
 		return
 	}
 
 	c.Set(string(BearerAuthScopes), []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
-	var params PatchTagParams
+	var params PatchManageTagParams
 
 	headers := c.Request.Header
 
@@ -1747,7 +1928,75 @@ func (siw *ServerInterfaceWrapper) PatchTag(c *gin.Context) {
 		}
 	}
 
-	siw.Handler.PatchTag(c, tagID, params)
+	siw.Handler.PatchManageTag(c, tagID, params)
+}
+
+// ListPublicTags operation middleware
+func (siw *ServerInterfaceWrapper) ListPublicTags(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListPublicTagsParams
+
+	// ------------- Required query parameter "page" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "page", c.Request.URL.Query(), &params.Page, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter page: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Required query parameter "pageSize" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "pageSize", c.Request.URL.Query(), &params.PageSize, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter pageSize: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", c.Request.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter q: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.ListPublicTags(c, params)
+}
+
+// GetPublicTag operation middleware
+func (siw *ServerInterfaceWrapper) GetPublicTag(c *gin.Context) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "tagId" -------------
+	var tagID TagID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "tagId", c.Param("tagId"), &tagID, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64"})
+	if err != nil {
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter tagId: %w", err), http.StatusBadRequest)
+		return
+	}
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		middleware(c)
+		if c.IsAborted() {
+			return
+		}
+	}
+
+	siw.Handler.GetPublicTag(c, tagID)
 }
 
 // GetArticleImageMedia operation middleware
@@ -1756,12 +2005,12 @@ func (siw *ServerInterfaceWrapper) GetArticleImageMedia(c *gin.Context) {
 	var err error
 	_ = err
 
-	// ------------- Path parameter "storage_key" -------------
+	// ------------- Path parameter "storageKey" -------------
 	var storageKey ArticleImageStorageKey
 
-	err = runtime.BindStyledParameterWithOptions("simple", "storage_key", c.Param("storage_key"), &storageKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
+	err = runtime.BindStyledParameterWithOptions("simple", "storageKey", c.Param("storageKey"), &storageKey, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: ""})
 	if err != nil {
-		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter storage_key: %w", err), http.StatusBadRequest)
+		siw.ErrorHandler(c, fmt.Errorf("Invalid format for parameter storageKey: %w", err), http.StatusBadRequest)
 		return
 	}
 
@@ -1802,29 +2051,33 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 		ErrorHandler:       errorHandler,
 	}
 
-	router.DELETE(options.BaseURL+"/api/v1/article-images/:image_id", wrapper.DeleteArticleImage)
-	router.GET(options.BaseURL+"/api/v1/article-types", wrapper.ListArticleTypes)
-	router.POST(options.BaseURL+"/api/v1/article-types", wrapper.CreateArticleType)
-	router.DELETE(options.BaseURL+"/api/v1/article-types/:article_type_id", wrapper.DeleteArticleType)
-	router.GET(options.BaseURL+"/api/v1/article-types/:article_type_id", wrapper.GetArticleType)
-	router.PATCH(options.BaseURL+"/api/v1/article-types/:article_type_id", wrapper.PatchArticleType)
+	router.DELETE(options.BaseURL+"/api/v1/article-images/:imageId", wrapper.DeleteArticleImage)
+	router.GET(options.BaseURL+"/api/v1/article-types", wrapper.ListPublicArticleTypes)
+	router.GET(options.BaseURL+"/api/v1/article-types/:articleTypeId", wrapper.GetPublicArticleType)
 	router.GET(options.BaseURL+"/api/v1/articles", wrapper.ListArticles)
-	router.GET(options.BaseURL+"/api/v1/articles/:article_id", wrapper.GetArticle)
+	router.GET(options.BaseURL+"/api/v1/articles/:articleId", wrapper.GetArticle)
 	router.POST(options.BaseURL+"/api/v1/auth/login", wrapper.Login)
 	router.POST(options.BaseURL+"/api/v1/manage/article-images", wrapper.CreateManageArticleImage)
+	router.GET(options.BaseURL+"/api/v1/manage/article-types", wrapper.ListManageArticleTypes)
+	router.POST(options.BaseURL+"/api/v1/manage/article-types", wrapper.CreateManageArticleType)
+	router.DELETE(options.BaseURL+"/api/v1/manage/article-types/:articleTypeId", wrapper.DeleteManageArticleType)
+	router.GET(options.BaseURL+"/api/v1/manage/article-types/:articleTypeId", wrapper.GetManageArticleType)
+	router.PATCH(options.BaseURL+"/api/v1/manage/article-types/:articleTypeId", wrapper.PatchManageArticleType)
 	router.GET(options.BaseURL+"/api/v1/manage/articles", wrapper.ListManageArticles)
 	router.POST(options.BaseURL+"/api/v1/manage/articles", wrapper.CreateManageArticle)
-	router.DELETE(options.BaseURL+"/api/v1/manage/articles/:article_id", wrapper.DeleteManageArticle)
-	router.GET(options.BaseURL+"/api/v1/manage/articles/:article_id", wrapper.GetManageArticle)
-	router.PATCH(options.BaseURL+"/api/v1/manage/articles/:article_id", wrapper.PatchManageArticle)
-	router.POST(options.BaseURL+"/api/v1/manage/articles/:article_id/archive", wrapper.ArchiveManageArticle)
-	router.POST(options.BaseURL+"/api/v1/manage/articles/:article_id/publish", wrapper.PublishManageArticle)
-	router.GET(options.BaseURL+"/api/v1/tags", wrapper.ListTags)
-	router.POST(options.BaseURL+"/api/v1/tags", wrapper.CreateTag)
-	router.DELETE(options.BaseURL+"/api/v1/tags/:tag_id", wrapper.DeleteTag)
-	router.GET(options.BaseURL+"/api/v1/tags/:tag_id", wrapper.GetTag)
-	router.PATCH(options.BaseURL+"/api/v1/tags/:tag_id", wrapper.PatchTag)
-	router.GET(options.BaseURL+"/media/article-images/:storage_key", wrapper.GetArticleImageMedia)
+	router.DELETE(options.BaseURL+"/api/v1/manage/articles/:articleId", wrapper.DeleteManageArticle)
+	router.GET(options.BaseURL+"/api/v1/manage/articles/:articleId", wrapper.GetManageArticle)
+	router.PATCH(options.BaseURL+"/api/v1/manage/articles/:articleId", wrapper.PatchManageArticle)
+	router.POST(options.BaseURL+"/api/v1/manage/articles/:articleId/archive", wrapper.ArchiveManageArticle)
+	router.POST(options.BaseURL+"/api/v1/manage/articles/:articleId/publish", wrapper.PublishManageArticle)
+	router.GET(options.BaseURL+"/api/v1/manage/tags", wrapper.ListManageTags)
+	router.POST(options.BaseURL+"/api/v1/manage/tags", wrapper.CreateManageTag)
+	router.DELETE(options.BaseURL+"/api/v1/manage/tags/:tagId", wrapper.DeleteManageTag)
+	router.GET(options.BaseURL+"/api/v1/manage/tags/:tagId", wrapper.GetManageTag)
+	router.PATCH(options.BaseURL+"/api/v1/manage/tags/:tagId", wrapper.PatchManageTag)
+	router.GET(options.BaseURL+"/api/v1/tags", wrapper.ListPublicTags)
+	router.GET(options.BaseURL+"/api/v1/tags/:tagId", wrapper.GetPublicTag)
+	router.GET(options.BaseURL+"/media/article-images/:storageKey", wrapper.GetArticleImageMedia)
 }
 
 type BadRequestApplicationProblemPlusJSONResponse Problem
@@ -1844,7 +2097,7 @@ type PreconditionRequiredApplicationProblemPlusJSONResponse Problem
 type UnauthorizedApplicationProblemPlusJSONResponse Problem
 
 type DeleteArticleImageRequestObject struct {
-	ImageID ArticleImageID `json:"image_id"`
+	ImageID ArticleImageID `json:"imageId"`
 }
 
 type DeleteArticleImageResponseObject interface {
@@ -1955,17 +2208,17 @@ func (response DeleteArticleImage500ApplicationProblemPlusJSONResponse) VisitDel
 	return err
 }
 
-type ListArticleTypesRequestObject struct {
-	Params ListArticleTypesParams
+type ListPublicArticleTypesRequestObject struct {
+	Params ListPublicArticleTypesParams
 }
 
-type ListArticleTypesResponseObject interface {
-	VisitListArticleTypesResponse(w http.ResponseWriter) error
+type ListPublicArticleTypesResponseObject interface {
+	VisitListPublicArticleTypesResponse(w http.ResponseWriter) error
 }
 
-type ListArticleTypes200JSONResponse ArticleTypeList
+type ListPublicArticleTypes200JSONResponse PublicArticleTypeList
 
-func (response ListArticleTypes200JSONResponse) VisitListArticleTypesResponse(w http.ResponseWriter) error {
+func (response ListPublicArticleTypes200JSONResponse) VisitListPublicArticleTypesResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -1977,11 +2230,11 @@ func (response ListArticleTypes200JSONResponse) VisitListArticleTypesResponse(w 
 	return err
 }
 
-type ListArticleTypes400ApplicationProblemPlusJSONResponse struct {
+type ListPublicArticleTypes400ApplicationProblemPlusJSONResponse struct {
 	BadRequestApplicationProblemPlusJSONResponse
 }
 
-func (response ListArticleTypes400ApplicationProblemPlusJSONResponse) VisitListArticleTypesResponse(w http.ResponseWriter) error {
+func (response ListPublicArticleTypes400ApplicationProblemPlusJSONResponse) VisitListPublicArticleTypesResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -1993,11 +2246,11 @@ func (response ListArticleTypes400ApplicationProblemPlusJSONResponse) VisitListA
 	return err
 }
 
-type ListArticleTypes500ApplicationProblemPlusJSONResponse struct {
+type ListPublicArticleTypes500ApplicationProblemPlusJSONResponse struct {
 	InternalErrorApplicationProblemPlusJSONResponse
 }
 
-func (response ListArticleTypes500ApplicationProblemPlusJSONResponse) VisitListArticleTypesResponse(w http.ResponseWriter) error {
+func (response ListPublicArticleTypes500ApplicationProblemPlusJSONResponse) VisitListPublicArticleTypesResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -2009,265 +2262,24 @@ func (response ListArticleTypes500ApplicationProblemPlusJSONResponse) VisitListA
 	return err
 }
 
-type CreateArticleTypeRequestObject struct {
-	Body *CreateArticleTypeJSONRequestBody
+type GetPublicArticleTypeRequestObject struct {
+	ArticleTypeID ArticleTypeID `json:"articleTypeId"`
 }
 
-type CreateArticleTypeResponseObject interface {
-	VisitCreateArticleTypeResponse(w http.ResponseWriter) error
+type GetPublicArticleTypeResponseObject interface {
+	VisitGetPublicArticleTypeResponse(w http.ResponseWriter) error
 }
 
-type CreateArticleType201ResponseHeaders struct {
-	ETag     string
-	Location string
-}
-
-type CreateArticleType201JSONResponse struct {
-	Body    ArticleType
-	Headers CreateArticleType201ResponseHeaders
-}
-
-func (response CreateArticleType201JSONResponse) VisitCreateArticleTypeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("ETag", fmt.Sprint(response.Headers.ETag))
-	w.Header().Set("Location", fmt.Sprint(response.Headers.Location))
-	w.WriteHeader(201)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateArticleType400ApplicationProblemPlusJSONResponse struct {
-	BadRequestApplicationProblemPlusJSONResponse
-}
-
-func (response CreateArticleType400ApplicationProblemPlusJSONResponse) VisitCreateArticleTypeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateArticleType401ApplicationProblemPlusJSONResponse struct {
-	UnauthorizedApplicationProblemPlusJSONResponse
-}
-
-func (response CreateArticleType401ApplicationProblemPlusJSONResponse) VisitCreateArticleTypeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateArticleType403ApplicationProblemPlusJSONResponse struct {
-	ForbiddenApplicationProblemPlusJSONResponse
-}
-
-func (response CreateArticleType403ApplicationProblemPlusJSONResponse) VisitCreateArticleTypeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateArticleType409ApplicationProblemPlusJSONResponse struct {
-	ConflictApplicationProblemPlusJSONResponse
-}
-
-func (response CreateArticleType409ApplicationProblemPlusJSONResponse) VisitCreateArticleTypeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type CreateArticleType500ApplicationProblemPlusJSONResponse struct {
-	InternalErrorApplicationProblemPlusJSONResponse
-}
-
-func (response CreateArticleType500ApplicationProblemPlusJSONResponse) VisitCreateArticleTypeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(500)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DeleteArticleTypeRequestObject struct {
-	ArticleTypeID ArticleTypeID `json:"article_type_id"`
-	Params        DeleteArticleTypeParams
-}
-
-type DeleteArticleTypeResponseObject interface {
-	VisitDeleteArticleTypeResponse(w http.ResponseWriter) error
-}
-
-type DeleteArticleType204Response struct {
-}
-
-func (response DeleteArticleType204Response) VisitDeleteArticleTypeResponse(w http.ResponseWriter) error {
-	w.WriteHeader(204)
-	return nil
-}
-
-type DeleteArticleType401ApplicationProblemPlusJSONResponse struct {
-	UnauthorizedApplicationProblemPlusJSONResponse
-}
-
-func (response DeleteArticleType401ApplicationProblemPlusJSONResponse) VisitDeleteArticleTypeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DeleteArticleType403ApplicationProblemPlusJSONResponse struct {
-	ForbiddenApplicationProblemPlusJSONResponse
-}
-
-func (response DeleteArticleType403ApplicationProblemPlusJSONResponse) VisitDeleteArticleTypeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DeleteArticleType404ApplicationProblemPlusJSONResponse struct {
-	NotFoundApplicationProblemPlusJSONResponse
-}
-
-func (response DeleteArticleType404ApplicationProblemPlusJSONResponse) VisitDeleteArticleTypeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DeleteArticleType409ApplicationProblemPlusJSONResponse struct {
-	ConflictApplicationProblemPlusJSONResponse
-}
-
-func (response DeleteArticleType409ApplicationProblemPlusJSONResponse) VisitDeleteArticleTypeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DeleteArticleType412ApplicationProblemPlusJSONResponse struct {
-	PreconditionFailedApplicationProblemPlusJSONResponse
-}
-
-func (response DeleteArticleType412ApplicationProblemPlusJSONResponse) VisitDeleteArticleTypeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(412)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DeleteArticleType428ApplicationProblemPlusJSONResponse struct {
-	PreconditionRequiredApplicationProblemPlusJSONResponse
-}
-
-func (response DeleteArticleType428ApplicationProblemPlusJSONResponse) VisitDeleteArticleTypeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(428)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type DeleteArticleType500ApplicationProblemPlusJSONResponse struct {
-	InternalErrorApplicationProblemPlusJSONResponse
-}
-
-func (response DeleteArticleType500ApplicationProblemPlusJSONResponse) VisitDeleteArticleTypeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(500)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type GetArticleTypeRequestObject struct {
-	ArticleTypeID ArticleTypeID `json:"article_type_id"`
-}
-
-type GetArticleTypeResponseObject interface {
-	VisitGetArticleTypeResponse(w http.ResponseWriter) error
-}
-
-type GetArticleType200ResponseHeaders struct {
+type GetPublicArticleType200ResponseHeaders struct {
 	ETag string
 }
 
-type GetArticleType200JSONResponse struct {
-	Body    ArticleType
-	Headers GetArticleType200ResponseHeaders
+type GetPublicArticleType200JSONResponse struct {
+	Body    PublicArticleType
+	Headers GetPublicArticleType200ResponseHeaders
 }
 
-func (response GetArticleType200JSONResponse) VisitGetArticleTypeResponse(w http.ResponseWriter) error {
+func (response GetPublicArticleType200JSONResponse) VisitGetPublicArticleTypeResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -2280,11 +2292,11 @@ func (response GetArticleType200JSONResponse) VisitGetArticleTypeResponse(w http
 	return err
 }
 
-type GetArticleType404ApplicationProblemPlusJSONResponse struct {
+type GetPublicArticleType404ApplicationProblemPlusJSONResponse struct {
 	NotFoundApplicationProblemPlusJSONResponse
 }
 
-func (response GetArticleType404ApplicationProblemPlusJSONResponse) VisitGetArticleTypeResponse(w http.ResponseWriter) error {
+func (response GetPublicArticleType404ApplicationProblemPlusJSONResponse) VisitGetPublicArticleTypeResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -2296,171 +2308,11 @@ func (response GetArticleType404ApplicationProblemPlusJSONResponse) VisitGetArti
 	return err
 }
 
-type GetArticleType500ApplicationProblemPlusJSONResponse struct {
+type GetPublicArticleType500ApplicationProblemPlusJSONResponse struct {
 	InternalErrorApplicationProblemPlusJSONResponse
 }
 
-func (response GetArticleType500ApplicationProblemPlusJSONResponse) VisitGetArticleTypeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(500)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type PatchArticleTypeRequestObject struct {
-	ArticleTypeID ArticleTypeID `json:"article_type_id"`
-	Params        PatchArticleTypeParams
-	Body          *PatchArticleTypeJSONRequestBody
-}
-
-type PatchArticleTypeResponseObject interface {
-	VisitPatchArticleTypeResponse(w http.ResponseWriter) error
-}
-
-type PatchArticleType200ResponseHeaders struct {
-	ETag string
-}
-
-type PatchArticleType200JSONResponse struct {
-	Body    ArticleType
-	Headers PatchArticleType200ResponseHeaders
-}
-
-func (response PatchArticleType200JSONResponse) VisitPatchArticleTypeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("ETag", fmt.Sprint(response.Headers.ETag))
-	w.WriteHeader(200)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type PatchArticleType400ApplicationProblemPlusJSONResponse struct {
-	BadRequestApplicationProblemPlusJSONResponse
-}
-
-func (response PatchArticleType400ApplicationProblemPlusJSONResponse) VisitPatchArticleTypeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(400)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type PatchArticleType401ApplicationProblemPlusJSONResponse struct {
-	UnauthorizedApplicationProblemPlusJSONResponse
-}
-
-func (response PatchArticleType401ApplicationProblemPlusJSONResponse) VisitPatchArticleTypeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(401)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type PatchArticleType403ApplicationProblemPlusJSONResponse struct {
-	ForbiddenApplicationProblemPlusJSONResponse
-}
-
-func (response PatchArticleType403ApplicationProblemPlusJSONResponse) VisitPatchArticleTypeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(403)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type PatchArticleType404ApplicationProblemPlusJSONResponse struct {
-	NotFoundApplicationProblemPlusJSONResponse
-}
-
-func (response PatchArticleType404ApplicationProblemPlusJSONResponse) VisitPatchArticleTypeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(404)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type PatchArticleType409ApplicationProblemPlusJSONResponse struct {
-	ConflictApplicationProblemPlusJSONResponse
-}
-
-func (response PatchArticleType409ApplicationProblemPlusJSONResponse) VisitPatchArticleTypeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(409)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type PatchArticleType412ApplicationProblemPlusJSONResponse struct {
-	PreconditionFailedApplicationProblemPlusJSONResponse
-}
-
-func (response PatchArticleType412ApplicationProblemPlusJSONResponse) VisitPatchArticleTypeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(412)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type PatchArticleType428ApplicationProblemPlusJSONResponse struct {
-	PreconditionRequiredApplicationProblemPlusJSONResponse
-}
-
-func (response PatchArticleType428ApplicationProblemPlusJSONResponse) VisitPatchArticleTypeResponse(w http.ResponseWriter) error {
-
-	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(response); err != nil {
-		return err
-	}
-	w.Header().Set("Content-Type", "application/problem+json")
-	w.WriteHeader(428)
-	_, err := buf.WriteTo(w)
-	return err
-}
-
-type PatchArticleType500ApplicationProblemPlusJSONResponse struct {
-	InternalErrorApplicationProblemPlusJSONResponse
-}
-
-func (response PatchArticleType500ApplicationProblemPlusJSONResponse) VisitPatchArticleTypeResponse(w http.ResponseWriter) error {
+func (response GetPublicArticleType500ApplicationProblemPlusJSONResponse) VisitGetPublicArticleTypeResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -2527,7 +2379,7 @@ func (response ListArticles500ApplicationProblemPlusJSONResponse) VisitListArtic
 }
 
 type GetArticleRequestObject struct {
-	ArticleID ArticleID `json:"article_id"`
+	ArticleID ArticleID `json:"articleId"`
 }
 
 type GetArticleResponseObject interface {
@@ -2768,6 +2620,587 @@ func (response CreateManageArticleImage500ApplicationProblemPlusJSONResponse) Vi
 	return err
 }
 
+type ListManageArticleTypesRequestObject struct {
+	Params ListManageArticleTypesParams
+}
+
+type ListManageArticleTypesResponseObject interface {
+	VisitListManageArticleTypesResponse(w http.ResponseWriter) error
+}
+
+type ListManageArticleTypes200JSONResponse ArticleTypeList
+
+func (response ListManageArticleTypes200JSONResponse) VisitListManageArticleTypesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListManageArticleTypes400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response ListManageArticleTypes400ApplicationProblemPlusJSONResponse) VisitListManageArticleTypesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListManageArticleTypes401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response ListManageArticleTypes401ApplicationProblemPlusJSONResponse) VisitListManageArticleTypesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListManageArticleTypes403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response ListManageArticleTypes403ApplicationProblemPlusJSONResponse) VisitListManageArticleTypesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListManageArticleTypes500ApplicationProblemPlusJSONResponse struct {
+	InternalErrorApplicationProblemPlusJSONResponse
+}
+
+func (response ListManageArticleTypes500ApplicationProblemPlusJSONResponse) VisitListManageArticleTypesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateManageArticleTypeRequestObject struct {
+	Body *CreateManageArticleTypeJSONRequestBody
+}
+
+type CreateManageArticleTypeResponseObject interface {
+	VisitCreateManageArticleTypeResponse(w http.ResponseWriter) error
+}
+
+type CreateManageArticleType201ResponseHeaders struct {
+	ETag     string
+	Location string
+}
+
+type CreateManageArticleType201JSONResponse struct {
+	Body    ArticleType
+	Headers CreateManageArticleType201ResponseHeaders
+}
+
+func (response CreateManageArticleType201JSONResponse) VisitCreateManageArticleTypeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("ETag", fmt.Sprint(response.Headers.ETag))
+	w.Header().Set("Location", fmt.Sprint(response.Headers.Location))
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateManageArticleType400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response CreateManageArticleType400ApplicationProblemPlusJSONResponse) VisitCreateManageArticleTypeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateManageArticleType401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response CreateManageArticleType401ApplicationProblemPlusJSONResponse) VisitCreateManageArticleTypeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateManageArticleType403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response CreateManageArticleType403ApplicationProblemPlusJSONResponse) VisitCreateManageArticleTypeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateManageArticleType409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response CreateManageArticleType409ApplicationProblemPlusJSONResponse) VisitCreateManageArticleTypeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type CreateManageArticleType500ApplicationProblemPlusJSONResponse struct {
+	InternalErrorApplicationProblemPlusJSONResponse
+}
+
+func (response CreateManageArticleType500ApplicationProblemPlusJSONResponse) VisitCreateManageArticleTypeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteManageArticleTypeRequestObject struct {
+	ArticleTypeID ArticleTypeID `json:"articleTypeId"`
+	Params        DeleteManageArticleTypeParams
+}
+
+type DeleteManageArticleTypeResponseObject interface {
+	VisitDeleteManageArticleTypeResponse(w http.ResponseWriter) error
+}
+
+type DeleteManageArticleType204Response struct {
+}
+
+func (response DeleteManageArticleType204Response) VisitDeleteManageArticleTypeResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteManageArticleType401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteManageArticleType401ApplicationProblemPlusJSONResponse) VisitDeleteManageArticleTypeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteManageArticleType403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteManageArticleType403ApplicationProblemPlusJSONResponse) VisitDeleteManageArticleTypeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteManageArticleType404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteManageArticleType404ApplicationProblemPlusJSONResponse) VisitDeleteManageArticleTypeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteManageArticleType409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteManageArticleType409ApplicationProblemPlusJSONResponse) VisitDeleteManageArticleTypeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteManageArticleType412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteManageArticleType412ApplicationProblemPlusJSONResponse) VisitDeleteManageArticleTypeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteManageArticleType428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteManageArticleType428ApplicationProblemPlusJSONResponse) VisitDeleteManageArticleTypeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type DeleteManageArticleType500ApplicationProblemPlusJSONResponse struct {
+	InternalErrorApplicationProblemPlusJSONResponse
+}
+
+func (response DeleteManageArticleType500ApplicationProblemPlusJSONResponse) VisitDeleteManageArticleTypeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManageArticleTypeRequestObject struct {
+	ArticleTypeID ArticleTypeID `json:"articleTypeId"`
+}
+
+type GetManageArticleTypeResponseObject interface {
+	VisitGetManageArticleTypeResponse(w http.ResponseWriter) error
+}
+
+type GetManageArticleType200ResponseHeaders struct {
+	ETag string
+}
+
+type GetManageArticleType200JSONResponse struct {
+	Body    ArticleType
+	Headers GetManageArticleType200ResponseHeaders
+}
+
+func (response GetManageArticleType200JSONResponse) VisitGetManageArticleTypeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("ETag", fmt.Sprint(response.Headers.ETag))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManageArticleType401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response GetManageArticleType401ApplicationProblemPlusJSONResponse) VisitGetManageArticleTypeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManageArticleType403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response GetManageArticleType403ApplicationProblemPlusJSONResponse) VisitGetManageArticleTypeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManageArticleType404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response GetManageArticleType404ApplicationProblemPlusJSONResponse) VisitGetManageArticleTypeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManageArticleType500ApplicationProblemPlusJSONResponse struct {
+	InternalErrorApplicationProblemPlusJSONResponse
+}
+
+func (response GetManageArticleType500ApplicationProblemPlusJSONResponse) VisitGetManageArticleTypeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchManageArticleTypeRequestObject struct {
+	ArticleTypeID ArticleTypeID `json:"articleTypeId"`
+	Params        PatchManageArticleTypeParams
+	Body          *PatchManageArticleTypeJSONRequestBody
+}
+
+type PatchManageArticleTypeResponseObject interface {
+	VisitPatchManageArticleTypeResponse(w http.ResponseWriter) error
+}
+
+type PatchManageArticleType200ResponseHeaders struct {
+	ETag string
+}
+
+type PatchManageArticleType200JSONResponse struct {
+	Body    ArticleType
+	Headers PatchManageArticleType200ResponseHeaders
+}
+
+func (response PatchManageArticleType200JSONResponse) VisitPatchManageArticleTypeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("ETag", fmt.Sprint(response.Headers.ETag))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchManageArticleType400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response PatchManageArticleType400ApplicationProblemPlusJSONResponse) VisitPatchManageArticleTypeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchManageArticleType401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response PatchManageArticleType401ApplicationProblemPlusJSONResponse) VisitPatchManageArticleTypeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchManageArticleType403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response PatchManageArticleType403ApplicationProblemPlusJSONResponse) VisitPatchManageArticleTypeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchManageArticleType404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response PatchManageArticleType404ApplicationProblemPlusJSONResponse) VisitPatchManageArticleTypeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchManageArticleType409ApplicationProblemPlusJSONResponse struct {
+	ConflictApplicationProblemPlusJSONResponse
+}
+
+func (response PatchManageArticleType409ApplicationProblemPlusJSONResponse) VisitPatchManageArticleTypeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchManageArticleType412ApplicationProblemPlusJSONResponse struct {
+	PreconditionFailedApplicationProblemPlusJSONResponse
+}
+
+func (response PatchManageArticleType412ApplicationProblemPlusJSONResponse) VisitPatchManageArticleTypeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(412)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchManageArticleType428ApplicationProblemPlusJSONResponse struct {
+	PreconditionRequiredApplicationProblemPlusJSONResponse
+}
+
+func (response PatchManageArticleType428ApplicationProblemPlusJSONResponse) VisitPatchManageArticleTypeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(428)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type PatchManageArticleType500ApplicationProblemPlusJSONResponse struct {
+	InternalErrorApplicationProblemPlusJSONResponse
+}
+
+func (response PatchManageArticleType500ApplicationProblemPlusJSONResponse) VisitPatchManageArticleTypeResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type ListManageArticlesRequestObject struct {
 	Params ListManageArticlesParams
 }
@@ -2967,7 +3400,7 @@ func (response CreateManageArticle500ApplicationProblemPlusJSONResponse) VisitCr
 }
 
 type DeleteManageArticleRequestObject struct {
-	ArticleID ArticleID `json:"article_id"`
+	ArticleID ArticleID `json:"articleId"`
 	Params    DeleteManageArticleParams
 }
 
@@ -3080,7 +3513,7 @@ func (response DeleteManageArticle500ApplicationProblemPlusJSONResponse) VisitDe
 }
 
 type GetManageArticleRequestObject struct {
-	ArticleID ArticleID `json:"article_id"`
+	ArticleID ArticleID `json:"articleId"`
 }
 
 type GetManageArticleResponseObject interface {
@@ -3174,7 +3607,7 @@ func (response GetManageArticle500ApplicationProblemPlusJSONResponse) VisitGetMa
 }
 
 type PatchManageArticleRequestObject struct {
-	ArticleID ArticleID `json:"article_id"`
+	ArticleID ArticleID `json:"articleId"`
 	Params    PatchManageArticleParams
 	Body      *PatchManageArticleJSONRequestBody
 }
@@ -3334,7 +3767,7 @@ func (response PatchManageArticle500ApplicationProblemPlusJSONResponse) VisitPat
 }
 
 type ArchiveManageArticleRequestObject struct {
-	ArticleID ArticleID `json:"article_id"`
+	ArticleID ArticleID `json:"articleId"`
 	Params    ArchiveManageArticleParams
 }
 
@@ -3461,7 +3894,7 @@ func (response ArchiveManageArticle500ApplicationProblemPlusJSONResponse) VisitA
 }
 
 type PublishManageArticleRequestObject struct {
-	ArticleID ArticleID `json:"article_id"`
+	ArticleID ArticleID `json:"articleId"`
 	Params    PublishManageArticleParams
 }
 
@@ -3587,17 +4020,17 @@ func (response PublishManageArticle500ApplicationProblemPlusJSONResponse) VisitP
 	return err
 }
 
-type ListTagsRequestObject struct {
-	Params ListTagsParams
+type ListManageTagsRequestObject struct {
+	Params ListManageTagsParams
 }
 
-type ListTagsResponseObject interface {
-	VisitListTagsResponse(w http.ResponseWriter) error
+type ListManageTagsResponseObject interface {
+	VisitListManageTagsResponse(w http.ResponseWriter) error
 }
 
-type ListTags200JSONResponse TagList
+type ListManageTags200JSONResponse TagList
 
-func (response ListTags200JSONResponse) VisitListTagsResponse(w http.ResponseWriter) error {
+func (response ListManageTags200JSONResponse) VisitListManageTagsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -3609,11 +4042,11 @@ func (response ListTags200JSONResponse) VisitListTagsResponse(w http.ResponseWri
 	return err
 }
 
-type ListTags400ApplicationProblemPlusJSONResponse struct {
+type ListManageTags400ApplicationProblemPlusJSONResponse struct {
 	BadRequestApplicationProblemPlusJSONResponse
 }
 
-func (response ListTags400ApplicationProblemPlusJSONResponse) VisitListTagsResponse(w http.ResponseWriter) error {
+func (response ListManageTags400ApplicationProblemPlusJSONResponse) VisitListManageTagsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -3625,11 +4058,43 @@ func (response ListTags400ApplicationProblemPlusJSONResponse) VisitListTagsRespo
 	return err
 }
 
-type ListTags500ApplicationProblemPlusJSONResponse struct {
+type ListManageTags401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response ListManageTags401ApplicationProblemPlusJSONResponse) VisitListManageTagsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListManageTags403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response ListManageTags403ApplicationProblemPlusJSONResponse) VisitListManageTagsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListManageTags500ApplicationProblemPlusJSONResponse struct {
 	InternalErrorApplicationProblemPlusJSONResponse
 }
 
-func (response ListTags500ApplicationProblemPlusJSONResponse) VisitListTagsResponse(w http.ResponseWriter) error {
+func (response ListManageTags500ApplicationProblemPlusJSONResponse) VisitListManageTagsResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -3641,25 +4106,25 @@ func (response ListTags500ApplicationProblemPlusJSONResponse) VisitListTagsRespo
 	return err
 }
 
-type CreateTagRequestObject struct {
-	Body *CreateTagJSONRequestBody
+type CreateManageTagRequestObject struct {
+	Body *CreateManageTagJSONRequestBody
 }
 
-type CreateTagResponseObject interface {
-	VisitCreateTagResponse(w http.ResponseWriter) error
+type CreateManageTagResponseObject interface {
+	VisitCreateManageTagResponse(w http.ResponseWriter) error
 }
 
-type CreateTag201ResponseHeaders struct {
+type CreateManageTag201ResponseHeaders struct {
 	ETag     string
 	Location string
 }
 
-type CreateTag201JSONResponse struct {
+type CreateManageTag201JSONResponse struct {
 	Body    Tag
-	Headers CreateTag201ResponseHeaders
+	Headers CreateManageTag201ResponseHeaders
 }
 
-func (response CreateTag201JSONResponse) VisitCreateTagResponse(w http.ResponseWriter) error {
+func (response CreateManageTag201JSONResponse) VisitCreateManageTagResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -3673,11 +4138,11 @@ func (response CreateTag201JSONResponse) VisitCreateTagResponse(w http.ResponseW
 	return err
 }
 
-type CreateTag400ApplicationProblemPlusJSONResponse struct {
+type CreateManageTag400ApplicationProblemPlusJSONResponse struct {
 	BadRequestApplicationProblemPlusJSONResponse
 }
 
-func (response CreateTag400ApplicationProblemPlusJSONResponse) VisitCreateTagResponse(w http.ResponseWriter) error {
+func (response CreateManageTag400ApplicationProblemPlusJSONResponse) VisitCreateManageTagResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -3689,11 +4154,11 @@ func (response CreateTag400ApplicationProblemPlusJSONResponse) VisitCreateTagRes
 	return err
 }
 
-type CreateTag401ApplicationProblemPlusJSONResponse struct {
+type CreateManageTag401ApplicationProblemPlusJSONResponse struct {
 	UnauthorizedApplicationProblemPlusJSONResponse
 }
 
-func (response CreateTag401ApplicationProblemPlusJSONResponse) VisitCreateTagResponse(w http.ResponseWriter) error {
+func (response CreateManageTag401ApplicationProblemPlusJSONResponse) VisitCreateManageTagResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -3705,11 +4170,11 @@ func (response CreateTag401ApplicationProblemPlusJSONResponse) VisitCreateTagRes
 	return err
 }
 
-type CreateTag403ApplicationProblemPlusJSONResponse struct {
+type CreateManageTag403ApplicationProblemPlusJSONResponse struct {
 	ForbiddenApplicationProblemPlusJSONResponse
 }
 
-func (response CreateTag403ApplicationProblemPlusJSONResponse) VisitCreateTagResponse(w http.ResponseWriter) error {
+func (response CreateManageTag403ApplicationProblemPlusJSONResponse) VisitCreateManageTagResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -3721,11 +4186,11 @@ func (response CreateTag403ApplicationProblemPlusJSONResponse) VisitCreateTagRes
 	return err
 }
 
-type CreateTag409ApplicationProblemPlusJSONResponse struct {
+type CreateManageTag409ApplicationProblemPlusJSONResponse struct {
 	ConflictApplicationProblemPlusJSONResponse
 }
 
-func (response CreateTag409ApplicationProblemPlusJSONResponse) VisitCreateTagResponse(w http.ResponseWriter) error {
+func (response CreateManageTag409ApplicationProblemPlusJSONResponse) VisitCreateManageTagResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -3737,11 +4202,11 @@ func (response CreateTag409ApplicationProblemPlusJSONResponse) VisitCreateTagRes
 	return err
 }
 
-type CreateTag500ApplicationProblemPlusJSONResponse struct {
+type CreateManageTag500ApplicationProblemPlusJSONResponse struct {
 	InternalErrorApplicationProblemPlusJSONResponse
 }
 
-func (response CreateTag500ApplicationProblemPlusJSONResponse) VisitCreateTagResponse(w http.ResponseWriter) error {
+func (response CreateManageTag500ApplicationProblemPlusJSONResponse) VisitCreateManageTagResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -3753,28 +4218,28 @@ func (response CreateTag500ApplicationProblemPlusJSONResponse) VisitCreateTagRes
 	return err
 }
 
-type DeleteTagRequestObject struct {
-	TagID  TagID `json:"tag_id"`
-	Params DeleteTagParams
+type DeleteManageTagRequestObject struct {
+	TagID  TagID `json:"tagId"`
+	Params DeleteManageTagParams
 }
 
-type DeleteTagResponseObject interface {
-	VisitDeleteTagResponse(w http.ResponseWriter) error
+type DeleteManageTagResponseObject interface {
+	VisitDeleteManageTagResponse(w http.ResponseWriter) error
 }
 
-type DeleteTag204Response struct {
+type DeleteManageTag204Response struct {
 }
 
-func (response DeleteTag204Response) VisitDeleteTagResponse(w http.ResponseWriter) error {
+func (response DeleteManageTag204Response) VisitDeleteManageTagResponse(w http.ResponseWriter) error {
 	w.WriteHeader(204)
 	return nil
 }
 
-type DeleteTag401ApplicationProblemPlusJSONResponse struct {
+type DeleteManageTag401ApplicationProblemPlusJSONResponse struct {
 	UnauthorizedApplicationProblemPlusJSONResponse
 }
 
-func (response DeleteTag401ApplicationProblemPlusJSONResponse) VisitDeleteTagResponse(w http.ResponseWriter) error {
+func (response DeleteManageTag401ApplicationProblemPlusJSONResponse) VisitDeleteManageTagResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -3786,11 +4251,11 @@ func (response DeleteTag401ApplicationProblemPlusJSONResponse) VisitDeleteTagRes
 	return err
 }
 
-type DeleteTag403ApplicationProblemPlusJSONResponse struct {
+type DeleteManageTag403ApplicationProblemPlusJSONResponse struct {
 	ForbiddenApplicationProblemPlusJSONResponse
 }
 
-func (response DeleteTag403ApplicationProblemPlusJSONResponse) VisitDeleteTagResponse(w http.ResponseWriter) error {
+func (response DeleteManageTag403ApplicationProblemPlusJSONResponse) VisitDeleteManageTagResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -3802,11 +4267,11 @@ func (response DeleteTag403ApplicationProblemPlusJSONResponse) VisitDeleteTagRes
 	return err
 }
 
-type DeleteTag404ApplicationProblemPlusJSONResponse struct {
+type DeleteManageTag404ApplicationProblemPlusJSONResponse struct {
 	NotFoundApplicationProblemPlusJSONResponse
 }
 
-func (response DeleteTag404ApplicationProblemPlusJSONResponse) VisitDeleteTagResponse(w http.ResponseWriter) error {
+func (response DeleteManageTag404ApplicationProblemPlusJSONResponse) VisitDeleteManageTagResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -3818,11 +4283,11 @@ func (response DeleteTag404ApplicationProblemPlusJSONResponse) VisitDeleteTagRes
 	return err
 }
 
-type DeleteTag409ApplicationProblemPlusJSONResponse struct {
+type DeleteManageTag409ApplicationProblemPlusJSONResponse struct {
 	ConflictApplicationProblemPlusJSONResponse
 }
 
-func (response DeleteTag409ApplicationProblemPlusJSONResponse) VisitDeleteTagResponse(w http.ResponseWriter) error {
+func (response DeleteManageTag409ApplicationProblemPlusJSONResponse) VisitDeleteManageTagResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -3834,11 +4299,11 @@ func (response DeleteTag409ApplicationProblemPlusJSONResponse) VisitDeleteTagRes
 	return err
 }
 
-type DeleteTag412ApplicationProblemPlusJSONResponse struct {
+type DeleteManageTag412ApplicationProblemPlusJSONResponse struct {
 	PreconditionFailedApplicationProblemPlusJSONResponse
 }
 
-func (response DeleteTag412ApplicationProblemPlusJSONResponse) VisitDeleteTagResponse(w http.ResponseWriter) error {
+func (response DeleteManageTag412ApplicationProblemPlusJSONResponse) VisitDeleteManageTagResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -3850,11 +4315,11 @@ func (response DeleteTag412ApplicationProblemPlusJSONResponse) VisitDeleteTagRes
 	return err
 }
 
-type DeleteTag428ApplicationProblemPlusJSONResponse struct {
+type DeleteManageTag428ApplicationProblemPlusJSONResponse struct {
 	PreconditionRequiredApplicationProblemPlusJSONResponse
 }
 
-func (response DeleteTag428ApplicationProblemPlusJSONResponse) VisitDeleteTagResponse(w http.ResponseWriter) error {
+func (response DeleteManageTag428ApplicationProblemPlusJSONResponse) VisitDeleteManageTagResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -3866,11 +4331,11 @@ func (response DeleteTag428ApplicationProblemPlusJSONResponse) VisitDeleteTagRes
 	return err
 }
 
-type DeleteTag500ApplicationProblemPlusJSONResponse struct {
+type DeleteManageTag500ApplicationProblemPlusJSONResponse struct {
 	InternalErrorApplicationProblemPlusJSONResponse
 }
 
-func (response DeleteTag500ApplicationProblemPlusJSONResponse) VisitDeleteTagResponse(w http.ResponseWriter) error {
+func (response DeleteManageTag500ApplicationProblemPlusJSONResponse) VisitDeleteManageTagResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -3882,24 +4347,24 @@ func (response DeleteTag500ApplicationProblemPlusJSONResponse) VisitDeleteTagRes
 	return err
 }
 
-type GetTagRequestObject struct {
-	TagID TagID `json:"tag_id"`
+type GetManageTagRequestObject struct {
+	TagID TagID `json:"tagId"`
 }
 
-type GetTagResponseObject interface {
-	VisitGetTagResponse(w http.ResponseWriter) error
+type GetManageTagResponseObject interface {
+	VisitGetManageTagResponse(w http.ResponseWriter) error
 }
 
-type GetTag200ResponseHeaders struct {
+type GetManageTag200ResponseHeaders struct {
 	ETag string
 }
 
-type GetTag200JSONResponse struct {
+type GetManageTag200JSONResponse struct {
 	Body    Tag
-	Headers GetTag200ResponseHeaders
+	Headers GetManageTag200ResponseHeaders
 }
 
-func (response GetTag200JSONResponse) VisitGetTagResponse(w http.ResponseWriter) error {
+func (response GetManageTag200JSONResponse) VisitGetManageTagResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -3912,11 +4377,43 @@ func (response GetTag200JSONResponse) VisitGetTagResponse(w http.ResponseWriter)
 	return err
 }
 
-type GetTag404ApplicationProblemPlusJSONResponse struct {
+type GetManageTag401ApplicationProblemPlusJSONResponse struct {
+	UnauthorizedApplicationProblemPlusJSONResponse
+}
+
+func (response GetManageTag401ApplicationProblemPlusJSONResponse) VisitGetManageTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManageTag403ApplicationProblemPlusJSONResponse struct {
+	ForbiddenApplicationProblemPlusJSONResponse
+}
+
+func (response GetManageTag403ApplicationProblemPlusJSONResponse) VisitGetManageTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetManageTag404ApplicationProblemPlusJSONResponse struct {
 	NotFoundApplicationProblemPlusJSONResponse
 }
 
-func (response GetTag404ApplicationProblemPlusJSONResponse) VisitGetTagResponse(w http.ResponseWriter) error {
+func (response GetManageTag404ApplicationProblemPlusJSONResponse) VisitGetManageTagResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -3928,11 +4425,11 @@ func (response GetTag404ApplicationProblemPlusJSONResponse) VisitGetTagResponse(
 	return err
 }
 
-type GetTag500ApplicationProblemPlusJSONResponse struct {
+type GetManageTag500ApplicationProblemPlusJSONResponse struct {
 	InternalErrorApplicationProblemPlusJSONResponse
 }
 
-func (response GetTag500ApplicationProblemPlusJSONResponse) VisitGetTagResponse(w http.ResponseWriter) error {
+func (response GetManageTag500ApplicationProblemPlusJSONResponse) VisitGetManageTagResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -3944,26 +4441,26 @@ func (response GetTag500ApplicationProblemPlusJSONResponse) VisitGetTagResponse(
 	return err
 }
 
-type PatchTagRequestObject struct {
-	TagID  TagID `json:"tag_id"`
-	Params PatchTagParams
-	Body   *PatchTagJSONRequestBody
+type PatchManageTagRequestObject struct {
+	TagID  TagID `json:"tagId"`
+	Params PatchManageTagParams
+	Body   *PatchManageTagJSONRequestBody
 }
 
-type PatchTagResponseObject interface {
-	VisitPatchTagResponse(w http.ResponseWriter) error
+type PatchManageTagResponseObject interface {
+	VisitPatchManageTagResponse(w http.ResponseWriter) error
 }
 
-type PatchTag200ResponseHeaders struct {
+type PatchManageTag200ResponseHeaders struct {
 	ETag string
 }
 
-type PatchTag200JSONResponse struct {
+type PatchManageTag200JSONResponse struct {
 	Body    Tag
-	Headers PatchTag200ResponseHeaders
+	Headers PatchManageTag200ResponseHeaders
 }
 
-func (response PatchTag200JSONResponse) VisitPatchTagResponse(w http.ResponseWriter) error {
+func (response PatchManageTag200JSONResponse) VisitPatchManageTagResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
@@ -3976,11 +4473,11 @@ func (response PatchTag200JSONResponse) VisitPatchTagResponse(w http.ResponseWri
 	return err
 }
 
-type PatchTag400ApplicationProblemPlusJSONResponse struct {
+type PatchManageTag400ApplicationProblemPlusJSONResponse struct {
 	BadRequestApplicationProblemPlusJSONResponse
 }
 
-func (response PatchTag400ApplicationProblemPlusJSONResponse) VisitPatchTagResponse(w http.ResponseWriter) error {
+func (response PatchManageTag400ApplicationProblemPlusJSONResponse) VisitPatchManageTagResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -3992,11 +4489,11 @@ func (response PatchTag400ApplicationProblemPlusJSONResponse) VisitPatchTagRespo
 	return err
 }
 
-type PatchTag401ApplicationProblemPlusJSONResponse struct {
+type PatchManageTag401ApplicationProblemPlusJSONResponse struct {
 	UnauthorizedApplicationProblemPlusJSONResponse
 }
 
-func (response PatchTag401ApplicationProblemPlusJSONResponse) VisitPatchTagResponse(w http.ResponseWriter) error {
+func (response PatchManageTag401ApplicationProblemPlusJSONResponse) VisitPatchManageTagResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -4008,11 +4505,11 @@ func (response PatchTag401ApplicationProblemPlusJSONResponse) VisitPatchTagRespo
 	return err
 }
 
-type PatchTag403ApplicationProblemPlusJSONResponse struct {
+type PatchManageTag403ApplicationProblemPlusJSONResponse struct {
 	ForbiddenApplicationProblemPlusJSONResponse
 }
 
-func (response PatchTag403ApplicationProblemPlusJSONResponse) VisitPatchTagResponse(w http.ResponseWriter) error {
+func (response PatchManageTag403ApplicationProblemPlusJSONResponse) VisitPatchManageTagResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -4024,11 +4521,11 @@ func (response PatchTag403ApplicationProblemPlusJSONResponse) VisitPatchTagRespo
 	return err
 }
 
-type PatchTag404ApplicationProblemPlusJSONResponse struct {
+type PatchManageTag404ApplicationProblemPlusJSONResponse struct {
 	NotFoundApplicationProblemPlusJSONResponse
 }
 
-func (response PatchTag404ApplicationProblemPlusJSONResponse) VisitPatchTagResponse(w http.ResponseWriter) error {
+func (response PatchManageTag404ApplicationProblemPlusJSONResponse) VisitPatchManageTagResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -4040,11 +4537,11 @@ func (response PatchTag404ApplicationProblemPlusJSONResponse) VisitPatchTagRespo
 	return err
 }
 
-type PatchTag409ApplicationProblemPlusJSONResponse struct {
+type PatchManageTag409ApplicationProblemPlusJSONResponse struct {
 	ConflictApplicationProblemPlusJSONResponse
 }
 
-func (response PatchTag409ApplicationProblemPlusJSONResponse) VisitPatchTagResponse(w http.ResponseWriter) error {
+func (response PatchManageTag409ApplicationProblemPlusJSONResponse) VisitPatchManageTagResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -4056,11 +4553,11 @@ func (response PatchTag409ApplicationProblemPlusJSONResponse) VisitPatchTagRespo
 	return err
 }
 
-type PatchTag412ApplicationProblemPlusJSONResponse struct {
+type PatchManageTag412ApplicationProblemPlusJSONResponse struct {
 	PreconditionFailedApplicationProblemPlusJSONResponse
 }
 
-func (response PatchTag412ApplicationProblemPlusJSONResponse) VisitPatchTagResponse(w http.ResponseWriter) error {
+func (response PatchManageTag412ApplicationProblemPlusJSONResponse) VisitPatchManageTagResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -4072,11 +4569,11 @@ func (response PatchTag412ApplicationProblemPlusJSONResponse) VisitPatchTagRespo
 	return err
 }
 
-type PatchTag428ApplicationProblemPlusJSONResponse struct {
+type PatchManageTag428ApplicationProblemPlusJSONResponse struct {
 	PreconditionRequiredApplicationProblemPlusJSONResponse
 }
 
-func (response PatchTag428ApplicationProblemPlusJSONResponse) VisitPatchTagResponse(w http.ResponseWriter) error {
+func (response PatchManageTag428ApplicationProblemPlusJSONResponse) VisitPatchManageTagResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -4088,11 +4585,127 @@ func (response PatchTag428ApplicationProblemPlusJSONResponse) VisitPatchTagRespo
 	return err
 }
 
-type PatchTag500ApplicationProblemPlusJSONResponse struct {
+type PatchManageTag500ApplicationProblemPlusJSONResponse struct {
 	InternalErrorApplicationProblemPlusJSONResponse
 }
 
-func (response PatchTag500ApplicationProblemPlusJSONResponse) VisitPatchTagResponse(w http.ResponseWriter) error {
+func (response PatchManageTag500ApplicationProblemPlusJSONResponse) VisitPatchManageTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPublicTagsRequestObject struct {
+	Params ListPublicTagsParams
+}
+
+type ListPublicTagsResponseObject interface {
+	VisitListPublicTagsResponse(w http.ResponseWriter) error
+}
+
+type ListPublicTags200JSONResponse PublicTagList
+
+func (response ListPublicTags200JSONResponse) VisitListPublicTagsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPublicTags400ApplicationProblemPlusJSONResponse struct {
+	BadRequestApplicationProblemPlusJSONResponse
+}
+
+func (response ListPublicTags400ApplicationProblemPlusJSONResponse) VisitListPublicTagsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListPublicTags500ApplicationProblemPlusJSONResponse struct {
+	InternalErrorApplicationProblemPlusJSONResponse
+}
+
+func (response ListPublicTags500ApplicationProblemPlusJSONResponse) VisitListPublicTagsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(500)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPublicTagRequestObject struct {
+	TagID TagID `json:"tagId"`
+}
+
+type GetPublicTagResponseObject interface {
+	VisitGetPublicTagResponse(w http.ResponseWriter) error
+}
+
+type GetPublicTag200ResponseHeaders struct {
+	ETag string
+}
+
+type GetPublicTag200JSONResponse struct {
+	Body    PublicTag
+	Headers GetPublicTag200ResponseHeaders
+}
+
+func (response GetPublicTag200JSONResponse) VisitGetPublicTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response.Body); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("ETag", fmt.Sprint(response.Headers.ETag))
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPublicTag404ApplicationProblemPlusJSONResponse struct {
+	NotFoundApplicationProblemPlusJSONResponse
+}
+
+func (response GetPublicTag404ApplicationProblemPlusJSONResponse) VisitGetPublicTagResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetPublicTag500ApplicationProblemPlusJSONResponse struct {
+	InternalErrorApplicationProblemPlusJSONResponse
+}
+
+func (response GetPublicTag500ApplicationProblemPlusJSONResponse) VisitGetPublicTagResponse(w http.ResponseWriter) error {
 
 	var buf bytes.Buffer
 	if err := json.NewEncoder(&buf).Encode(response); err != nil {
@@ -4105,7 +4718,7 @@ func (response PatchTag500ApplicationProblemPlusJSONResponse) VisitPatchTagRespo
 }
 
 type GetArticleImageMediaRequestObject struct {
-	StorageKey ArticleImageStorageKey `json:"storage_key"`
+	StorageKey ArticleImageStorageKey `json:"storageKey"`
 }
 
 type GetArticleImageMediaResponseObject interface {
@@ -4209,28 +4822,19 @@ func (response GetArticleImageMedia500ApplicationProblemPlusJSONResponse) VisitG
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// 取消正文图片
-	// (DELETE /api/v1/article-images/{image_id})
+	// (DELETE /api/v1/article-images/{imageId})
 	DeleteArticleImage(ctx context.Context, request DeleteArticleImageRequestObject) (DeleteArticleImageResponseObject, error)
-	// 查询文章类型
+	// 查询公开文章类型
 	// (GET /api/v1/article-types)
-	ListArticleTypes(ctx context.Context, request ListArticleTypesRequestObject) (ListArticleTypesResponseObject, error)
-	// 创建文章类型
-	// (POST /api/v1/article-types)
-	CreateArticleType(ctx context.Context, request CreateArticleTypeRequestObject) (CreateArticleTypeResponseObject, error)
-	// 删除文章类型
-	// (DELETE /api/v1/article-types/{article_type_id})
-	DeleteArticleType(ctx context.Context, request DeleteArticleTypeRequestObject) (DeleteArticleTypeResponseObject, error)
-	// 获取文章类型
-	// (GET /api/v1/article-types/{article_type_id})
-	GetArticleType(ctx context.Context, request GetArticleTypeRequestObject) (GetArticleTypeResponseObject, error)
-	// 更新文章类型
-	// (PATCH /api/v1/article-types/{article_type_id})
-	PatchArticleType(ctx context.Context, request PatchArticleTypeRequestObject) (PatchArticleTypeResponseObject, error)
+	ListPublicArticleTypes(ctx context.Context, request ListPublicArticleTypesRequestObject) (ListPublicArticleTypesResponseObject, error)
+	// 获取公开文章类型
+	// (GET /api/v1/article-types/{articleTypeId})
+	GetPublicArticleType(ctx context.Context, request GetPublicArticleTypeRequestObject) (GetPublicArticleTypeResponseObject, error)
 	// 查询已发布文章
 	// (GET /api/v1/articles)
 	ListArticles(ctx context.Context, request ListArticlesRequestObject) (ListArticlesResponseObject, error)
 	// 获取已发布文章
-	// (GET /api/v1/articles/{article_id})
+	// (GET /api/v1/articles/{articleId})
 	GetArticle(ctx context.Context, request GetArticleRequestObject) (GetArticleResponseObject, error)
 	// 登录并获取访问令牌
 	// (POST /api/v1/auth/login)
@@ -4238,6 +4842,21 @@ type StrictServerInterface interface {
 	// 管理端上传正文图片
 	// (POST /api/v1/manage/article-images)
 	CreateManageArticleImage(ctx context.Context, request CreateManageArticleImageRequestObject) (CreateManageArticleImageResponseObject, error)
+	// 管理端查询文章类型
+	// (GET /api/v1/manage/article-types)
+	ListManageArticleTypes(ctx context.Context, request ListManageArticleTypesRequestObject) (ListManageArticleTypesResponseObject, error)
+	// 管理端创建文章类型
+	// (POST /api/v1/manage/article-types)
+	CreateManageArticleType(ctx context.Context, request CreateManageArticleTypeRequestObject) (CreateManageArticleTypeResponseObject, error)
+	// 管理端删除文章类型
+	// (DELETE /api/v1/manage/article-types/{articleTypeId})
+	DeleteManageArticleType(ctx context.Context, request DeleteManageArticleTypeRequestObject) (DeleteManageArticleTypeResponseObject, error)
+	// 管理端获取文章类型
+	// (GET /api/v1/manage/article-types/{articleTypeId})
+	GetManageArticleType(ctx context.Context, request GetManageArticleTypeRequestObject) (GetManageArticleTypeResponseObject, error)
+	// 管理端更新文章类型
+	// (PATCH /api/v1/manage/article-types/{articleTypeId})
+	PatchManageArticleType(ctx context.Context, request PatchManageArticleTypeRequestObject) (PatchManageArticleTypeResponseObject, error)
 	// 管理端查询文章
 	// (GET /api/v1/manage/articles)
 	ListManageArticles(ctx context.Context, request ListManageArticlesRequestObject) (ListManageArticlesResponseObject, error)
@@ -4245,37 +4864,43 @@ type StrictServerInterface interface {
 	// (POST /api/v1/manage/articles)
 	CreateManageArticle(ctx context.Context, request CreateManageArticleRequestObject) (CreateManageArticleResponseObject, error)
 	// 管理端删除文章
-	// (DELETE /api/v1/manage/articles/{article_id})
+	// (DELETE /api/v1/manage/articles/{articleId})
 	DeleteManageArticle(ctx context.Context, request DeleteManageArticleRequestObject) (DeleteManageArticleResponseObject, error)
 	// 管理端获取文章
-	// (GET /api/v1/manage/articles/{article_id})
+	// (GET /api/v1/manage/articles/{articleId})
 	GetManageArticle(ctx context.Context, request GetManageArticleRequestObject) (GetManageArticleResponseObject, error)
 	// 管理端部分更新文章
-	// (PATCH /api/v1/manage/articles/{article_id})
+	// (PATCH /api/v1/manage/articles/{articleId})
 	PatchManageArticle(ctx context.Context, request PatchManageArticleRequestObject) (PatchManageArticleResponseObject, error)
 	// 管理端归档文章
-	// (POST /api/v1/manage/articles/{article_id}/archive)
+	// (POST /api/v1/manage/articles/{articleId}/archive)
 	ArchiveManageArticle(ctx context.Context, request ArchiveManageArticleRequestObject) (ArchiveManageArticleResponseObject, error)
 	// 管理端发布文章
-	// (POST /api/v1/manage/articles/{article_id}/publish)
+	// (POST /api/v1/manage/articles/{articleId}/publish)
 	PublishManageArticle(ctx context.Context, request PublishManageArticleRequestObject) (PublishManageArticleResponseObject, error)
-	// 查询标签
+	// 管理端查询标签
+	// (GET /api/v1/manage/tags)
+	ListManageTags(ctx context.Context, request ListManageTagsRequestObject) (ListManageTagsResponseObject, error)
+	// 管理端创建标签
+	// (POST /api/v1/manage/tags)
+	CreateManageTag(ctx context.Context, request CreateManageTagRequestObject) (CreateManageTagResponseObject, error)
+	// 管理端删除标签
+	// (DELETE /api/v1/manage/tags/{tagId})
+	DeleteManageTag(ctx context.Context, request DeleteManageTagRequestObject) (DeleteManageTagResponseObject, error)
+	// 管理端获取标签
+	// (GET /api/v1/manage/tags/{tagId})
+	GetManageTag(ctx context.Context, request GetManageTagRequestObject) (GetManageTagResponseObject, error)
+	// 管理端更新标签
+	// (PATCH /api/v1/manage/tags/{tagId})
+	PatchManageTag(ctx context.Context, request PatchManageTagRequestObject) (PatchManageTagResponseObject, error)
+	// 查询公开标签
 	// (GET /api/v1/tags)
-	ListTags(ctx context.Context, request ListTagsRequestObject) (ListTagsResponseObject, error)
-	// 创建标签
-	// (POST /api/v1/tags)
-	CreateTag(ctx context.Context, request CreateTagRequestObject) (CreateTagResponseObject, error)
-	// 删除标签
-	// (DELETE /api/v1/tags/{tag_id})
-	DeleteTag(ctx context.Context, request DeleteTagRequestObject) (DeleteTagResponseObject, error)
-	// 获取标签
-	// (GET /api/v1/tags/{tag_id})
-	GetTag(ctx context.Context, request GetTagRequestObject) (GetTagResponseObject, error)
-	// 更新标签
-	// (PATCH /api/v1/tags/{tag_id})
-	PatchTag(ctx context.Context, request PatchTagRequestObject) (PatchTagResponseObject, error)
+	ListPublicTags(ctx context.Context, request ListPublicTagsRequestObject) (ListPublicTagsResponseObject, error)
+	// 获取公开标签
+	// (GET /api/v1/tags/{tagId})
+	GetPublicTag(ctx context.Context, request GetPublicTagRequestObject) (GetPublicTagResponseObject, error)
 	// 读取正文图片媒体
-	// (GET /media/article-images/{storage_key})
+	// (GET /media/article-images/{storageKey})
 	GetArticleImageMedia(ctx context.Context, request GetArticleImageMediaRequestObject) (GetArticleImageMediaResponseObject, error)
 }
 
@@ -4362,25 +4987,25 @@ func (sh *strictHandler) DeleteArticleImage(ctx *gin.Context, imageID ArticleIma
 	}
 }
 
-// ListArticleTypes operation middleware
-func (sh *strictHandler) ListArticleTypes(ctx *gin.Context, params ListArticleTypesParams) {
-	var request ListArticleTypesRequestObject
+// ListPublicArticleTypes operation middleware
+func (sh *strictHandler) ListPublicArticleTypes(ctx *gin.Context, params ListPublicArticleTypesParams) {
+	var request ListPublicArticleTypesRequestObject
 
 	request.Params = params
 
 	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.ListArticleTypes(ctx, request.(ListArticleTypesRequestObject))
+		return sh.ssi.ListPublicArticleTypes(ctx, request.(ListPublicArticleTypesRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ListArticleTypes")
+		handler = middleware(handler, "ListPublicArticleTypes")
 	}
 
 	response, err := handler(ctx, request)
 
 	if err != nil {
 		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(ListArticleTypesResponseObject); ok {
-		if err := validResponse.VisitListArticleTypesResponse(ctx.Writer); err != nil {
+	} else if validResponse, ok := response.(ListPublicArticleTypesResponseObject); ok {
+		if err := validResponse.VisitListPublicArticleTypesResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {
@@ -4388,117 +5013,25 @@ func (sh *strictHandler) ListArticleTypes(ctx *gin.Context, params ListArticleTy
 	}
 }
 
-// CreateArticleType operation middleware
-func (sh *strictHandler) CreateArticleType(ctx *gin.Context) {
-	var request CreateArticleTypeRequestObject
-
-	var body CreateArticleTypeJSONRequestBody
-	if err := ctx.ShouldBindJSON(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(ctx, err)
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.CreateArticleType(ctx, request.(CreateArticleTypeRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "CreateArticleType")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(CreateArticleTypeResponseObject); ok {
-		if err := validResponse.VisitCreateArticleTypeResponse(ctx.Writer); err != nil {
-			sh.options.ResponseErrorHandlerFunc(ctx, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// DeleteArticleType operation middleware
-func (sh *strictHandler) DeleteArticleType(ctx *gin.Context, articleTypeID ArticleTypeID, params DeleteArticleTypeParams) {
-	var request DeleteArticleTypeRequestObject
-
-	request.ArticleTypeID = articleTypeID
-	request.Params = params
-
-	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.DeleteArticleType(ctx, request.(DeleteArticleTypeRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "DeleteArticleType")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(DeleteArticleTypeResponseObject); ok {
-		if err := validResponse.VisitDeleteArticleTypeResponse(ctx.Writer); err != nil {
-			sh.options.ResponseErrorHandlerFunc(ctx, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// GetArticleType operation middleware
-func (sh *strictHandler) GetArticleType(ctx *gin.Context, articleTypeID ArticleTypeID) {
-	var request GetArticleTypeRequestObject
+// GetPublicArticleType operation middleware
+func (sh *strictHandler) GetPublicArticleType(ctx *gin.Context, articleTypeID ArticleTypeID) {
+	var request GetPublicArticleTypeRequestObject
 
 	request.ArticleTypeID = articleTypeID
 
 	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.GetArticleType(ctx, request.(GetArticleTypeRequestObject))
+		return sh.ssi.GetPublicArticleType(ctx, request.(GetPublicArticleTypeRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetArticleType")
+		handler = middleware(handler, "GetPublicArticleType")
 	}
 
 	response, err := handler(ctx, request)
 
 	if err != nil {
 		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(GetArticleTypeResponseObject); ok {
-		if err := validResponse.VisitGetArticleTypeResponse(ctx.Writer); err != nil {
-			sh.options.ResponseErrorHandlerFunc(ctx, err)
-		}
-	} else if response != nil {
-		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
-	}
-}
-
-// PatchArticleType operation middleware
-func (sh *strictHandler) PatchArticleType(ctx *gin.Context, articleTypeID ArticleTypeID, params PatchArticleTypeParams) {
-	var request PatchArticleTypeRequestObject
-
-	request.ArticleTypeID = articleTypeID
-	request.Params = params
-
-	var body PatchArticleTypeJSONRequestBody
-	if err := ctx.ShouldBindJSON(&body); err != nil {
-		sh.options.RequestErrorHandlerFunc(ctx, err)
-		return
-	}
-	request.Body = &body
-
-	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.PatchArticleType(ctx, request.(PatchArticleTypeRequestObject))
-	}
-	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "PatchArticleType")
-	}
-
-	response, err := handler(ctx, request)
-
-	if err != nil {
-		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(PatchArticleTypeResponseObject); ok {
-		if err := validResponse.VisitPatchArticleTypeResponse(ctx.Writer); err != nil {
+	} else if validResponse, ok := response.(GetPublicArticleTypeResponseObject); ok {
+		if err := validResponse.VisitGetPublicArticleTypeResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {
@@ -4613,6 +5146,150 @@ func (sh *strictHandler) CreateManageArticleImage(ctx *gin.Context) {
 		sh.options.HandlerErrorFunc(ctx, err)
 	} else if validResponse, ok := response.(CreateManageArticleImageResponseObject); ok {
 		if err := validResponse.VisitCreateManageArticleImageResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListManageArticleTypes operation middleware
+func (sh *strictHandler) ListManageArticleTypes(ctx *gin.Context, params ListManageArticleTypesParams) {
+	var request ListManageArticleTypesRequestObject
+
+	request.Params = params
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListManageArticleTypes(ctx, request.(ListManageArticleTypesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListManageArticleTypes")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(ListManageArticleTypesResponseObject); ok {
+		if err := validResponse.VisitListManageArticleTypesResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateManageArticleType operation middleware
+func (sh *strictHandler) CreateManageArticleType(ctx *gin.Context) {
+	var request CreateManageArticleTypeRequestObject
+
+	var body CreateManageArticleTypeJSONRequestBody
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(ctx, err)
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateManageArticleType(ctx, request.(CreateManageArticleTypeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateManageArticleType")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(CreateManageArticleTypeResponseObject); ok {
+		if err := validResponse.VisitCreateManageArticleTypeResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteManageArticleType operation middleware
+func (sh *strictHandler) DeleteManageArticleType(ctx *gin.Context, articleTypeID ArticleTypeID, params DeleteManageArticleTypeParams) {
+	var request DeleteManageArticleTypeRequestObject
+
+	request.ArticleTypeID = articleTypeID
+	request.Params = params
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteManageArticleType(ctx, request.(DeleteManageArticleTypeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteManageArticleType")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(DeleteManageArticleTypeResponseObject); ok {
+		if err := validResponse.VisitDeleteManageArticleTypeResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetManageArticleType operation middleware
+func (sh *strictHandler) GetManageArticleType(ctx *gin.Context, articleTypeID ArticleTypeID) {
+	var request GetManageArticleTypeRequestObject
+
+	request.ArticleTypeID = articleTypeID
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetManageArticleType(ctx, request.(GetManageArticleTypeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetManageArticleType")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(GetManageArticleTypeResponseObject); ok {
+		if err := validResponse.VisitGetManageArticleTypeResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// PatchManageArticleType operation middleware
+func (sh *strictHandler) PatchManageArticleType(ctx *gin.Context, articleTypeID ArticleTypeID, params PatchManageArticleTypeParams) {
+	var request PatchManageArticleTypeRequestObject
+
+	request.ArticleTypeID = articleTypeID
+	request.Params = params
+
+	var body PatchManageArticleTypeJSONRequestBody
+	if err := ctx.ShouldBindJSON(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(ctx, err)
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.PatchManageArticleType(ctx, request.(PatchManageArticleTypeRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "PatchManageArticleType")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(PatchManageArticleTypeResponseObject); ok {
+		if err := validResponse.VisitPatchManageArticleTypeResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {
@@ -4818,25 +5495,25 @@ func (sh *strictHandler) PublishManageArticle(ctx *gin.Context, articleID Articl
 	}
 }
 
-// ListTags operation middleware
-func (sh *strictHandler) ListTags(ctx *gin.Context, params ListTagsParams) {
-	var request ListTagsRequestObject
+// ListManageTags operation middleware
+func (sh *strictHandler) ListManageTags(ctx *gin.Context, params ListManageTagsParams) {
+	var request ListManageTagsRequestObject
 
 	request.Params = params
 
 	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.ListTags(ctx, request.(ListTagsRequestObject))
+		return sh.ssi.ListManageTags(ctx, request.(ListManageTagsRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "ListTags")
+		handler = middleware(handler, "ListManageTags")
 	}
 
 	response, err := handler(ctx, request)
 
 	if err != nil {
 		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(ListTagsResponseObject); ok {
-		if err := validResponse.VisitListTagsResponse(ctx.Writer); err != nil {
+	} else if validResponse, ok := response.(ListManageTagsResponseObject); ok {
+		if err := validResponse.VisitListManageTagsResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {
@@ -4844,11 +5521,11 @@ func (sh *strictHandler) ListTags(ctx *gin.Context, params ListTagsParams) {
 	}
 }
 
-// CreateTag operation middleware
-func (sh *strictHandler) CreateTag(ctx *gin.Context) {
-	var request CreateTagRequestObject
+// CreateManageTag operation middleware
+func (sh *strictHandler) CreateManageTag(ctx *gin.Context) {
+	var request CreateManageTagRequestObject
 
-	var body CreateTagJSONRequestBody
+	var body CreateManageTagJSONRequestBody
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		sh.options.RequestErrorHandlerFunc(ctx, err)
 		return
@@ -4856,18 +5533,18 @@ func (sh *strictHandler) CreateTag(ctx *gin.Context) {
 	request.Body = &body
 
 	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.CreateTag(ctx, request.(CreateTagRequestObject))
+		return sh.ssi.CreateManageTag(ctx, request.(CreateManageTagRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "CreateTag")
+		handler = middleware(handler, "CreateManageTag")
 	}
 
 	response, err := handler(ctx, request)
 
 	if err != nil {
 		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(CreateTagResponseObject); ok {
-		if err := validResponse.VisitCreateTagResponse(ctx.Writer); err != nil {
+	} else if validResponse, ok := response.(CreateManageTagResponseObject); ok {
+		if err := validResponse.VisitCreateManageTagResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {
@@ -4875,26 +5552,26 @@ func (sh *strictHandler) CreateTag(ctx *gin.Context) {
 	}
 }
 
-// DeleteTag operation middleware
-func (sh *strictHandler) DeleteTag(ctx *gin.Context, tagID TagID, params DeleteTagParams) {
-	var request DeleteTagRequestObject
+// DeleteManageTag operation middleware
+func (sh *strictHandler) DeleteManageTag(ctx *gin.Context, tagID TagID, params DeleteManageTagParams) {
+	var request DeleteManageTagRequestObject
 
 	request.TagID = tagID
 	request.Params = params
 
 	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.DeleteTag(ctx, request.(DeleteTagRequestObject))
+		return sh.ssi.DeleteManageTag(ctx, request.(DeleteManageTagRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "DeleteTag")
+		handler = middleware(handler, "DeleteManageTag")
 	}
 
 	response, err := handler(ctx, request)
 
 	if err != nil {
 		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(DeleteTagResponseObject); ok {
-		if err := validResponse.VisitDeleteTagResponse(ctx.Writer); err != nil {
+	} else if validResponse, ok := response.(DeleteManageTagResponseObject); ok {
+		if err := validResponse.VisitDeleteManageTagResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {
@@ -4902,25 +5579,25 @@ func (sh *strictHandler) DeleteTag(ctx *gin.Context, tagID TagID, params DeleteT
 	}
 }
 
-// GetTag operation middleware
-func (sh *strictHandler) GetTag(ctx *gin.Context, tagID TagID) {
-	var request GetTagRequestObject
+// GetManageTag operation middleware
+func (sh *strictHandler) GetManageTag(ctx *gin.Context, tagID TagID) {
+	var request GetManageTagRequestObject
 
 	request.TagID = tagID
 
 	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.GetTag(ctx, request.(GetTagRequestObject))
+		return sh.ssi.GetManageTag(ctx, request.(GetManageTagRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "GetTag")
+		handler = middleware(handler, "GetManageTag")
 	}
 
 	response, err := handler(ctx, request)
 
 	if err != nil {
 		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(GetTagResponseObject); ok {
-		if err := validResponse.VisitGetTagResponse(ctx.Writer); err != nil {
+	} else if validResponse, ok := response.(GetManageTagResponseObject); ok {
+		if err := validResponse.VisitGetManageTagResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {
@@ -4928,14 +5605,14 @@ func (sh *strictHandler) GetTag(ctx *gin.Context, tagID TagID) {
 	}
 }
 
-// PatchTag operation middleware
-func (sh *strictHandler) PatchTag(ctx *gin.Context, tagID TagID, params PatchTagParams) {
-	var request PatchTagRequestObject
+// PatchManageTag operation middleware
+func (sh *strictHandler) PatchManageTag(ctx *gin.Context, tagID TagID, params PatchManageTagParams) {
+	var request PatchManageTagRequestObject
 
 	request.TagID = tagID
 	request.Params = params
 
-	var body PatchTagJSONRequestBody
+	var body PatchManageTagJSONRequestBody
 	if err := ctx.ShouldBindJSON(&body); err != nil {
 		sh.options.RequestErrorHandlerFunc(ctx, err)
 		return
@@ -4943,18 +5620,70 @@ func (sh *strictHandler) PatchTag(ctx *gin.Context, tagID TagID, params PatchTag
 	request.Body = &body
 
 	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
-		return sh.ssi.PatchTag(ctx, request.(PatchTagRequestObject))
+		return sh.ssi.PatchManageTag(ctx, request.(PatchManageTagRequestObject))
 	}
 	for _, middleware := range sh.middlewares {
-		handler = middleware(handler, "PatchTag")
+		handler = middleware(handler, "PatchManageTag")
 	}
 
 	response, err := handler(ctx, request)
 
 	if err != nil {
 		sh.options.HandlerErrorFunc(ctx, err)
-	} else if validResponse, ok := response.(PatchTagResponseObject); ok {
-		if err := validResponse.VisitPatchTagResponse(ctx.Writer); err != nil {
+	} else if validResponse, ok := response.(PatchManageTagResponseObject); ok {
+		if err := validResponse.VisitPatchManageTagResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListPublicTags operation middleware
+func (sh *strictHandler) ListPublicTags(ctx *gin.Context, params ListPublicTagsParams) {
+	var request ListPublicTagsRequestObject
+
+	request.Params = params
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.ListPublicTags(ctx, request.(ListPublicTagsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListPublicTags")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(ListPublicTagsResponseObject); ok {
+		if err := validResponse.VisitListPublicTagsResponse(ctx.Writer); err != nil {
+			sh.options.ResponseErrorHandlerFunc(ctx, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// GetPublicTag operation middleware
+func (sh *strictHandler) GetPublicTag(ctx *gin.Context, tagID TagID) {
+	var request GetPublicTagRequestObject
+
+	request.TagID = tagID
+
+	handler := func(ctx *gin.Context, request interface{}) (interface{}, error) {
+		return sh.ssi.GetPublicTag(ctx, request.(GetPublicTagRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetPublicTag")
+	}
+
+	response, err := handler(ctx, request)
+
+	if err != nil {
+		sh.options.HandlerErrorFunc(ctx, err)
+	} else if validResponse, ok := response.(GetPublicTagResponseObject); ok {
+		if err := validResponse.VisitGetPublicTagResponse(ctx.Writer); err != nil {
 			sh.options.ResponseErrorHandlerFunc(ctx, err)
 		}
 	} else if response != nil {
@@ -4993,105 +5722,111 @@ func (sh *strictHandler) GetArticleImageMedia(ctx *gin.Context, storageKey Artic
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"4P8GAA==",
+	"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",
+	"jvsbkb/Vpr0IV3uob+j/BwA=",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

@@ -50,7 +50,7 @@ func resourceSeed(t *testing.T, response *http.Response) seedResource {
 
 // deniedWrites 返回 ArticleType、Tag、Article 的 POST/PATCH/DELETE 共九个合法请求。
 func deniedWrites(articleType, tag, article seedResource) []writeCase {
-	articleBody := fmt.Sprintf(`{"title":"denied","slug":"denied","digest":"digest","content":"content","article_type_id":%d,"tag_ids":[%d],"status":1}`, articleType.ID, tag.ID)
+	articleBody := fmt.Sprintf(`{"title":"denied","slug":"denied","digest":"digest","content":"content","articleTypeId":%d,"tagIds":[%d],"status":1}`, articleType.ID, tag.ID)
 	return []writeCase{
 		{"创建 ArticleType", http.MethodPost, "/api/v1/article-types", `{"name":"denied-type","meun":2}`, nil},
 		{"创建 Tag", http.MethodPost, "/api/v1/tags", `{"name":"denied-tag"}`, nil},

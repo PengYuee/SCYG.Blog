@@ -64,7 +64,7 @@ func (service *TokenService) Verify(raw string) (Principal, error) {
 			return nil, ErrInvalidToken
 		}
 		return service.secret, nil
-	}, jwt.WithIssuer(service.issuer), jwt.WithExpirationRequired())
+	}, jwt.WithIssuer(service.issuer), jwt.WithExpirationRequired(), jwt.WithTimeFunc(service.now))
 	if err != nil {
 		return Principal{}, ErrInvalidToken
 	}

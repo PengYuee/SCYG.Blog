@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	generated "github.com/PengYuee/SCYG.Blog/backend/internal/generated/openapi"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/article"
 )
 
@@ -125,6 +126,29 @@ func Test_ContentREST_response_mapping_accepts_canonical_slug_boundaries(t *test
 				t.Fatalf("articleDTO(%q) 错误 = %v", slug, err)
 			}
 		})
+	}
+}
+
+func Test_ContentREST_sort_values_preserve_openapi_camel_case(t *testing.T) {
+	publicSort := generated.ListArticlesParamsSortCreatedAt
+	if got := sortValue(&publicSort); got != "createdAt" {
+		t.Fatalf("public sort = %q, want createdAt", got)
+	}
+	manageSort := generated.ListManageArticlesParamsSortMinusTitle
+	if got := sortValue(&manageSort); got != "-title" {
+		t.Fatalf("manage sort = %q, want -title", got)
+	}
+	taxonomySortValue := generated.ListManageArticleTypesParamsSortMinusUpdatedAt
+	if got := sortValue(&taxonomySortValue); got != "-updatedAt" {
+		t.Fatalf("taxonomy sort = %q, want -updatedAt", got)
+	}
+	tagSortValue := generated.UpdatedAt
+	if got := sortValue(&tagSortValue); got != "updatedAt" {
+		t.Fatalf("tag sort = %q, want updatedAt", got)
+	}
+	var defaultSort *generated.ListArticlesParamsSort
+	if got := sortValue(defaultSort); got != "-createdAt" {
+		t.Fatalf("default sort = %q, want -createdAt", got)
 	}
 }
 

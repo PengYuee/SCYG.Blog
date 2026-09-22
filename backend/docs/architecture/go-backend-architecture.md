@@ -142,7 +142,7 @@ Current implementation is REST only. OpenAPI 3.0.3 is authoritative for:
 
 Public reads expose only `Published` and nondeleted articles. Article creation and all article writes use the protected management routes and call `Authorizer.Authorize(ctx, action, resource)` before UnitOfWork or repository access. Production injects `DenyAll`; syntactically valid writes return 403 with zero repository/UnitOfWork calls. Malformed transport input returns 400 before invoking a use case. Tests may inject `AllowAll`. This phase declares 403 responses but no OpenAPI security scheme and creates no identity or authorization middleware.
 
-Pagination uses `page` default/minimum 1 and `page_size` default 20, minimum 1, maximum 100. Sort accepts only `created_at`, `updated_at`, and `title`, with `-` for descending. Filters are `article_type_id`, `tag_id`, and `q`.
+- Pagination uses `page` default/minimum 1 and `pageSize` default 20, minimum 1, maximum 100. Sort accepts only `createdAt`, `updatedAt`, and `title`, with `-` for descending. Filters are `articleTypeId`, `tagId`, and `q`.
 
 Strong optimistic concurrency uses `ETag: "<Version>"`. PATCH and DELETE require a strong matching `If-Match`; missing is 428 and stale is 412. Create returns 201 with `Location`, `ETag`, and resource; detail/list return 200; delete returns 204.
 
@@ -174,10 +174,10 @@ sequenceDiagram
 REST success bodies are protocol-specific:
 
 - A single resource is a bare resource DTO, not `{data: ...}`.
-- A list is `{items,page:{number,size,total_items,total_pages}}`.
+- A list is `{items,page:{number,size,totalItems,totalPages}}`.
 - Create is 201 plus `Location`, `ETag`, and the bare resource.
 - Successful delete is 204 with no response body.
-- REST errors are RFC 9457 `application/problem+json` with `type`, `title`, `status`, `detail`, `instance`, `request_id`, and `errors`.
+- REST errors are RFC 9457 `application/problem+json` with `type`, `title`, `status`, `detail`, `instance`, `requestId`, and `errors`.
 - Every OpenAPI operation declares an RFC 9457 500 response.
 
 Binding error mapping:
@@ -284,7 +284,7 @@ When enabled later, the business row and Outbox row commit in one PostgreSQL tra
 
 ## Correlation/Tracing
 
-- Accept or create a request ID at ingress and include it in logs and RFC 9457 `request_id`.
+- Accept or create a request ID at ingress and include it in logs and RFC 9457 `requestId`.
 - Propagate W3C trace context where supported and record trace/span IDs in structured logs.
 - Correlation ID groups a distributed business interaction; causation ID names the preceding command/event; message ID uniquely identifies a message.
 - All cross-boundary timestamps are UTC; future Protobuf uses UTC `Timestamp`.

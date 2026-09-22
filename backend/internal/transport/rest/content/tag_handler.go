@@ -8,10 +8,44 @@ import (
 	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/taxonomy"
 )
 
-// ListTags 实现生成的标签列表操作。
-func (handler *Handler) ListTags(ctx context.Context, request generated.ListTagsRequestObject) (generated.ListTagsResponseObject, error) {
+// ListPublicTags implements the public tag list operation.
+func (handler *Handler) ListPublicTags(ctx context.Context, request generated.ListPublicTagsRequestObject) (generated.ListPublicTagsResponseObject, error) {
+	query := taxonomy.ListPublicTags{Page: int(request.Params.Page), PageSize: int(request.Params.PageSize)}
+	if request.Params.Q != nil {
+		query.Name = *request.Params.Q
+	}
+	result, err := handler.taxonomy.ListPublicTags(requestContext(ctx), query)
+	if err != nil {
+		return nil, err
+	}
+	items := make([]generated.PublicTag, len(result.Items))
+	for index, item := range result.Items {
+		items[index] = publicTagDTO(item)
+	}
+	metadata, err := pageInfo(result.Number, result.Size, result.TotalItems, result.TotalPages, len(items))
+	if err != nil {
+		return nil, err
+	}
+	return generated.ListPublicTags200JSONResponse{Items: items, Page: metadata}, nil
+}
+
+// GetPublicTag implements the public tag detail operation.
+func (handler *Handler) GetPublicTag(ctx context.Context, request generated.GetPublicTagRequestObject) (generated.GetPublicTagResponseObject, error) {
+	result, err := handler.taxonomy.GetPublicTag(requestContext(ctx), taxonomy.GetPublicTag{ID: request.TagID})
+	if err != nil {
+		return nil, err
+	}
+	etag, err := entityTag(result.Version)
+	if err != nil {
+		return nil, err
+	}
+	return generated.GetPublicTag200JSONResponse{Body: publicTagDTO(result), Headers: generated.GetPublicTag200ResponseHeaders{ETag: etag}}, nil
+}
+
+// ListManageTags implements the protected tag list operation.
+func (handler *Handler) ListManageTags(ctx context.Context, request generated.ListManageTagsRequestObject) (generated.ListManageTagsResponseObject, error) {
 	page, size := pageValues(request.Params.Page, request.Params.PageSize)
-	query := taxonomy.ListTags{Page: page, PageSize: size, Sort: tagSort(request.Params.Sort)}
+	query := taxonomy.ListTags{Page: page, PageSize: size, Sort: sortValue(request.Params.Sort)}
 	if request.Params.Q != nil {
 		query.Name = *request.Params.Q
 	}
@@ -31,11 +65,11 @@ func (handler *Handler) ListTags(ctx context.Context, request generated.ListTags
 	if err != nil {
 		return nil, err
 	}
-	return generated.ListTags200JSONResponse{Items: items, Page: metadata}, nil
+	return generated.ListManageTags200JSONResponse{Items: items, Page: metadata}, nil
 }
 
-// CreateTag 实现生成的标签创建操作。
-func (handler *Handler) CreateTag(ctx context.Context, request generated.CreateTagRequestObject) (generated.CreateTagResponseObject, error) {
+// CreateManageTag implements the protected tag creation operation.
+func (handler *Handler) CreateManageTag(ctx context.Context, request generated.CreateManageTagRequestObject) (generated.CreateManageTagResponseObject, error) {
 	result, err := handler.taxonomy.CreateTag(requestContext(ctx), taxonomy.CreateTag{Name: request.Body.Name})
 	if err != nil {
 		return nil, err
@@ -48,11 +82,11 @@ func (handler *Handler) CreateTag(ctx context.Context, request generated.CreateT
 	if err != nil {
 		return nil, err
 	}
-	return generated.CreateTag201JSONResponse{Body: dto, Headers: generated.CreateTag201ResponseHeaders{ETag: etag, Location: fmt.Sprintf("/api/v1/tags/%d", result.ID)}}, nil
+	return generated.CreateManageTag201JSONResponse{Body: dto, Headers: generated.CreateManageTag201ResponseHeaders{ETag: etag, Location: fmt.Sprintf("/api/v1/manage/tags/%d", result.ID)}}, nil
 }
 
-// GetTag 实现生成的标签详情操作。
-func (handler *Handler) GetTag(ctx context.Context, request generated.GetTagRequestObject) (generated.GetTagResponseObject, error) {
+// GetManageTag implements the protected tag detail operation.
+func (handler *Handler) GetManageTag(ctx context.Context, request generated.GetManageTagRequestObject) (generated.GetManageTagResponseObject, error) {
 	result, err := handler.taxonomy.GetTag(requestContext(ctx), taxonomy.GetTag{ID: request.TagID})
 	if err != nil {
 		return nil, err
@@ -65,11 +99,11 @@ func (handler *Handler) GetTag(ctx context.Context, request generated.GetTagRequ
 	if err != nil {
 		return nil, err
 	}
-	return generated.GetTag200JSONResponse{Body: dto, Headers: generated.GetTag200ResponseHeaders{ETag: etag}}, nil
+	return generated.GetManageTag200JSONResponse{Body: dto, Headers: generated.GetManageTag200ResponseHeaders{ETag: etag}}, nil
 }
 
-// PatchTag 实现基于强 ETag 的标签重命名。
-func (handler *Handler) PatchTag(ctx context.Context, request generated.PatchTagRequestObject) (generated.PatchTagResponseObject, error) {
+// PatchManageTag implements the protected tag rename operation.
+func (handler *Handler) PatchManageTag(ctx context.Context, request generated.PatchManageTagRequestObject) (generated.PatchManageTagResponseObject, error) {
 	version, err := parseEntityTag(request.Params.IfMatch)
 	if err != nil {
 		return nil, invalidETag(err)
@@ -89,11 +123,11 @@ func (handler *Handler) PatchTag(ctx context.Context, request generated.PatchTag
 	if err != nil {
 		return nil, err
 	}
-	return generated.PatchTag200JSONResponse{Body: dto, Headers: generated.PatchTag200ResponseHeaders{ETag: etag}}, nil
+	return generated.PatchManageTag200JSONResponse{Body: dto, Headers: generated.PatchManageTag200ResponseHeaders{ETag: etag}}, nil
 }
 
-// DeleteTag 实现基于乐观锁版本的标签删除。
-func (handler *Handler) DeleteTag(ctx context.Context, request generated.DeleteTagRequestObject) (generated.DeleteTagResponseObject, error) {
+// DeleteManageTag implements the protected tag deletion operation.
+func (handler *Handler) DeleteManageTag(ctx context.Context, request generated.DeleteManageTagRequestObject) (generated.DeleteManageTagResponseObject, error) {
 	version, err := parseEntityTag(request.Params.IfMatch)
 	if err != nil {
 		return nil, invalidETag(err)
@@ -101,5 +135,9 @@ func (handler *Handler) DeleteTag(ctx context.Context, request generated.DeleteT
 	if err = handler.taxonomy.DeleteTag(requestContext(ctx), taxonomy.DeleteTag{ID: request.TagID, Version: version}); err != nil {
 		return nil, err
 	}
-	return generated.DeleteTag204Response{}, nil
+	return generated.DeleteManageTag204Response{}, nil
+}
+
+func publicTagDTO(value taxonomy.PublicTagResult) generated.PublicTag {
+	return generated.PublicTag{ID: value.ID, Name: value.Name, ArticleCount: value.ArticleCount}
 }

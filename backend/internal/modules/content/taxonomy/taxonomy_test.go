@@ -47,6 +47,30 @@ func Test_TagModel_nullableModifiedTime_fallsBackToCreationTime(t *testing.T) {
 	}
 }
 
+func TestTaxonomyOrder_usesOpenAPISortValues(t *testing.T) {
+	tests := map[string]string{
+		"createdAt":  "created_at ASC, id ASC",
+		"-createdAt": "created_at DESC, id DESC",
+		"title":      "name ASC, id ASC",
+		"-title":     "name DESC, id DESC",
+		"updatedAt":  "COALESCE(updated_at, created_at) ASC, id ASC",
+		"-updatedAt": "COALESCE(updated_at, created_at) DESC, id DESC",
+	}
+	for sortKey, want := range tests {
+		t.Run(sortKey, func(t *testing.T) {
+			got, err := taxonomyOrder(sortKey)
+			if err != nil || got != want {
+				t.Fatalf("taxonomyOrder(%q) = %q, %v; want %q", sortKey, got, err, want)
+			}
+		})
+	}
+	for _, sortKey := range []string{"created_at", "-created_at", "updated_at", "-updated_at"} {
+		if _, err := taxonomyOrder(sortKey); err == nil {
+			t.Fatalf("taxonomyOrder(%q) accepted a database-style sort key", sortKey)
+		}
+	}
+}
+
 func Test_CreateArticleType_authorizesBeforeDetailValidation(t *testing.T) {
 	service := &Service{authorizer: content.DenyAll{}}
 	_, err := service.CreateArticleType(context.Background(), CreateArticleType{Name: "News", Meun: -1})

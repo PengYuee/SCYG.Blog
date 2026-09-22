@@ -45,12 +45,12 @@ internal/modules/content/
 
 | 用途 | 路径 |
 | --- | --- |
-| 公开文章列表和详情 | `GET /api/v1/articles`、`GET /api/v1/articles/{article_id}` |
-| 管理端文章创建、列表、详情、修改、删除 | `/api/v1/manage/articles`、`/api/v1/manage/articles/{article_id}` |
-| 管理端发布和归档 | `POST /api/v1/manage/articles/{article_id}/publish`、`/archive` |
+| 公开文章列表和详情 | `GET /api/v1/articles`、`GET /api/v1/articles/{articleId}` |
+| 管理端文章创建、列表、详情、修改、删除 | `/api/v1/manage/articles`、`/api/v1/manage/articles/{articleId}` |
+| 管理端发布和归档 | `POST /api/v1/manage/articles/{articleId}/publish`、`/archive` |
 | 管理端正文图片上传 | `POST /api/v1/manage/article-images` |
-| 正文图片取消 | `DELETE /api/v1/article-images/{image_id}` |
-| 正文图片媒体读取 | `GET /media/article-images/{storage_key}` |
+| 正文图片取消 | `DELETE /api/v1/article-images/{imageId}` |
+| 正文图片媒体读取 | `GET /media/article-images/{storageKey}` |
 
 文章创建使用管理端路径，成功响应的 `Location` 指向管理端文章资源。
 
@@ -97,6 +97,27 @@ REST adapter 只声明它实际消费的最小业务接口。Handler 的职责�
 ```
 
 Handler 负责 DTO 转换、边界校验、业务调用和响应映射；SQL 查询、事务编排和状态迁移属于业务层。
+
+同一 feature 的 REST Handler 可以复用模块内部逻辑，但复用边界按业务语义划分：
+
+- Handler 按接口职责调用明确的用例或 Service 方法；不要让公共、管理或其他权限边界共用依赖 `bool`、模式字符串或隐式上下文的“万能”方法。
+- 公共读取和管理读取即使访问同一张表，只要授权、可见性、筛选、排序、统计口径或响应投影不同，就应保留语义明确的入口，例如 `ListPublic...` 与 `ListManage...`。
+- 相同的分页校验、名称校验、参数绑定、错误转换、查询片段、Projection Row 映射等，应在 Service/Repository 内部复用，避免每个 Handler 复制实现。
+- 公共资源、管理资源和摘要投影按响应契约分别建模；不能复用管理 DTO 后再依赖调用方忽略敏感字段。
+- Service 方法数量不是复用质量指标。优先保证授权、不变量和返回模型可从方法签名判断，再在更底层复用真正相同的实现。
+
+推荐结构：
+
+```text
+Public Handler  ->  Public use case
+Manage Handler  ->  Manage use case
+
+Public/Manage use cases
+  ->  shared feature validation/query/mapping helpers
+  ->  Repository/Projection
+```
+
+只有当两个入口的授权、数据可见性、排序、分页、投影和错误语义确实相同时，才直接共用同一个对外 Service 方法。
 
 multipart 上传必须明确：
 

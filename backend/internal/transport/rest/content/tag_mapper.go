@@ -23,10 +23,3 @@ func tagDTO(item taxonomy.TagResult) (generated.Tag, error) {
 func taxonomyTagResponseTextInvalid(item taxonomy.TagResult) bool {
 	return item.Name == "" || len([]rune(item.Name)) > 60
 }
-
-func tagSort(value *generated.ListTagsParamsSort) string {
-	if value == nil {
-		return "title"
-	}
-	return string(*value)
-}

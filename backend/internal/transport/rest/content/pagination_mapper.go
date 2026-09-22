@@ -44,3 +44,11 @@ func pageValues(page *generated.Page, size *generated.PageSize) (int, int) {
 	}
 	return number, pageSize
 }
+
+// sortValue preserves the OpenAPI sort token and applies its documented default.
+func sortValue[T ~string](value *T) string {
+	if value == nil {
+		return "-createdAt"
+	}
+	return string(*value)
+}

@@ -11,7 +11,7 @@ import (
 // ListArticles 实现生成的公开文章列表操作。
 func (handler *Handler) ListArticles(ctx context.Context, request generated.ListArticlesRequestObject) (generated.ListArticlesResponseObject, error) {
 	page, size := pageValues(request.Params.Page, request.Params.PageSize)
-	query := article.List{Page: page, PageSize: size, Sort: articleSort(request.Params.Sort)}
+	query := article.List{Page: page, PageSize: size, Sort: sortValue(request.Params.Sort)}
 	if request.Params.ArticleTypeID != nil {
 		query.ArticleTypeID = *request.Params.ArticleTypeID
 	}
@@ -130,7 +130,7 @@ func (handler *Handler) DeleteManageArticle(ctx context.Context, request generat
 // ListManageArticles implements the protected article management list.
 func (handler *Handler) ListManageArticles(ctx context.Context, request generated.ListManageArticlesRequestObject) (generated.ListManageArticlesResponseObject, error) {
 	page, size := pageValues(request.Params.Page, request.Params.PageSize)
-	query := article.List{Page: page, PageSize: size, Sort: manageArticleSort(request.Params.Sort)}
+	query := article.List{Page: page, PageSize: size, Sort: sortValue(request.Params.Sort)}
 	if request.Params.ArticleTypeID != nil {
 		query.ArticleTypeID = *request.Params.ArticleTypeID
 	}

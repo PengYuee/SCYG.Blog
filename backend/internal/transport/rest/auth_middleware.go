@@ -68,10 +68,10 @@ func isPublicRoute(ctx *gin.Context) bool {
 		return false
 	}
 	switch ctx.FullPath() {
-	case "/api/v1/articles", "/api/v1/articles/:article_id",
-		"/api/v1/article-types", "/api/v1/article-types/:article_type_id",
-		"/api/v1/tags", "/api/v1/tags/:tag_id",
-		"/media/article-images/:storage_key":
+	case "/api/v1/articles", "/api/v1/articles/:articleId",
+		"/api/v1/article-types", "/api/v1/article-types/:articleTypeId",
+		"/api/v1/tags", "/api/v1/tags/:tagId",
+		"/media/article-images/:storageKey":
 		return true
 	default:
 		path := ctx.Request.URL.Path

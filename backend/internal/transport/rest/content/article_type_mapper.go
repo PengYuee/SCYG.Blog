@@ -18,16 +18,9 @@ func articleTypeDTO(item taxonomy.ArticleTypeResult) (generated.ArticleType, err
 		value := item.ModifiedAt
 		updated = &value
 	}
-	return generated.ArticleType{ID: item.ID, Name: item.Name, Image: item.Image, Meun: item.Meun, Version: version, CreatedAt: item.CreatedAt, UpdatedAt: updated}, nil
+	return generated.ArticleType{ID: item.ID, Name: item.Name, Image: item.Image, Menu: item.Meun, Version: version, CreatedAt: item.CreatedAt, UpdatedAt: updated}, nil
 }
 
 func taxonomyResponseTextInvalid(item taxonomy.ArticleTypeResult) bool {
 	return item.Name == "" || len([]rune(item.Name)) > 60
-}
-
-func taxonomySort(value *generated.ListArticleTypesParamsSort) string {
-	if value == nil {
-		return "title"
-	}
-	return string(*value)
 }

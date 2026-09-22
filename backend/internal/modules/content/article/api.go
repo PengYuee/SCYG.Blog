@@ -79,7 +79,9 @@ type Get struct{ ID int64 }
 type List struct {
 	Page, PageSize       int
 	ArticleTypeID, TagID int64
-	Query, Sort          string
+	Query                string
+	// Sort uses the OpenAPI values: createdAt, -createdAt, updatedAt, -updatedAt, title, and -title.
+	Sort string
 }
 
 // Result is the protocol-neutral article read result.

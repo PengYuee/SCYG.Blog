@@ -15,7 +15,7 @@ func Test_OpenAPI_schema_contracts(t *testing.T) {
 	document := loadAuthoritativeSpec(t)
 
 	// When / Then
-	assertSchemaRequired(t, document, "ArticleCreate", []string{"title", "slug", "digest", "content", "article_type_id", "tag_ids", "status"})
+	assertSchemaRequired(t, document, "ArticleCreate", []string{"title", "slug", "digest", "content", "articleTypeId", "tagIds", "status"})
 	assertEnumValues(t, document, "ArticleCreateStatus", []any{float64(1), float64(2)})
 	assertEnumValues(t, document, "ArticleStatus", []any{float64(1), float64(2), float64(3)})
 	assertPatchSchema(t, document, "ArticlePatch")
@@ -24,7 +24,7 @@ func Test_OpenAPI_schema_contracts(t *testing.T) {
 	assertNoInternalDeleteFields(t, document, "Article")
 	assertNoInternalDeleteFields(t, document, "ArticleType")
 	assertNoInternalDeleteFields(t, document, "Tag")
-	assertSchemaRequired(t, document, "Problem", []string{"type", "title", "status", "detail", "instance", "request_id", "errors"})
+	assertSchemaRequired(t, document, "Problem", []string{"type", "title", "status", "detail", "instance", "requestId", "errors"})
 }
 
 func Test_OpenAPI_pagination_and_ETag_constraints(t *testing.T) {
@@ -32,6 +32,14 @@ func Test_OpenAPI_pagination_and_ETag_constraints(t *testing.T) {
 	document := loadAuthoritativeSpec(t)
 	page := parameterSchema(t, document, "Page")
 	pageSize := parameterSchema(t, document, "PageSize")
+	publicPage := parameterSchema(t, document, "PublicPage")
+	publicPageSize := parameterSchema(t, document, "PublicPageSize")
+	if !document.Components.Parameters["PublicPage"].Value.Required || !document.Components.Parameters["PublicPageSize"].Value.Required {
+		t.Fatal("public page and pageSize must be required")
+	}
+	if publicPage.Min == nil || *publicPage.Min != 1 || publicPageSize.Min == nil || *publicPageSize.Min != 1 || publicPageSize.Max == nil || *publicPageSize.Max != 100 {
+		t.Fatal("public pagination must have range page >= 1 and pageSize 1..100")
+	}
 	ifMatch := parameterSchema(t, document, "IfMatch")
 
 	// When / Then
@@ -39,7 +47,29 @@ func Test_OpenAPI_pagination_and_ETag_constraints(t *testing.T) {
 		t.Fatal("page must default to 1 with minimum 1")
 	}
 	if pageSize.Default != float64(20) || pageSize.Min == nil || *pageSize.Min != 1 || pageSize.Max == nil || *pageSize.Max != 100 {
-		t.Fatal("page_size must default to 20 with range 1..100")
+		t.Fatal("pageSize must default to 20 with range 1..100")
+	}
+	for name, expected := range map[string]string{
+		"ArticleImageID":         "imageId",
+		"ArticleImageStorageKey": "storageKey",
+		"ArticleID":              "articleId",
+		"ArticleTypeID":          "articleTypeId",
+		"TagID":                  "tagId",
+		"PageSize":               "pageSize",
+		"ArticleTypeFilter":      "articleTypeId",
+		"TagFilter":              "tagId",
+		"PublicPage":             "page",
+		"PublicPageSize":         "pageSize",
+		"PublicSearchFilter":     "q",
+	} {
+		parameter := document.Components.Parameters[name]
+		if parameter == nil || parameter.Value == nil || parameter.Value.Name != expected {
+			t.Fatalf("parameter %s name = %v, want %s", name, parameter, expected)
+		}
+	}
+	sort := parameterSchema(t, document, "Sort")
+	if !slices.Equal(sort.Enum, []any{"createdAt", "-createdAt", "updatedAt", "-updatedAt", "title", "-title"}) {
+		t.Fatalf("sort enum = %v", sort.Enum)
 	}
 	pattern, err := regexp.Compile(ifMatch.Pattern)
 	if err != nil {
