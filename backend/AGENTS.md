@@ -4,9 +4,9 @@ Go 1.26.0 模块化单体基础工程。本目录是仓库中唯一的 Go module
 
 ## 文档
 
-- [`docs/guides/backend-development.md`](docs/guides/backend-development.md)
-- [`docs/guides/module-extension.md`](docs/guides/module-extension.md)
-- [`docs/architecture/`](docs/architecture/)
+- [`../docs/services/backend/guides/backend-development.md`](../docs/services/backend/guides/backend-development.md)
+- [`../docs/services/backend/guides/module-extension.md`](../docs/services/backend/guides/module-extension.md)
+- [`../docs/services/backend/architecture/`](../docs/services/backend/architecture/)
 
 命令以 [`Taskfile.yml`](Taskfile.yml) 为准，API 以 [`api/openapi.yaml`](api/openapi.yaml) 为准。
 
