@@ -1,10 +1,12 @@
-import type { AxiosError, AxiosResponse } from "axios"
-import { beforeEach, describe, expect, it } from "vitest"
-import { configureHttp, HttpRequestError, http, normalizeHttpError } from "@/request/http"
+import { AxiosHeaders, type AxiosError, type AxiosResponse } from "axios"
+import { beforeEach, describe, expect, it, vi } from "vitest"
+import { configureAuthTokenProvider, configureHttp, configureUnauthorizedHandler, HttpRequestError, http, normalizeHttpError } from "@/request/http"
 
 describe("HTTP error characterization", () => {
   beforeEach(() => {
     delete http.defaults.baseURL
+    configureAuthTokenProvider(() => undefined)
+    configureUnauthorizedHandler(() => undefined)
   })
   it("starts without a Vite-origin API fallback", () => {
     // Given / When: 共享客户端尚未读取运行时配置。
@@ -24,6 +26,19 @@ describe("HTTP error characterization", () => {
     // Then: 最终请求地址不会重复拼接 /api，也不使用 Vite 来源。
     expect(requestUrl).toBe("http://localhost:5000/api/v1/articles")
     expect(requestUrl).not.toContain("localhost:4173")
+  })
+  it("adds the current Bearer token to protected requests", async () => {
+    const observed = vi.fn()
+    configureAuthTokenProvider(() => "signed-token")
+
+    await http.get("/api/v1/manage/articles", {
+      adapter: async (config) => {
+        observed(config.headers.get("Authorization"))
+        return { data: {}, status: 200, statusText: "OK", headers: new AxiosHeaders(), config }
+      },
+    })
+
+    expect(observed).toHaveBeenCalledWith("Bearer signed-token")
   })
   it("preserves explicitly supplied HttpRequestError fields", () => {
     // Given: a stable code, status and original cause.
@@ -64,15 +79,16 @@ describe("HTTP error characterization", () => {
         status: 412,
         detail: "文章版本已变化",
         instance: "/api/v1/manage/articles/7",
-        request_id: "req-1",
+        requestId: "req-1",
         errors: {},
-      },
+      } satisfies Pick<AxiosResponse, "status" | "data">
     } satisfies Pick<AxiosResponse, "status" | "data">
     const axiosError = { name: "AxiosError", message: "Request failed", code: "ERR_BAD_REQUEST", isAxiosError: true, response, toJSON: () => ({}) } satisfies Partial<AxiosError> & { readonly isAxiosError: true }
 
     const error = normalizeHttpError(axiosError)
 
-    expect(error).toMatchObject({ message: "文章版本已变化", status: 412, detail: "文章版本已变化", requestId: "req-1", errors: {} })
+    expect(error).toMatchObject({ message: "文章版本已变化", status: 412, detail: "文章版本已变化", requestId: "req-1" })
+    expect(error.errors).toEqual({})
   })
   it("normalizes non-Axios values with the unknown error contract", () => {
     // Given: a rejection outside Axios.

@@ -1,15 +1,15 @@
 <script setup lang="ts">
-import { HomeIcon, NewspaperIcon, PencilSquareIcon } from "@heroicons/vue/24/outline"
-import type { Component } from "vue"
+import { ArrowRightEndOnRectangleIcon, HomeIcon, NewspaperIcon, PencilSquareIcon } from "@heroicons/vue/24/outline"
+import { computed, inject, type Component } from "vue"
 import { RouterLink, useRoute } from "vue-router"
-import { fakeAuthorEnabled } from "@/services/author-runtime"
+import { authSessionKey } from "@/services/auth-session"
 
 /** 公共导航所在的语义表面或固定 Hero 覆盖层。 */
 type NavigationTone = "hero" | "overlay" | "surface"
 /** 公共导航目标定义。 */
 type NavigationTarget = {
-  /** 稳定目标标识，author-write 表示开发者作者写作入口。 */ readonly id: "home" | "articles" | "author-write"
-  /** 规范完整路径，作者路径仅在开发者作者模式启用。 */ readonly to: "/" | "/articles" | "/author/articles/new"
+  /** 稳定目标标识。 */ readonly id: "home" | "articles" | "author-write" | "login"
+  /** 规范完整路径。 */ readonly to: "/" | "/articles" | "/author/articles/new" | "/login"
   /** 中文可见标签。 */ readonly label: string
   /** 对应的 Heroicons 图标。 */ readonly icon: Component
   /** 根据当前路径判断活动态。 */ readonly isActive: (path: string) => boolean
@@ -18,16 +18,16 @@ type NavigationTarget = {
 /** 公共导航输入属性。 */
 withDefaults(defineProps<{ readonly tone?: NavigationTone }>(), { tone: "surface" })
 
-/** 开发者作者模式下显示的写作台目标，显式保留导航字面量类型。 */
 const AUTHOR_TARGET = { id: "author-write", to: "/author/articles/new", label: "写作台", icon: PencilSquareIcon, isActive: (path: string) => path.startsWith("/author") } as const satisfies NavigationTarget
+const LOGIN_TARGET = { id: "login", to: "/login", label: "登录", icon: ArrowRightEndOnRectangleIcon, isActive: (path: string) => path === "/login" } as const satisfies NavigationTarget
 
-/** Hero 与固定头部共享的唯一导航目标定义。 */
-const NAV_TARGETS = [
+const authSession = inject(authSessionKey, null)
+/** Hero 与固定头部共享导航，并随真实认证状态切换登录或写作入口。 */
+const navTargets = computed<readonly NavigationTarget[]>(() => [
   { id: "home", to: "/", label: "首页", icon: HomeIcon, isActive: (path: string) => path === "/" },
   { id: "articles", to: "/articles", label: "文章", icon: NewspaperIcon, isActive: (path: string) => path.startsWith("/articles") },
-  // 写作台直接复用作者运行时开关，避免导航与路由启用条件分叉。
-  ...(fakeAuthorEnabled ? [AUTHOR_TARGET] : []),
-] as const satisfies readonly NavigationTarget[]
+  authSession?.currentState().kind === "authenticated" ? AUTHOR_TARGET : LOGIN_TARGET,
+])
 /** 当前路由用于导航活动态和同路由交互。 */
 const route = useRoute()
 
@@ -52,7 +52,7 @@ const handleNavigationClick = (event: MouseEvent, target: NavigationTarget): voi
 <template>
   <nav class="public-navigation flex items-center gap-2" :class="`public-navigation--${tone}`" aria-label="主要导航">
     <RouterLink
-      v-for="target in NAV_TARGETS"
+      v-for="target in navTargets"
       :key="target.id"
       :to="target.to"
       class="navigation-link relative inline-flex min-h-11 items-center gap-2 rounded-[var(--radius-control)] px-4 text-sm font-semibold"

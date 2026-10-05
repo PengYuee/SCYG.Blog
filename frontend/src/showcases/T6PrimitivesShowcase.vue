@@ -4,7 +4,8 @@ import HeroSearch from "@/components/public/HeroSearch.vue"
 import ProfileCard from "@/components/public/ProfileCard.vue"
 import RecommendedArticles from "@/components/public/RecommendedArticles.vue"
 import TagCloud from "@/components/public/TagCloud.vue"
-import PublicLayout from "@/layouts/PublicLayout.vue"
+import BlogLayout from "@/layouts/BlogLayout.vue"
+import type { ObserverFactory } from "@/components/public/BlogHeader.vue"
 import type { ArticleSummary } from "@/types/article"
 import type { ArticleType, Tag } from "@/types/taxonomy"
 
@@ -20,6 +21,7 @@ const articles: readonly ArticleSummary[] = [1, 2, 3].map((id) => ({
   digest: "用于验证中文标题、摘要、元数据、焦点和三列桌面网格的组件展示内容。",
   markdown: "",
   articleTypeId: 1,
+  articleType: { id: 1, name: "前端实践", imageUrl: null },
   tagIds: [id],
   status: 1,
   support: 0,
@@ -29,10 +31,15 @@ const articles: readonly ArticleSummary[] = [1, 2, 3].map((id) => ({
   createdAt: "2026-07-11T00:00:00Z",
   updatedAt: null,
 }))
+/** T6 首屏静态展示让头部直接处于透明状态。 */
+const transparentHeroObserver: ObserverFactory = (callback) => {
+  callback([{ boundingClientRect: { bottom: window.innerHeight + 1 } } as IntersectionObserverEntry], {} as IntersectionObserver)
+  return { observe() {}, disconnect() {} }
+}
 </script>
 
 <template>
-  <PublicLayout title="公共组件展示">
+  <BlogLayout :hero-controlled="false" :observer-factory="transparentHeroObserver">
     <div class="blog-content-grid" data-testid="showcase-content-grid">
       <div class="space-y-12">
         <ArticleSection title="公共文章原语" :articles="articles" :categories="categories" more-to="/articles" />
@@ -45,5 +52,5 @@ const articles: readonly ArticleSummary[] = [1, 2, 3].map((id) => ({
         <TagCloud :tags="tags" />
       </div>
     </div>
-  </PublicLayout>
+  </BlogLayout>
 </template>

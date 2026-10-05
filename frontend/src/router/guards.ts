@@ -1,24 +1,23 @@
-﻿import { canAuthor } from "@/types/auth"
-import type { AuthRuntimeConfig, AuthState } from "@/stores/auth"
+﻿import type { NavigationGuard } from "vue-router"
+import type { AuthSessionController } from "@/services/auth-session"
 
-/** 作者路由不可用的稳定用户可操作原因。 */
-export const AUTHORING_UNAVAILABLE_REASON = "Authoring is unavailable because backend authentication is not supported."
+const DEFAULT_AUTHENTICATED_TARGET = "/author/articles/new"
 
-/** 作者路由真实可用性，不伪造登录跳转。 */
-export type AuthorRouteAvailability =
-  | { readonly kind: "available" }
-  | { readonly kind: "unavailable"; readonly code: "AUTHORING_UNAVAILABLE"; readonly reason: string }
-
-/** 根据注入模式与当前认证状态判断作者路由是否真实可用。 */
-export function authorRouteAvailability(config: AuthRuntimeConfig, state: AuthState): AuthorRouteAvailability {
-  // 生产写作在后端 claims 可解析前保持关闭；Fake 标志无法绕过此分支。
-  if (config.mode === "production") return unavailable()
-  if (!config.fakeAuthEnabled) return unavailable()
-  if (state.kind !== "authenticated" || state.source !== "fake" || !canAuthor(state.claims)) return unavailable()
-  return { kind: "available" }
+/** 只接受当前站点内的绝对路径，拒绝协议相对跳转。 */
+export function resolveAuthRedirect(value: unknown): string {
+  return typeof value === "string" && value.startsWith("/") && !value.startsWith("//") ? value : DEFAULT_AUTHENTICATED_TARGET
 }
 
-/** 构造稳定且不包含虚假重定向的不可用结果。 */
-function unavailable(): AuthorRouteAvailability {
-  return { kind: "unavailable", code: "AUTHORING_UNAVAILABLE", reason: AUTHORING_UNAVAILABLE_REASON }
+/** 创建同时保护作者路由并阻止已登录用户停留在登录页的导航守卫。 */
+export function createAuthNavigationGuard(session: Pick<AuthSessionController, "currentState">): NavigationGuard {
+  return (to) => {
+    const authenticated = session.currentState().kind === "authenticated"
+    if (to.matched.some((record) => record.meta["requiresAuth"] === true) && !authenticated) {
+      return { name: "login", query: { redirect: to.fullPath } }
+    }
+    if (to.matched.some((record) => record.meta["guestOnly"] === true) && authenticated) {
+      return resolveAuthRedirect(to.query["redirect"])
+    }
+    return true
+  }
 }

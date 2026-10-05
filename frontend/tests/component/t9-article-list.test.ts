@@ -11,7 +11,7 @@ const { get } = vi.hoisted(() => {
   /** 测试适配器有意维护的文章页游标。 */
   let articlePage = 0
   /** 创建当前 v1 文章响应。 */
-  const apiArticle = (id: number) => ({ id, title: `Vue 文章 ${id}`, slug: `vue-${id}`, digest: `Vue 摘要 ${id}`, content: "正文", article_type_id: 2, tag_ids: [9], status: 2, support: 1, comment: 1, visited: id, version: 1, created_at: "2026-07-11T00:00:00Z", updated_at: null })
+  const apiArticle = (id: number) => ({ id, title: `Vue 文章 ${id}`, slug: `vue-${id}`, digest: `Vue 摘要 ${id}`, content: "正文", articleTypeId: 2, articleType: { id: 2, name: "前端", image: null }, tagIds: [9], status: 2, support: 1, comment: 1, visited: id, version: 1, createdAt: "2026-07-11T00:00:00Z", updatedAt: null })
   return {
     get: vi.fn(async (url: string) => {
       if (url.includes("/api/v1/articles")) {
@@ -19,10 +19,10 @@ const { get } = vi.hoisted(() => {
         articlePage += 1
         if (pageIndex === 1) throw new Error("page two unavailable")
         const items = pageIndex === 0 ? Array.from({ length: 9 }, (_, index) => apiArticle(index + 1)) : [apiArticle(10)]
-        return { data: { items, page: { number: pageIndex === 0 ? 1 : 2, size: 9, total_items: 10, total_pages: 2 } } }
+        return { data: { items, page: { number: pageIndex === 0 ? 1 : 2, size: 9, totalItems: 10, totalPages: 2 } } }
       }
-      if (url.includes("/api/v1/article-types")) return { data: { items: [{ id: 2, name: "前端", image: null, meun: 1, version: 1, created_at: "2026-07-11T00:00:00Z", updated_at: null }], page: { number: 1, size: 20, total_items: 1, total_pages: 1 } } }
-      return { data: { items: [{ id: 9, name: "Vue", version: 1, created_at: "2026-07-11T00:00:00Z", updated_at: null }], page: { number: 1, size: 20, total_items: 1, total_pages: 1 } } }
+      if (url.includes("/api/v1/manage/article-types")) return { data: { items: [{ id: 2, name: "前端", image: null, menu: 1, version: 1, createdAt: "2026-07-11T00:00:00Z", updatedAt: null }], page: { number: 1, size: 20, totalItems: 1, totalPages: 1 } } }
+      return { data: { items: [{ id: 9, name: "Vue", version: 1, createdAt: "2026-07-11T00:00:00Z", updatedAt: null }], page: { number: 1, size: 20, totalItems: 1, totalPages: 1 } } }
     }),
   }
 })
@@ -39,7 +39,7 @@ describe("T9 article list behavior", () => {
   it("preserves loaded articles and retries a failed next page", async () => {
     // Given: 带全部三种筛选的直接深链。
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: "/articles", component: ArticleListView }, { path: "/articles/:id", component: { template: "<p>detail</p>" } }] })
-    await router.push("/articles?q=Vue&categoryId=2&tagId=9")
+    await router.push("/articles?q=Vue&articleTypeId=2&tagId=9")
     const wrapper = mount(ArticleListView, { global: { plugins: [router], provide: { [apiServicesKey]: apiServices, [scrollRestorationKey]: scrollRestoration }, stubs: { BlogLayout: { template: "<main><slot /></main>" } } } })
     await flushPromises()
 
@@ -47,7 +47,7 @@ describe("T9 article list behavior", () => {
     const articleCalls = get.mock.calls.filter(([url]) => url.includes("/api/v1/articles"))
     // Then: URL 筛选映射到 T4 feed，且只请求第零页。
     expect(articleCalls).toHaveLength(1)
-    expect(articleCalls[0]?.[1]).toMatchObject({ params: { page: 1, page_size: 9, article_type_id: 2, tag_id: 9, q: "Vue" } })
+    expect(articleCalls[0]?.[1]).toMatchObject({ params: { page: 1, pageSize: 9, articleTypeId: 2, tagId: 9, q: "Vue" } })
     expect(wrapper.text()).toContain("Vue 文章 1")
     expect(wrapper.findAll("article")).toHaveLength(9)
 

@@ -4,16 +4,17 @@ import AppModal from "@/components/shared/AppModal.vue"
 import AppToast from "@/components/shared/AppToast.vue"
 import { useApiServices } from "@/request/api-services"
 import { HttpRequestError } from "@/request/http-error"
-import { createAuthorRuntime, createFakeAuthorRuntime, type AuthorRuntime } from "@/services/author-runtime"
+import { createAuthorRuntime, type AuthorRuntime } from "@/services/author-runtime"
+import { useAuthSession } from "@/services/auth-session"
 import { TAXONOMY_MUTATION_DOMAIN } from "@/services/mutation-guard"
 import { useUiStore } from "@/stores/ui"
 import type { ArticleTypeDeleteTarget, AuthorArticleType, AuthorTag, TagDeleteTarget } from "@/services/author-contracts"
 
 
-/** 测试可注入的作者运行时；开发环境使用真实 API，测试环境使用隔离 Fake。 */
+/** 测试可注入作者运行时；路由页面使用真实 API 与认证状态。 */
 const props = defineProps<{ readonly runtime?: AuthorRuntime }>()
 /** 当前作者运行时。 */
-const runtime = props.runtime ?? (import.meta.env.MODE === "test" ? createFakeAuthorRuntime() : createAuthorRuntime(useApiServices()))
+const runtime = props.runtime ?? createAuthorRuntime(useApiServices(), useAuthSession().currentState)
 /** 全局反馈。 */ const ui = useUiStore()
 /** 分类列表。 */ const articleTypes = ref<readonly AuthorArticleType[]>([])
 /** 带并发删除版本的标签列表。 */ const tags = ref<readonly AuthorTag[]>([])

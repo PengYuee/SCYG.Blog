@@ -1,22 +1,33 @@
-﻿import { describe, expect, it } from "vitest"
-import { authorRouteAvailability } from "@/router/guards"
-import { parseAuthRuntimeConfig, type AuthState } from "@/stores/auth"
+﻿import { createMemoryHistory, createRouter } from "vue-router"
+import { describe, expect, it } from "vitest"
+import { createAuthNavigationGuard, resolveAuthRedirect } from "@/router/guards"
+import type { AuthState } from "@/stores/auth"
 
-describe("T5 truthful author route guard", () => {
-  it("returns unavailable rather than fake login or authentication in production", () => {
-    // Given: production and the truthful unsupported auth state.
-    const state: AuthState = { kind: "unsupported", reason: "backend auth unavailable" }
-    // When: an author path is evaluated.
-    const result = authorRouteAvailability(parseAuthRuntimeConfig({ mode: "production", fakeAuthEnabled: false }), state)
-    // Then: navigation receives an explicit unavailable outcome with no redirect.
-    expect(result).toEqual({ kind: "unavailable", code: "AUTHORING_UNAVAILABLE", reason: "Authoring is unavailable because backend authentication is not supported." })
-    expect(result).not.toHaveProperty("redirect")
+const authenticated: AuthState = { kind: "authenticated", session: { accessToken: "token", tokenType: "Bearer", expiresAt: "2099-01-01T00:00:00Z" } }
+
+function guardedRouter(state: () => AuthState) {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [
+      { path: "/login", name: "login", component: {}, meta: { guestOnly: true } },
+      { path: "/author", component: {}, meta: { requiresAuth: true } },
+    ],
+  })
+  router.beforeEach(createAuthNavigationGuard({ currentState: state }))
+  return router
+}
+
+describe("authentication navigation guard", () => {
+  it("redirects an anonymous author navigation to login with its return target", async () => {
+    const router = guardedRouter(() => ({ kind: "anonymous" }))
+    await router.push("/author")
+    expect(router.currentRoute.value.fullPath).toBe("/login?redirect=/author")
   })
 
-  it("makes author routes available to an explicit fake author in test mode", () => {
-    // Given: explicit test fake mode and author claims.
-    const state: AuthState = { kind: "authenticated", source: "fake", claims: { roles: ["author"], permissions: ["article:write"] } }
-    // When / Then: availability is derived from the same truthful capability.
-    expect(authorRouteAvailability(parseAuthRuntimeConfig({ mode: "test", fakeAuthEnabled: true }), state)).toEqual({ kind: "available" })
+  it("allows an authenticated author and rejects external return targets", async () => {
+    const router = guardedRouter(() => authenticated)
+    await router.push("/author")
+    expect(router.currentRoute.value.path).toBe("/author")
+    expect(resolveAuthRedirect("//evil.example/path")).toBe("/author/articles/new")
   })
 })

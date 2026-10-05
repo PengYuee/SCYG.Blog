@@ -15,11 +15,12 @@ const mode: ShowcaseMode = new URLSearchParams(window.location.search).get("mode
 /** 构建具备真实领域字段的浏览器文章 fixture。 */
 const article = (id: number, articleTypeId: number, visited: number): ArticleDetail => ({
   id,
-  title: ["从 Vue 响应式边界理解状态机", "给旧接口一层可靠的类型契约", "桌面阅读体验的节奏与留白", "用确定性测试守住异步交互", "分类字典如何服务文章发现", "让错误恢复不再清空页面", "构建稳定的文章分组顺序", "从真实数据生成推荐内容", "在 Edge 中验证中文排版"][id - 1] ?? `文章 ${id}`,
+  title: ["从 Vue 响应式边界理解状态机", "给旧接口一层可靠的类型契约", "桌面阅读体验的节奏与留白", "用确定性测试守住异步交互", "分类字典如何服务文章发现", "让错误恢复不清空页面", "构建稳定的文章分组顺序", "从真实数据生成推荐内容", "在 Edge 中验证中文排版"][id - 1] ?? `文章 ${id}`,
   slug: `home-fixture-${id}`,
   digest: "这是一段来自领域 fixture 的文章摘要，用于验证真实标题、元数据、分组和中文换行。",
   markdown: "正文",
   articleTypeId,
+  articleType: { id: articleTypeId, name: `分类 ${articleTypeId}`, imageUrl: null },
   tagIds: [id % 2 === 0 ? 2 : 1],
   status: 1,
   support: id * 2,

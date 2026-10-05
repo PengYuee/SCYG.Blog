@@ -23,9 +23,9 @@ async function authorRouter(path: string) {
 }
 
 /** 挂载可注入运行时的文章编辑器。 */
-async function mountEditor(runtime?: AuthorRuntime): Promise<VueWrapper> {
+async function mountEditor(runtime: AuthorRuntime = createFakeAuthorRuntime()): Promise<VueWrapper> {
   const router = await authorRouter("/author/articles/new")
-  return mount(ArticleEditorView, { props: runtime === undefined ? {} : { runtime }, global: { plugins: [createPinia(), router] }, attachTo: document.body })
+  return mount(ArticleEditorView, { props: { runtime }, global: { plugins: [createPinia(), router] }, attachTo: document.body })
 }
 
 /** 打开文章分类下拉框。 */
@@ -51,7 +51,7 @@ describe("T11 author views", () => {
   it("creates a controlled fake article and prevents duplicate saving", async () => {
     // Given: 显式 Fake 新建文章页面。
     const router = await authorRouter("/author/articles/new")
-    const wrapper = mount(ArticleEditorView, { global: { plugins: [createPinia(), router] } })
+    const wrapper = mount(ArticleEditorView, { props: { runtime: createFakeAuthorRuntime() }, global: { plugins: [createPinia(), router] } })
     await flushPromises()
     // When: 用户填写标题与 Markdown 并快速点击保存两次。
     await wrapper.get("[data-testid='article-title']").setValue("T11 富文本文章")
@@ -191,7 +191,7 @@ describe("T11 author views", () => {
   it("uses shared dialogs and toast for taxonomy creation", async () => {
     // Given: 显式 Fake 分类页面。
     const router = await authorRouter("/author/taxonomy")
-    const wrapper = mount(TaxonomyView, { global: { plugins: [createPinia(), router] }, attachTo: document.body })
+    const wrapper = mount(TaxonomyView, { props: { runtime: createFakeAuthorRuntime() }, global: { plugins: [createPinia(), router] }, attachTo: document.body })
     await flushPromises()
     // When: 用户通过共享弹窗创建标签。
     await wrapper.get("[data-testid='create-tag']").trigger("click")

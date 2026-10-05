@@ -30,7 +30,7 @@ describe("router scroll priority", () => {
   it.each([
     ["admin-unavailable", "/admin"],
     ["public-not-found", "/missing"],
-    ["login-unavailable", "/login"],
+    ["login", "/login"],
     ["author-article-new", "/author/articles/new"],
     ["legacy-article-invalid", "/article/nope"],
   ])("does not arm initial route %s because it has no ready signal", async (name, fullPath) => {

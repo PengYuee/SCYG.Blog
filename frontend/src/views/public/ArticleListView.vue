@@ -20,7 +20,7 @@ const services = useApiServices()
 /** T4 文章流保持显式九篇分页，不注册滚动监听。 */
 const feed = createArticleFeed(services.article, 9)
 /** T4 分类状态机为筛选和卡片提供同一字典。 */
-const taxonomy = createTaxonomy({ listArticleTypes: () => services.articleType.list(), listTags: () => services.tag.list() })
+const taxonomy = createTaxonomy({ listArticleTypes: () => services.publicTaxonomy.listArticleTypes(), listTags: () => services.publicTaxonomy.listTags() })
 /** Vue 快照在状态机操作结束后显式同步。 */
 const feedState = shallowRef(feed.state)
 const taxonomyState = shallowRef(taxonomy.state)
@@ -61,7 +61,7 @@ async function loadFromRoute(): Promise<void> {
   }
   draftQuery.value = result.value.q
   feed.resetFilters({
-    ...(result.value.categoryId === undefined ? {} : { articleTypeId: result.value.categoryId }),
+    ...(result.value.articleTypeId === undefined ? {} : { articleTypeId: result.value.articleTypeId }),
     ...(result.value.tagId === undefined ? {} : { tagId: result.value.tagId }),
     q: result.value.q,
   })
@@ -103,8 +103,8 @@ async function submitSearch(): Promise<void> {
 /** 更新分类查询；空值表示清除筛选。 */
 async function updateCategory(event: Event): Promise<void> {
   if (!(event.currentTarget instanceof HTMLSelectElement) || queryResult.value.kind === "invalid") return
-  const categoryId = event.currentTarget.value === "" ? undefined : Number(event.currentTarget.value)
-  await navigateWithFilters({ ...queryResult.value.value, categoryId })
+  const articleTypeId = event.currentTarget.value === "" ? undefined : Number(event.currentTarget.value)
+  await navigateWithFilters({ ...queryResult.value.value, articleTypeId })
 }
 
 /** 更新标签查询；空值表示清除筛选。 */
@@ -137,7 +137,7 @@ watch(() => route.fullPath, loadFromRoute, { immediate: true })
         <template v-else>
           <form class="blog-card mb-8 grid grid-cols-[minmax(0,1fr)_auto_auto_auto] items-end gap-4 p-5" role="search" aria-label="筛选文章" @submit.prevent="submitSearch">
             <label class="grid gap-2 text-sm font-semibold"><span>关键词</span><span class="flex min-h-11 items-center rounded-[var(--radius-control)] border border-border bg-surface px-3"><MagnifyingGlassIcon class="mr-2 size-5 text-text-tertiary" aria-hidden="true" /><input v-model="draftQuery" class="min-w-0 flex-1 bg-transparent outline-none" type="search" placeholder="搜索文章标题或摘要" /></span></label>
-            <label class="grid gap-2 text-sm font-semibold"><span>分类</span><select class="min-h-11 rounded-[var(--radius-control)] border border-border bg-surface px-3" :value="queryResult.value.categoryId ?? ''" @change="updateCategory"><option value="">全部分类</option><option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}</option></select></label>
+            <label class="grid gap-2 text-sm font-semibold"><span>分类</span><select class="min-h-11 rounded-[var(--radius-control)] border border-border bg-surface px-3" :value="queryResult.value.articleTypeId ?? ''" @change="updateCategory"><option value="">全部分类</option><option v-for="category in categories" :key="category.id" :value="category.id">{{ category.name }}</option></select></label>
             <label class="grid gap-2 text-sm font-semibold"><span>标签</span><select class="min-h-11 rounded-[var(--radius-control)] border border-border bg-surface px-3" :value="queryResult.value.tagId ?? ''" @change="updateTag"><option value="">全部标签</option><option v-for="tag in tags" :key="tag.id" :value="tag.id">{{ tag.name }}</option></select></label>
             <button type="submit" class="inline-flex min-h-11 items-center gap-2 rounded-[var(--radius-control)] bg-accent px-5 font-semibold text-canvas hover:bg-accent-hover active:scale-[0.98]"><FunnelIcon class="size-5" aria-hidden="true" />应用</button>
           </form>

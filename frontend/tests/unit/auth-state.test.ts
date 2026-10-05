@@ -1,59 +1,53 @@
 ﻿import { createPinia, setActivePinia } from "pinia"
-import { beforeEach, describe, expect, it } from "vitest"
-import { parseAuthRuntimeConfig, createAuthStore, type AuthState } from "@/stores/auth"
-import { canAdmin, canAuthor } from "@/types/auth"
-import { unsupportedAuthApi } from "@/request/api/auth"
+import { beforeEach, describe, expect, it, vi } from "vitest"
+import type { AuthApi } from "@/request/api/auth"
+import { createAuthSessionController } from "@/services/auth-session"
+import { useAuthStore } from "@/stores/auth"
 
-const fakeAuthorClaims = { roles: ["author"], permissions: ["article:write"] } as const
+const now = Date.parse("2026-09-23T00:00:00Z")
+const session = { accessToken: "signed-token", tokenType: "Bearer", expiresAt: "2026-09-23T01:00:00Z" } as const
 
-describe("T5 auth state", () => {
+function memoryStorage(initial?: string) {
+  const values = new Map<string, string>(initial === undefined ? [] : [["scyg.auth.session", initial]])
+  return {
+    getItem: vi.fn((key: string) => values.get(key) ?? null),
+    setItem: vi.fn((key: string, value: string) => { values.set(key, value) }),
+    removeItem: vi.fn((key: string) => { values.delete(key) }),
+  }
+}
+
+describe("authentication session", () => {
   beforeEach(() => setActivePinia(createPinia()))
 
-  it("preserves the current unsupported Auth contract and explicit capability baseline", async () => {
-    // Given: T3 production Auth and explicit author claims.
-    // When: Auth is queried and capabilities are derived.
-    const result = await unsupportedAuthApi.me({})
-    // Then: unsupported remains truthful and no admin capability is inferred.
-    expect(result).toEqual({ kind: "unsupported", feature: "auth" })
-    expect(canAuthor(fakeAuthorClaims)).toBe(true)
-    expect(canAdmin(fakeAuthorClaims)).toBe(false)
+  it("persists a successful login and restores it for a new store", async () => {
+    const api: AuthApi = { login: vi.fn().mockResolvedValue(session) }
+    const storage = memoryStorage()
+    const first = createAuthSessionController(api, useAuthStore(), storage, () => now)
+
+    await expect(first.login({ username: "author", password: "secret" })).resolves.toEqual(session)
+    expect(first.accessToken()).toBe("signed-token")
+
+    setActivePinia(createPinia())
+    const restored = createAuthSessionController(api, useAuthStore(), storage, () => now)
+    expect(restored.restore()).toEqual({ kind: "authenticated", session })
   })
 
-  it("parses mode and disables a fake flag in production", () => {
-    // Given / When: hostile production configuration contains the fake flag.
-    const config = parseAuthRuntimeConfig({ mode: "production", fakeAuthEnabled: true })
-    // Then: production makes fake Auth impossible.
-    expect(config).toEqual({ mode: "production", fakeAuthEnabled: false })
+  it("discards an expired persisted session", () => {
+    const storage = memoryStorage(JSON.stringify({ ...session, expiresAt: "2026-09-22T23:59:59Z" }))
+    const controller = createAuthSessionController({ login: vi.fn() }, useAuthStore(), storage, () => now)
+
+    expect(controller.restore()).toEqual({ kind: "expired", reason: "登录会话已过期，请重新登录" })
+    expect(controller.accessToken()).toBeUndefined()
+    expect(storage.removeItem).toHaveBeenCalledWith("scyg.auth.session")
   })
 
-  it.each([
-    { mode: "preview", fakeAuthEnabled: true },
-    { mode: "test", fakeAuthEnabled: "true" },
-    { mode: "development" },
-  ])("rejects malformed runtime configuration %#", (input) => {
-    // Given / When / Then: malformed external mode or flag input is rejected at its boundary.
-    expect(() => parseAuthRuntimeConfig(input)).toThrowError(expect.objectContaining({ code: "AUTH_CONFIG_INVALID" }))
-  })
+  it("clears an authenticated session after a 401 or local logout", async () => {
+    const storage = memoryStorage()
+    const controller = createAuthSessionController({ login: vi.fn().mockResolvedValue(session) }, useAuthStore(), storage, () => now)
+    await controller.login({ username: "author", password: "secret" })
 
-  it("creates an authenticated fake author only with an explicit non-production flag", () => {
-    // Given: validated test configuration and readonly explicit claims.
-    const useAuthStore = createAuthStore(parseAuthRuntimeConfig({ mode: "test", fakeAuthEnabled: true }), fakeAuthorClaims)
-    // When: the injected store is created.
-    const store = useAuthStore()
-    // Then: capabilities come from T3 helpers and no token or user is invented.
-    expect(store.state).toEqual({ kind: "authenticated", source: "fake", claims: fakeAuthorClaims })
-    expect(store.canAuthor).toBe(true)
-    expect(store.canAdmin).toBe(false)
-    expect(JSON.stringify(store.state)).not.toMatch(/token|user/i)
-  })
-
-  it("exposes every discriminated restoration outcome without boolean auth flags", () => {
-    // Given: an explicit anonymous store.
-    const useAuthStore = createAuthStore(parseAuthRuntimeConfig({ mode: "development", fakeAuthEnabled: false }))
-    const store = useAuthStore()
-    // When: lifecycle transitions are applied.
-    const states: AuthState[] = [store.markRestoring(), store.markExpired("session expired"), store.markUnsupported("backend auth unavailable"), store.markAnonymous()]
-    // Then: each outcome is represented by one discriminant.
-    expect(states.map((state) => state.kind)).toEqual(["restoring", "expired", "unsupported", "anonymous"])
+    controller.handleUnauthorized()
+    expect(controller.currentState().kind).toBe("expired")
+    expect(controller.logout()).toEqual({ kind: "anonymous" })
   })
 })

@@ -21,10 +21,9 @@ export const publicRoutes: readonly RouteRecordRaw[] = [
   { path: "/articles/:id", name: "article-detail", component: () => import("@/views/public/ArticleDetailView.vue"), meta: { title: "文章详情" } },
   {
     path: "/login",
-    name: "login-unavailable",
-    component: () => import("@/views/public/PublicNotFoundView.vue"),
-    props: { mode: "login-unavailable" },
-    meta: { title: "登录暂不可用" },
+    name: "login",
+    component: () => import("@/views/public/LoginView.vue"),
+    meta: { title: "登录", guestOnly: true },
   },
   { path: "/main", redirect: { path: "/" } },
   {

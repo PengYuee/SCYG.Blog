@@ -9,7 +9,7 @@ import HeroSearch from "@/components/public/HeroSearch.vue"
 import HeroProfile from "@/components/public/HeroProfile.vue"
 
 /** 首页完整 Hero 布局输入属性。 */
-defineProps<{ readonly observerFactory?: ObserverFactory }>()
+defineProps<{ readonly observerFactory?: ObserverFactory; readonly heroControlled?: boolean }>()
 
 /** 完整 Hero 的可观察边界，避免 1px 边界在浏览器精确边缘的相交差异。 */
 const heroBoundary = ref<HTMLElement | null>(null)
@@ -27,7 +27,7 @@ const scrollToContent = (): void => {
 <template>
   <div data-layout="public" class="min-h-[100dvh] bg-canvas text-text-primary">
     <a href="#blog-content" class="fixed left-4 top-4 z-[60] -translate-y-24 rounded-lg bg-surface px-4 py-3 font-semibold text-accent shadow-[var(--shadow-nav)] focus:translate-y-0">跳到主要内容</a>
-    <BlogHeader :boundary="heroBoundary" hero-controlled :observer-factory="observerFactory" />
+    <BlogHeader :boundary="heroBoundary" :hero-controlled="heroControlled ?? true" :observer-factory="observerFactory" />
     <section ref="heroBoundary" class="blog-hero public-hero relative isolate overflow-hidden" aria-labelledby="hero-profile-name">
       <img v-if="!heroImageFailed" data-testid="hero-image" :src="'/images/hero-starry.jpg'" alt="" aria-hidden="true" class="absolute inset-0 z-0 size-full object-cover opacity-0" @error="heroImageFailed = true" />
       <div v-else data-testid="hero-fallback" role="img" aria-label="星空背景暂时无法显示" class="absolute inset-0 z-0 bg-[var(--hero-background-color)]" />

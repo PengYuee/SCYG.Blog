@@ -84,7 +84,7 @@ test("keeps scoped failures and empty feed composed", async ({ page }, testInfo)
   await expect(page.getByTestId("taxonomy-error")).toContainText("分类服务暂时不可用")
   await expect(page.getByTestId("feed-error")).toContainText("文章服务暂时不可用")
   await expect(page.getByRole("heading", { name: "文章搜索" })).toBeVisible()
-  await expect(page.getByText("妄揽明月", { exact: true }).first()).toBeVisible()
+  await expect(page.locator("aside[aria-labelledby='profile-card-name']")).toBeVisible()
   await page.screenshot({ path: path.join(evidenceDirectory, `${testInfo.project.name}-failure.png`), fullPage: true })
 
   // When: 切换到真实空文章流。

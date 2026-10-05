@@ -1,5 +1,4 @@
-﻿import { authorRouteAvailability } from "@/router/guards"
-import type { AuthRuntimeConfig, AuthState } from "@/stores/auth"
+﻿import type { AuthState } from "@/stores/auth"
 
 /** 受保护的写操作领域。 */
 export type MutationDomain = "article" | "taxonomy" | "image"
@@ -25,14 +24,12 @@ export type MutationGuard = {
   readonly execute: <Value>(domain: MutationDomain, operation: () => Promise<Value>) => Promise<MutationResult<Value>>
 }
 
-/** 创建供 article、taxonomy 与 image 适配器共享的生产写守卫。 */
-export function createMutationGuard(config: AuthRuntimeConfig, currentState: () => AuthState): MutationGuard {
+/** 创建供 article、taxonomy 与 image 适配器共享的认证写入守卫。 */
+export function createMutationGuard(currentState: () => AuthState): MutationGuard {
   return {
-    /** 仅在作者路由能力真实可用后调用传入适配器。 */
     async execute<Value>(domain: MutationDomain, operation: () => Promise<Value>): Promise<MutationResult<Value>> {
-      const availability = authorRouteAvailability(config, currentState())
-      if (availability.kind === "unavailable") {
-        return { ok: false, error: { code: "MUTATION_BLOCKED", domain, reason: availability.reason } }
+      if (currentState().kind !== "authenticated") {
+        return { ok: false, error: { code: "MUTATION_BLOCKED", domain, reason: "请先登录后再执行写作操作" } }
       }
       return { ok: true, value: await operation() }
     },

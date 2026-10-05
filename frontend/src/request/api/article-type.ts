@@ -1,68 +1,66 @@
-import { z } from "zod"
+import type { ArticleType as ArticleTypeResponse, CreateManageArticleTypeData, DeleteManageArticleTypeData, GetManageArticleTypeData, ListManageArticleTypesData, PatchManageArticleTypeData } from "@/request/generated"
+import { zArticleType, zArticleTypeList } from "@/request/generated/zod.gen"
 import type { HttpTransport } from "@/request/transport"
 import type { ArticleTypeDeleteTarget, AuthorArticleType } from "@/services/author-contracts"
 import type { ArticleType, ArticleTypeCreate, ArticleTypeUpdateRequest } from "@/types/taxonomy"
 import { normalizeImageUrl, parseBoundary } from "@/types/api"
-import { articleTypeSchema, pageSchema } from "./schemas"
 
-const dictionarySchema = z.strictObject({ items: z.array(articleTypeSchema), page: pageSchema })
-const ARTICLE_TYPE_ROUTE = "/api/v1/article-types"
+const ARTICLE_TYPE_ROUTE: ListManageArticleTypesData["url"] = "/api/v1/manage/article-types"
 const TAXONOMY_PAGE_SIZE = 100
 
-/** 将服务端分类资源映射为作者侧版本化分类。 */
-function mapArticleType(item: z.infer<typeof articleTypeSchema>, serverUrl: string): AuthorArticleType {
-  return { id: item.id, name: item.name, imageUrl: item.image === null ? null : normalizeImageUrl(item.image, serverUrl), menu: item.meun, version: item.version }
+/** 管理端文章分类 API 适配器契约。 */
+export interface ArticleTypeApi {
+  readonly list: (filter?: string) => Promise<readonly AuthorArticleType[]>
+  readonly detail: (id: number) => Promise<AuthorArticleType>
+  readonly create: (request: ArticleTypeCreate) => Promise<AuthorArticleType>
+  readonly update: (request: ArticleTypeUpdateRequest) => Promise<AuthorArticleType>
+  readonly delete: (target: ArticleTypeDeleteTarget) => Promise<void>
 }
 
-/** 将分类响应项映射为领域分类。 */
+function mapArticleType(item: ArticleTypeResponse, serverUrl: string): AuthorArticleType {
+  return { id: item.id, name: item.name, imageUrl: item.image === null ? null : normalizeImageUrl(item.image, serverUrl), menu: item.menu, version: item.version }
+}
+
 function mapArticleTypes(input: unknown, serverUrl: string) {
-  const value = parseBoundary(dictionarySchema, input, "article type dictionary")
-  return { items: value.items.map((item) => mapArticleType(item, serverUrl)), totalPages: value.page.total_pages }
+  const value = parseBoundary(zArticleTypeList, input, "article type dictionary")
+  return { items: value.items.map((item) => mapArticleType(item, serverUrl)), totalPages: value.page.totalPages }
 }
 
-/** 解析当前分类字典包络。 */
 export function parseArticleTypes(input: unknown, serverUrl: string): readonly ArticleType[] {
   return mapArticleTypes(input, serverUrl).items
 }
 
-/** 分类 API 的类型化适配器。 */
-export function createArticleTypeApi(client: HttpTransport, serverUrl: string) {
+export function createArticleTypeApi(client: HttpTransport, serverUrl: string): ArticleTypeApi {
   return {
-    /** 顺序获取全部带版本分类分页。 */
     async list(filter?: string) {
       const query = filter?.trim()
-      const params = { page_size: TAXONOMY_PAGE_SIZE, ...(query === undefined || query.length === 0 ? {} : { q: query }) }
-      const firstResponse = await client.get(ARTICLE_TYPE_ROUTE, { params: { ...params, page: 1 } })
-      const firstPage = mapArticleTypes(firstResponse.data, serverUrl)
+      const params: NonNullable<ListManageArticleTypesData["query"]> = { pageSize: TAXONOMY_PAGE_SIZE, ...(query === undefined || query.length === 0 ? {} : { q: query }) }
+      const firstPage = mapArticleTypes((await client.get(ARTICLE_TYPE_ROUTE, { params: { ...params, page: 1 } })).data, serverUrl)
       const items: AuthorArticleType[] = [...firstPage.items]
-      for (let page = 2; page <= firstPage.totalPages; page += 1) {
-        const response = await client.get(ARTICLE_TYPE_ROUTE, { params: { ...params, page } })
-        items.push(...mapArticleTypes(response.data, serverUrl).items)
-      }
+      for (let page = 2; page <= firstPage.totalPages; page += 1) items.push(...mapArticleTypes((await client.get(ARTICLE_TYPE_ROUTE, { params: { ...params, page } })).data, serverUrl).items)
       return items
     },
-    /** 获取单个分类并解析版本化资源。 */
     async detail(id: number): Promise<AuthorArticleType> {
-      const response = await client.get(`${ARTICLE_TYPE_ROUTE}/${id}`)
-      return mapArticleType(parseBoundary(articleTypeSchema, response.data, "article type detail"), serverUrl)
+      const path: GetManageArticleTypeData["path"] = { articleTypeId: id }
+      return mapArticleType(parseBoundary(zArticleType, (await client.get(`${ARTICLE_TYPE_ROUTE}/${path.articleTypeId}`)).data, "article type detail"), serverUrl)
     },
-    /** 创建分类并解析未包裹的版本化资源。 */
     async create(request: ArticleTypeCreate): Promise<AuthorArticleType> {
-      const response = await client.post(ARTICLE_TYPE_ROUTE, { name: request.name, image: request.image, meun: request.menu })
-      return mapArticleType(parseBoundary(articleTypeSchema, response.data, "article type create"), serverUrl)
+      const payload: CreateManageArticleTypeData["body"] = { name: request.name, image: request.image, menu: request.menu }
+      return mapArticleType(parseBoundary(zArticleType, (await client.post(ARTICLE_TYPE_ROUTE, payload)).data, "article type create"), serverUrl)
     },
-    /** 使用强实体标签局部更新分类。 */
     async update(request: ArticleTypeUpdateRequest): Promise<AuthorArticleType> {
-      const changes: Record<string, unknown> = {}
-      if (request.changes.name !== undefined) changes["name"] = request.changes.name
-      if (request.changes.image !== undefined) changes["image"] = request.changes.image
-      if (request.changes.menu !== undefined) changes["meun"] = request.changes.menu
-      const response = await client.patch(`${ARTICLE_TYPE_ROUTE}/${request.id}`, changes, { headers: { "If-Match": `"${request.version}"` } })
-      return mapArticleType(parseBoundary(articleTypeSchema, response.data, "article type update"), serverUrl)
+      const changes: PatchManageArticleTypeData["body"] = {}
+      if (request.changes.name !== undefined) changes.name = request.changes.name
+      if (request.changes.image !== undefined) changes.image = request.changes.image
+      if (request.changes.menu !== undefined) changes.menu = request.changes.menu
+      const path: PatchManageArticleTypeData["path"] = { articleTypeId: request.id }
+      const headers: PatchManageArticleTypeData["headers"] = { "If-Match": `"${request.version}"` }
+      return mapArticleType(parseBoundary(zArticleType, (await client.patch(`${ARTICLE_TYPE_ROUTE}/${path.articleTypeId}`, changes, { headers })).data, "article type update"), serverUrl)
     },
-    /** 使用强实体标签删除当前版本分类。 */
     async delete(target: ArticleTypeDeleteTarget): Promise<void> {
-      await client.delete(`${ARTICLE_TYPE_ROUTE}/${target.id}`, { headers: { "If-Match": `"${target.version}"` } })
+      const path: DeleteManageArticleTypeData["path"] = { articleTypeId: target.id }
+      const headers: DeleteManageArticleTypeData["headers"] = { "If-Match": `"${target.version}"` }
+      await client.delete(`${ARTICLE_TYPE_ROUTE}/${path.articleTypeId}`, { headers })
     },
   }
 }

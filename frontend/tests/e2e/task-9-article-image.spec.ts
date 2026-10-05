@@ -25,12 +25,12 @@ async function installApi(page: Page, scenario: ApiScenario): Promise<void> {
   await page.route(`${API_ROOT}/**`, async (route) => {
     const request = route.request()
     const url = new URL(request.url())
-    if (url.pathname === "/api/v1/article-types") {
-      await route.fulfill({ json: { items: [{ id: 1, name: "工程笔记", image: null, meun: 1, version: 1, created_at: "2026-07-13T00:00:00Z", updated_at: null }], page: { number: 1, size: 100, total_items: 1, total_pages: 1 } } })
+    if (url.pathname === "/api/v1/manage/article-types") {
+      await route.fulfill({ json: { items: [{ id: 1, name: "工程笔记", image: null, menu: 1, version: 1, createdAt: "2026-07-13T00:00:00Z", updatedAt: null }], page: { number: 1, size: 100, totalItems: 1, totalPages: 1 } } })
       return
     }
-    if (url.pathname === "/api/v1/tags") {
-      await route.fulfill({ json: { items: [{ id: 1, name: "Vue", version: 1, created_at: "2026-07-13T00:00:00Z", updated_at: null }], page: { number: 1, size: 100, total_items: 1, total_pages: 1 } } })
+    if (url.pathname === "/api/v1/manage/tags") {
+      await route.fulfill({ json: { items: [{ id: 1, name: "Vue", version: 1, createdAt: "2026-07-13T00:00:00Z", updatedAt: null }], page: { number: 1, size: 100, totalItems: 1, totalPages: 1 } } })
       return
     }
     if (url.pathname === "/api/v1/manage/article-images" && request.method() === "POST") {
@@ -56,15 +56,16 @@ async function installApi(page: Page, scenario: ApiScenario): Promise<void> {
         slug: typeof body["slug"] === "string" && /^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(body["slug"]) ? body["slug"] : "edge-test-article",
         digest: typeof body["digest"] === "string" && body["digest"].length > 0 ? body["digest"] : "Edge 测试摘要",
         content: typeof body["content"] === "string" && body["content"].length > 0 ? body["content"] : "Edge 测试正文",
-        article_type_id: 1,
-        tag_ids: [1],
+        articleTypeId: 1,
+        articleType: { id: 1, name: "工程笔记", image: null },
+        tagIds: [1],
         status: body["status"] === 2 ? 2 : 1,
         support: 0,
         comment: 0,
         visited: 0,
         version: 1,
-        created_at: "2026-07-14T00:00:00Z",
-        updated_at: null,
+        createdAt: "2026-07-14T00:00:00Z",
+        updatedAt: null,
       } })
       return
     }
@@ -119,7 +120,7 @@ test("Edge 上传 JPEG 后写入远程 URL，保存成功不删除", async ({ pa
   // Then: 浏览器生成 multipart boundary，Markdown 合同不增加图片字段。
   expect(original).not.toContain(IMAGE_PATH)
   expect(api.requests.multipartHeaders[0]).toMatch(/^multipart\/form-data; boundary=/)
-  expect(api.requests.articleBodies[0]).toMatchObject({ content: expect.stringContaining(`${API_ROOT}${IMAGE_PATH}`), article_type_id: 1, tag_ids: [1], slug: "edge-test-article", status: 1 })
+  expect(api.requests.articleBodies[0]).toMatchObject({ content: expect.stringContaining(`${API_ROOT}${IMAGE_PATH}`), articleTypeId: 1, tagIds: [1], slug: "edge-test-article", status: 1 })
   expect(api.requests.articleBodies[0]).not.toHaveProperty("images")
   expect(api.requests.deletes).toEqual([])
   expect(browserErrors).toEqual([])

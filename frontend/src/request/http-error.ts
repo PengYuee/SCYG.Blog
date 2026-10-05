@@ -1,4 +1,5 @@
-import { problemDetailsSchema, type ProblemDetails } from "@/types/api"
+import type { ProblemDetails } from "@/types/api"
+import { zProblem } from "@/request/generated/zod.gen"
 
 /** 归一化 HTTP 错误，供调用方按稳定字段处理。 */
 export class HttpRequestError extends Error {
@@ -24,13 +25,13 @@ export class HttpRequestError extends Error {
     this.code = code
     this.problem = problem
     this.detail = problem?.detail
-    this.requestId = problem?.request_id
+    this.requestId = problem?.requestId
     this.errors = problem?.errors
   }
 }
 
 /** 仅接受完整 RFC 9457 响应，畸形错误继续走通用回退。 */
 export function parseProblemDetails(input: unknown): ProblemDetails | undefined {
-  const result = problemDetailsSchema.safeParse(input)
+  const result = zProblem.safeParse(input)
   return result.success ? result.data : undefined
 }

@@ -1,21 +1,21 @@
 import type { Page, Request, Route } from "@playwright/test"
 
-/** T13 可复现文章接口记录。 */
 type ApiArticle = {
   readonly id: number
   readonly title: string
   readonly slug: string
   readonly digest: string
   readonly content: string
-  readonly article_type_id: number
-  readonly tag_ids: readonly number[]
+  readonly articleTypeId: number
+  readonly articleType: { readonly id: number; readonly name: string; readonly image: string | null }
+  readonly tagIds: readonly number[]
   readonly status: 2
   readonly support: number
   readonly comment: number
   readonly visited: number
   readonly version: number
-  readonly created_at: string
-  readonly updated_at: string | null
+  readonly createdAt: string
+  readonly updatedAt: string | null
 }
 
 /** 公共读取 fixture 的可控失败选项。 */
@@ -32,7 +32,7 @@ export type MutationRecorder = {
 }
 
 const apiPattern = /\/api\/v1\//
-const page = (items: readonly unknown[]) => ({ items, page: { number: 1, size: 20, total_items: items.length, total_pages: items.length === 0 ? 0 : 1 } })
+const page = (items: readonly unknown[]) => ({ items, page: { number: 1, size: 20, totalItems: items.length, totalPages: items.length === 0 ? 0 : 1 } })
 
 /** 构造覆盖首页、列表与详情的确定性中文文章。 */
 const article = (id: number, content = "## 可复现正文\n\n这是用于生产端到端验证的安全中文内容。"):
@@ -42,26 +42,27 @@ ApiArticle => ({
   slug: `t13-article-${id}`,
   digest: "稳定摘要用于验证卡片网格、中文排版与资源边界。",
   content,
-  article_type_id: ((id - 1) % 3) + 1,
-  tag_ids: [((id - 1) % 2) + 1],
+  articleTypeId: ((id - 1) % 3) + 1,
+  articleType: { id: ((id - 1) % 3) + 1, name: "前端工程", image: null },
+  tagIds: [((id - 1) % 2) + 1],
   status: 2,
   support: id,
   comment: id % 4,
   visited: 500 - id,
   version: 1,
-  created_at: "2026-07-12T00:00:00.000Z",
-  updated_at: null,
+  createdAt: "2026-07-12T00:00:00.000Z",
+  updatedAt: null,
 })
 
 const articles = [101, 102, 103, 104, 105, 106, 107, 108, 109].map((id) => article(id))
 const categories = page([
-  { id: 1, name: "前端工程", image: "/images/hero-starry.jpg", meun: 1, version: 1, created_at: "2026-07-12T00:00:00.000Z", updated_at: null },
-  { id: 2, name: "类型契约", image: null, meun: 2, version: 1, created_at: "2026-07-12T00:00:00.000Z", updated_at: null },
-  { id: 3, name: "阅读设计", image: null, meun: 3, version: 1, created_at: "2026-07-12T00:00:00.000Z", updated_at: null },
+  { id: 1, name: "前端工程", image: null, menu: 1, version: 1, createdAt: "2026-07-12T00:00:00.000Z", updatedAt: null },
+  { id: 2, name: "类型契约", image: null, menu: 2, version: 1, createdAt: "2026-07-12T00:00:00.000Z", updatedAt: null },
+  { id: 3, name: "阅读设计", image: null, menu: 3, version: 1, createdAt: "2026-07-12T00:00:00.000Z", updatedAt: null },
 ])
 const tags = page([
-  { id: 1, name: "Vue 3", version: 1, created_at: "2026-07-12T00:00:00.000Z", updated_at: null },
-  { id: 2, name: "TypeScript", version: 1, created_at: "2026-07-12T00:00:00.000Z", updated_at: null },
+  { id: 1, name: "Vue 3", version: 1, createdAt: "2026-07-12T00:00:00.000Z", updatedAt: null },
+  { id: 2, name: "TypeScript", version: 1, createdAt: "2026-07-12T00:00:00.000Z", updatedAt: null },
 ])
 
 /** 在导航前拦截全部真实公共读取接口。 */
@@ -73,16 +74,16 @@ export async function installReadFixtures(pageInstance: Page, options: ReadFixtu
       return
     }
     if (requestUrl.pathname.startsWith("/api/v1/articles/")) {
-      const detail = { ...article(101, options.detailMarkdown), article_type_id: 1 }
+      const detail = { ...article(101, options.detailMarkdown), articleTypeId: 1, articleType: { id: 1, name: "前端工程", image: null } }
       await route.fulfill({ status: options.detailStatus ?? 200, json: detail })
       return
     }
-    if (requestUrl.pathname === "/api/v1/article-types") {
+    if (requestUrl.pathname === "/api/v1/manage/article-types") {
       const items = categories.items.map((item) => item.id === 1 ? { ...item, image: options.categoryImage ?? item.image } : item)
       await route.fulfill({ status: 200, json: { ...categories, items } })
       return
     }
-    if (requestUrl.pathname === "/api/v1/tags") {
+    if (requestUrl.pathname === "/api/v1/manage/tags") {
       await route.fulfill({ status: 200, json: tags })
       return
     }

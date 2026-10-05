@@ -7,9 +7,9 @@ const desktopViewports = [
   { name: "1920x1080", width: 1920, height: 1080 },
 ] as const
 
-/** 本地固定 Microsoft Edge，CI 可使用同尺寸 Chromium。 */
-const browserName = process.env["CI"] ? "chromium" : "edge"
-const browserUse = process.env["CI"] ? {} : { channel: "msedge" as const }
+/** T13 始终使用本机 Microsoft Edge，和开发配置保持浏览器一致。 */
+const browserName = "edge"
+const browserUse = { channel: "msedge" as const }
 
 /** T13 仅验证预构建生产产物，证据统一写入忽略目录。 */
 export default defineConfig({

@@ -7,3 +7,7 @@ dist/
 # Playwright generated outputs
 playwright-report/
 test-results/
+coverage/
+.idea/
+tests/e2e/*-edge.png
+tests/e2e/*-edge-results.json

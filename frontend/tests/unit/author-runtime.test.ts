@@ -1,26 +1,19 @@
-import { afterEach, describe, expect, it, vi } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { createApiServices } from "@/request/api-services"
 import type { HttpTransport } from "@/request/transport"
-import { AuthorRuntimeUnavailableError, createAuthorRuntime, createFakeAuthorRuntime } from "@/services/author-runtime"
+import { createAuthorRuntime, createFakeAuthorRuntime } from "@/services/author-runtime"
 
 /** 创建不会执行网络请求的完整 transport。 */
 function transport(): HttpTransport {
   return { get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn() }
 }
 
-/** 每个运行时场景后恢复 Vite 环境与模块缓存。 */
-afterEach(() => {
-  vi.unstubAllEnvs()
-  vi.resetModules()
-})
 
-describe("author runtime environment boundary", () => {
-  it("refuses to impersonate an author outside explicit development mode", () => {
-    // Given: 当前 Vitest 非 development 环境与完整真实 API 容器。
-    const services = createApiServices(transport(), "https://api.test")
-    // When / Then: 运行时在接触任何 API 前以中文类型化错误拒绝固定身份。
-    expect(() => createAuthorRuntime(services)).toThrow(AuthorRuntimeUnavailableError)
-    expect(() => createAuthorRuntime(services)).toThrow("当前环境未启用可信作者运行时")
+describe("author runtime authentication boundary", () => {
+  it("blocks mutations when the current session is anonymous", async () => {
+    const runtime = createAuthorRuntime(createApiServices(transport(), "https://api.test"), () => ({ kind: "anonymous" }))
+    const result = await runtime.guard.execute("article", async () => "created")
+    expect(result).toMatchObject({ ok: false, error: { code: "MUTATION_BLOCKED", domain: "article" } })
   })
 
   it("keeps the fake taxonomy compatible with versioned article types", async () => {
@@ -65,17 +58,12 @@ describe("author runtime environment boundary", () => {
     ])
   })
 
-  it("wires real article-type mutations in development", async () => {
-    // Given: 显式开发作者环境与可观察的真实 API transport。
-    vi.stubEnv("MODE", "development")
-    vi.stubEnv("VITE_FAKE_AUTHOR", "true")
-    vi.resetModules()
-    const { createAuthorRuntime: createDevelopmentAuthorRuntime } = await import("@/services/author-runtime")
+  it("wires real article-type mutations for an authenticated author", async () => {
     const client = transport()
-    vi.mocked(client.get).mockResolvedValue({ data: { items: [{ id: 9, name: "架构", image: null, meun: 2, version: 4, created_at: "2026-07-11T00:00:00Z", updated_at: null }], page: { number: 1, size: 100, total_items: 1, total_pages: 1 } } })
-    vi.mocked(client.post).mockResolvedValue({ data: { id: 9, name: "架构", image: null, meun: 2, version: 4, created_at: "2026-07-11T00:00:00Z", updated_at: null } })
+    vi.mocked(client.get).mockResolvedValue({ data: { items: [{ id: 9, name: "架构", image: null, menu: 2, version: 4, createdAt: "2026-07-11T00:00:00Z", updatedAt: null }], page: { number: 1, size: 100, totalItems: 1, totalPages: 1 } } })
+    vi.mocked(client.post).mockResolvedValue({ data: { id: 9, name: "架构", image: null, menu: 2, version: 4, createdAt: "2026-07-11T00:00:00Z", updatedAt: null } })
     vi.mocked(client.delete).mockResolvedValue({ data: undefined })
-    const runtime = createDevelopmentAuthorRuntime(createApiServices(client, "https://api.test"))
+    const runtime = createAuthorRuntime(createApiServices(client, "https://api.test"), () => ({ kind: "authenticated", session: { accessToken: "token", tokenType: "Bearer", expiresAt: "2099-01-01T00:00:00Z" } }))
 
     // When: 分类走真实创建与删除。
     const listed = await runtime.taxonomy.listArticleTypes()
@@ -84,24 +72,19 @@ describe("author runtime environment boundary", () => {
 
     // Then: 分类命中真实适配器。
     expect(listed).toEqual([{ id: 9, name: "架构", imageUrl: null, menu: 2, version: 4 }])
-    expect(client.get).toHaveBeenCalledWith("/api/v1/article-types", { params: { page_size: 100, page: 1 } })
+    expect(client.get).toHaveBeenCalledWith("/api/v1/manage/article-types", { params: { pageSize: 100, page: 1 } })
     expect(created).toEqual({ id: 9, name: "架构", imageUrl: null, menu: 2, version: 4 })
     expect(client.post).toHaveBeenCalledTimes(1)
-    expect(client.delete).toHaveBeenCalledWith("/api/v1/article-types/9", { headers: { "If-Match": "\"4\"" } })
+    expect(client.delete).toHaveBeenCalledWith("/api/v1/manage/article-types/9", { headers: { "If-Match": "\"4\"" } })
   })
 
-  it("wires real tag list, create, and delete in development", async () => {
-    // Given: 显式开发作者环境与可观察的真实标签 API transport。
-    vi.stubEnv("MODE", "development")
-    vi.stubEnv("VITE_FAKE_AUTHOR", "true")
-    vi.resetModules()
-    const { createAuthorRuntime: createDevelopmentAuthorRuntime } = await import("@/services/author-runtime")
+  it("wires real tag list, create, and delete for an authenticated author", async () => {
     const client = transport()
-    const tagResponse = { id: 7, name: "Vue", version: 3, created_at: "2026-07-11T00:00:00Z", updated_at: null }
-    vi.mocked(client.get).mockResolvedValue({ data: { items: [tagResponse], page: { number: 1, size: 100, total_items: 1, total_pages: 1 } } })
+    const tagResponse = { id: 7, name: "Vue", version: 3, createdAt: "2026-07-11T00:00:00Z", updatedAt: null }
+    vi.mocked(client.get).mockResolvedValue({ data: { items: [tagResponse], page: { number: 1, size: 100, totalItems: 1, totalPages: 1 } } })
     vi.mocked(client.post).mockResolvedValue({ data: tagResponse })
     vi.mocked(client.delete).mockResolvedValue({ data: undefined })
-    const runtime = createDevelopmentAuthorRuntime(createApiServices(client, "https://api.test"))
+    const runtime = createAuthorRuntime(createApiServices(client, "https://api.test"), () => ({ kind: "authenticated", session: { accessToken: "token", tokenType: "Bearer", expiresAt: "2099-01-01T00:00:00Z" } }))
 
     // When: 标签依次执行真实读取、创建和版本化删除。
     const listed = await runtime.taxonomy.listTags()
@@ -111,8 +94,8 @@ describe("author runtime environment boundary", () => {
     // Then: 三项操作均直接命中真实标签适配器。
     expect(listed).toEqual([{ id: 7, name: "Vue", version: 3 }])
     expect(created).toEqual({ id: 7, name: "Vue", version: 3 })
-    expect(client.get).toHaveBeenCalledWith("/api/v1/tags", { params: { page_size: 100, page: 1 } })
-    expect(client.post).toHaveBeenCalledWith("/api/v1/tags", { name: "Vue" })
-    expect(client.delete).toHaveBeenCalledWith("/api/v1/tags/7", { headers: { "If-Match": "\"3\"" } })
+    expect(client.get).toHaveBeenCalledWith("/api/v1/manage/tags", { params: { pageSize: 100, page: 1 } })
+    expect(client.post).toHaveBeenCalledWith("/api/v1/manage/tags", { name: "Vue" })
+    expect(client.delete).toHaveBeenCalledWith("/api/v1/manage/tags/7", { headers: { "If-Match": "\"3\"" } })
   })
 })

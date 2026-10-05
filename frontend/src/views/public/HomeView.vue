@@ -32,7 +32,7 @@ const [articleFeed, taxonomy] = (() => {
   const services = useApiServices()
   return [
     props.articleFeed ?? createArticleFeed(services.article, 20),
-    props.taxonomy ?? createTaxonomy({ listArticleTypes: () => services.articleType.list(), listTags: () => services.tag.list() }),
+    props.taxonomy ?? createTaxonomy({ listArticleTypes: () => services.publicTaxonomy.listArticleTypes(), listTags: () => services.publicTaxonomy.listTags() }),
   ] as const
 })()
 /** 驱动非 UI 状态机快照进入 Vue 响应式渲染周期。 */

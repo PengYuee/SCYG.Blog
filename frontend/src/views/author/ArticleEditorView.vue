@@ -9,17 +9,18 @@ import AppToast from "@/components/shared/AppToast.vue"
 import { useApiServices } from "@/request/api-services"
 import { HttpRequestError } from "@/request/http-error"
 import { TAXONOMY_MUTATION_DOMAIN } from "@/services/mutation-guard"
-import { createAuthorRuntime, createFakeAuthorRuntime, type AuthorRuntime } from "@/services/author-runtime"
+import { createAuthorRuntime, type AuthorRuntime } from "@/services/author-runtime"
+import { useAuthSession } from "@/services/auth-session"
 import type { AuthorArticleType } from "@/services/author-contracts"
 import { useArticleTagManagement } from "@/composables/use-article-tag-management"
 import { createImageLifecycle } from "@/services/image-lifecycle"
 import { useEditorDraftStore } from "@/stores/editor-draft"
 import { useUiStore } from "@/stores/ui"
 
-/** 测试可注入的作者运行时；路由页面默认使用显式 Fake。 */
+/** 测试可注入的作者运行时。 */
 const props = defineProps<{ readonly runtime?: AuthorRuntime }>()
-/** 当前作者运行时；测试保持隔离 Fake，开发可信作者页面使用真实 API。 */
-const runtime = props.runtime ?? (import.meta.env.MODE === "test" ? createFakeAuthorRuntime() : createAuthorRuntime(useApiServices()))
+/** 当前作者运行时；测试可注入隔离 Fake，路由页面使用真实 API 与认证状态。 */
+const runtime = props.runtime ?? createAuthorRuntime(useApiServices(), useAuthSession().currentState)
 /** 当前编辑草稿。 */ const draftStore = useEditorDraftStore()
 /** 全局反馈。 */ const ui = useUiStore()
 /** 路由参数。 */

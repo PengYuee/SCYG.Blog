@@ -44,7 +44,7 @@ const [articleLoader, taxonomy] = (() => {
   const services = useApiServices()
   return [
     props.articleLoader ?? services.article,
-    props.taxonomy ?? createTaxonomy({ listArticleTypes: () => services.articleType.list(), listTags: () => services.tag.list() }),
+    props.taxonomy ?? createTaxonomy({ listArticleTypes: () => services.publicTaxonomy.listArticleTypes(), listTags: () => services.publicTaxonomy.listTags() }),
   ] as const
 })()
 /** 当前路由提供 T9 详情参数，但不修改生产路由。 */

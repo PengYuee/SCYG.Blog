@@ -1,6 +1,13 @@
 /** 文章状态。 */
 export type ArticleStatus = 1 | 2 | 3
 
+/** 文章所属类型公开摘要。 */
+export type PublicArticleTypeSummary = {
+  /** 分类标识。 */ readonly id: number
+  /** 分类名称。 */ readonly name: string
+  /** 分类图片地址。 */ readonly imageUrl: string | null
+}
+
 /** 只读文章领域模型。 */
 export type ArticleDetail = {
   /** 文章标识。 */ readonly id: number
@@ -9,6 +16,7 @@ export type ArticleDetail = {
   /** 摘要。 */ readonly digest: string
   /** Markdown 源文本。 */ readonly markdown: string
   /** 分类标识。 */ readonly articleTypeId: number
+  /** 分类公开摘要。 */ readonly articleType: PublicArticleTypeSummary
   /** 标签标识。 */ readonly tagIds: readonly number[]
   /** 发布状态。 */ readonly status: ArticleStatus
   /** 点赞数。 */ readonly support: number

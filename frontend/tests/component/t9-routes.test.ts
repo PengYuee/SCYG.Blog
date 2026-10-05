@@ -19,7 +19,7 @@ describe("T9 production route contract", () => {
     ["/", "home"],
     ["/articles", "article-list"],
     ["/articles/42", "article-detail"],
-    ["/login", "login-unavailable"],
+    ["/login", "login"],
   ])("resolves public deep link %s", (path, routeName) => {
     // Given / When: 路由归属只需同步解析，不需要触发懒加载视图。
     const resolvedRoute = router.resolve(path)

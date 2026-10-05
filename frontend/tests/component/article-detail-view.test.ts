@@ -146,12 +146,12 @@ describe("T10 article detail", () => {
   it("normalizes a relative category image against injected runtime config", async () => {
     // Given: 生产 taxonomy 接口返回相对图片，运行时配置指向独立后端。
     vi.spyOn(http, "get").mockImplementation(async (url: string) => {
-      if (url.includes("/api/v1/article-types")) return { data: { items: [{ id: 7, name: "前端", image: "/media/frontend.jpg", meun: 1, version: 1, created_at: "2026-07-11T00:00:00Z", updated_at: null }], page: { number: 1, size: 20, total_items: 1, total_pages: 1 } } }
-      return { data: { items: [], page: { number: 1, size: 20, total_items: 0, total_pages: 0 } } }
+      if (url.includes("/api/v1/article-types")) return { data: { items: [{ id: 7, name: "前端", image: "/media/frontend.jpg", articleCount: 1 }], page: { number: 1, size: 100, totalItems: 1, totalPages: 1 } } }
+      return { data: { items: [], page: { number: 1, size: 100, totalItems: 0, totalPages: 0 } } }
     })
 
     // When: 详情页使用生产 taxonomy 适配器加载分类。
-    const apiServices = createApiServices(http, "http://localhost:5000/api")
+    const apiServices = createApiServices(http, "http://localhost:5000")
     const wrapper = await mountDetail({ detail: async () => articleFixture() }, undefined, "101", apiServices)
     await flushPromises()
 

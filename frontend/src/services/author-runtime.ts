@@ -1,39 +1,22 @@
-import { z } from "zod"
 import { createFakeAuthorRepositories } from "@/services/fake-author"
 import { createMutationGuard } from "@/services/mutation-guard"
 import type { ApiServices } from "@/request/api-services"
 import type { AuthorArticleRepository, AuthorTaxonomyRepository } from "@/services/author-contracts"
-import type { AuthClaims } from "@/types/auth"
-import { parseAuthRuntimeConfig, type AuthState } from "@/stores/auth"
+import type { AuthState } from "@/stores/auth"
 
 /** 作者运行时依赖。 */
 export type AuthorRuntime = { readonly articles: AuthorArticleRepository; readonly taxonomy: AuthorTaxonomyRepository; readonly guard: ReturnType<typeof createMutationGuard> }
 
-/** 当前部署不允许构造可信作者运行时。 */
-export class AuthorRuntimeUnavailableError extends Error {
-  /** 稳定错误名称。 */ readonly name = "AuthorRuntimeUnavailableError"
-  /** 创建不泄露伪造身份的中文运行时错误。 */
-  constructor() { super("当前环境未启用可信作者运行时") }
-}
+const testAuthenticatedState: AuthState = { kind: "authenticated", session: { accessToken: "test-token", tokenType: "Bearer", expiresAt: "2099-01-01T00:00:00Z" } }
 
-const fakeFlagSchema = z.enum(["true", "false"]).default("false")
-const fakeClaims: AuthClaims = { roles: ["author"], permissions: ["article:write"] }
-const fakeState: AuthState = { kind: "authenticated", source: "fake", claims: fakeClaims }
-
-/** 仅显式 VITE_FAKE_AUTHOR=true 且非生产时启用作者演示。 */
-export const fakeAuthorEnabled = import.meta.env.MODE !== "production" && fakeFlagSchema.parse(import.meta.env["VITE_FAKE_AUTHOR"]) === "true"
-
-/** 创建显式 Fake 作者运行时；生产路由不会调用此工厂。 */
+/** 创建只供测试注入的内存作者运行时。 */
 export function createFakeAuthorRuntime(): AuthorRuntime {
   const repositories = createFakeAuthorRepositories()
-  const config = parseAuthRuntimeConfig({ mode: import.meta.env.MODE === "test" ? "test" : "development", fakeAuthEnabled: true })
-  return { articles: repositories.articles, taxonomy: repositories.taxonomy, guard: createMutationGuard(config, () => fakeState) }
+  return { articles: repositories.articles, taxonomy: repositories.taxonomy, guard: createMutationGuard(() => testAuthenticatedState) }
 }
 
-/** 为显式 development 可信作者页面创建真实 API 运行时。 */
-export function createAuthorRuntime(services: ApiServices): AuthorRuntime {
-  if (import.meta.env.MODE !== "development" || !fakeAuthorEnabled) throw new AuthorRuntimeUnavailableError()
-  const config = parseAuthRuntimeConfig({ mode: "development", fakeAuthEnabled: true })
+/** 为已认证作者页面创建真实 API 运行时。 */
+export function createAuthorRuntime(services: ApiServices, currentState: () => AuthState): AuthorRuntime {
   return {
     articles: {
       detail: services.article.manageDetail,
@@ -54,6 +37,6 @@ export function createAuthorRuntime(services: ApiServices): AuthorRuntime {
       updateTag: services.tag.update,
       deleteTag: services.tag.delete,
     },
-    guard: createMutationGuard(config, () => fakeState),
+    guard: createMutationGuard(currentState),
   }
 }

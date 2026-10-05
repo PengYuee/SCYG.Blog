@@ -6,5 +6,5 @@ test("opens the actual Vite page and renders the public blog", async ({ page }) 
   await page.goto("/")
 
   // Then: 可见博客标题证明应用完成挂载与路由。
-  await expect(page.getByRole("heading", { name: "妄揽明月" })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "妄揽明月", exact: true })).toBeVisible()
 })
