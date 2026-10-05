@@ -55,3 +55,8 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+
+# Local task plans, drafts, logs and verification evidence
+/.scratch/
+# Existing tool-managed task history; new manual task materials use .scratch/
+/.omo/

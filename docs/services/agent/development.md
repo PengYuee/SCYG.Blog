@@ -1,6 +1,22 @@
 # Agent 服务开发
 
-## 已验证的静态入口
+## 当前交付状态
+
+当前工作区已落地 Recipe 合同、配置路径、Redis Stream 适配、AgentRunner 边界和相关静态测试；源码仍同时保留 Recipe AgentRunner 与 SIMPLE/DEEP RuntimeRouter，旧 Runtime 尚未进入删除阶段。未完成的实施计划、需求草稿和审查材料保存在 `.scratch/`，不作为现行实现说明。
+
+已验证：
+
+- `qa:agent:static` 通过，包含合同漂移、Ruff、basedpyright、700 个通过的测试、覆盖率、范围扫描、密钥扫描、依赖审计和部署合同测试。
+- PostgreSQL 端点验收未执行；未提供 `SCYG_TEST_CONFIG_FILE` 时相关测试跳过。
+
+未验证或被环境阻断：
+
+- `qa:agent` 完整门禁尚未通过；当前执行在 T32 因缺少 Docker 停止，Compose、真实拓扑和 T34 未执行。
+- Provider、PostgreSQL checkpoint、Redis 拓扑、Agent gRPC/HTTP 真实联调和浏览器链路不能由静态门禁替代。
+
+后续实施以 scratch 中的 Agent Harness 计划为准，下一阶段是 P4 Tool Gateway 与 Blog 只读 Tool；在该阶段完成并取得对应验收证据前，不把 Tool Gateway、HITL 恢复、完整四类 Agent 或旧 Runtime 清理写成当前能力。
+
+## 静态检查入口
 
 在仓库根目录运行以下命令。它们不要求 Docker、Compose、PostgreSQL、密钥或外部模型服务。
 
@@ -30,12 +46,12 @@ uv run --locked pytest -q --cov=src/scyg_agent --cov-branch
 Set-Location agent
 docker compose config
 docker compose up --build --wait
-docker compose down --volumes --remove-orphans
+docker compose down --remove-orphans
 ```
 
-`agent-setup` 是有限的一次性任务。它准备单一 `scyg_agent` 应用角色、执行 Agent Alembic 并使用同一个 DSN 初始化 checkpoint。只有它成功后，常驻 `agent` 服务才启动。
+`agent-setup` 是有限的一次性任务。它准备单一 `scyg_agent` 应用角色、执行 Agent Alembic 并使用同一个 DSN 初始化 checkpoint。PostgreSQL 与 Redis 健康、setup 成功后，常驻 `agent` 服务才启动。日常停止保留数据库卷；只有确认要删除本地数据库状态时才给 `down` 追加 `--volumes`。
 
-当前 Windows 主机没有 Docker、Compose 或获批 Agent PostgreSQL 端点。因此上面的拓扑命令是前置条件命令，未在本机执行，也不能据此声称 `task qa:agent`、Compose、迁移或 T34 通过。
+启动拓扑需要 Docker、Compose、数据库、公钥和 Provider 配置。历史任务记录中的环境阻塞不代表当前开发机状态；应以实际命令结果判断，不把配置展开或静态检查称为动态验收通过。
 
 完整入口为：
 
@@ -43,7 +59,7 @@ docker compose down --volumes --remove-orphans
 task qa:agent
 ```
 
-它先要求 Docker 及 `.env` 或完整拓扑环境变量，再运行静态门禁、Compose config、Compose up 和 T34。当前主机预期在 `T32 topology prerequisites: missing tool(s): docker` 失败，且不输出 PASS。
+它检查拓扑前置条件，并执行静态门禁、Compose 和 T34。当前源码已引入 Redis 与 Recipe 路径，历史 T34 结果不能替代对新路径的实际验证。
 
 ## 配置和脱敏
 
@@ -70,4 +86,4 @@ Compose 拓扑使用未跟踪的 `agent/.env` 为 PostgreSQL 初始化、setup �
 
 ## 交付边界
 
-当前代码存在固定 SIMPLE 和 DEEP 运行时目录、Agent HTTP/SSE、命令和取消面、gRPC 控制面、租约 Worker 与恢复代码。Blog 登录、Run 创建 REST、Run JWT 签发和刷新、BlogTool 真实服务、Vue Run 页面尚未交付。开发文档不将这些 T22 至 T31 工作描述为可运行功能。
+当前代码装配 Recipe AgentRunner、SIMPLE/DEEP RuntimeRouter、Redis 流、Agent HTTP/SSE、gRPC 控制面及租约 Worker。Blog 自身已经有用户登录，但 Blog 的 Run REST、Agent 控制面调用、Run JWT 签发与前端 AI 页面尚未接通。源码入口与职责见[架构](architecture.md)，事件来源和 cursor 区别见[流式合同](streaming.md)。

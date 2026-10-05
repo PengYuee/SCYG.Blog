@@ -1,4 +1,13 @@
-编写文档时，应该按照[文档编写方法论.md](文档编写方法论.md)里的思想来编写。
+编写文档时，应该按照[文档编写方法](docs/documentation-writing.md)里的思想来编写。
+
+## 文档与任务材料
+
+- 正式项目文档统一放在根 `docs/`；服务目录的 README 只保留导航。根 README、LICENSE、目录级 AGENTS、协议、配置和执行脚本保留原职责位置。
+- `docs/` 只收录已确认且有长期维护或追溯价值的内容。当前实现说明须核对源码、合同和配置；需求与设计须有明确确认依据，并标注待实施、实施中或历史状态，不把目标写成现状。
+- 新任务的计划、草稿、阶段确认、续接记录、原始审查输出、日志及验证证据统一放在根 `.scratch/<任务标识>/`，不纳入 Git。每个任务沿用一份 `workflow.md`，独立材料通过链接引用，不固定生成成套文件。
+- 临时材料转正前核对事实、移除过程噪声和敏感信息，再归入 `docs/` 对应主题；任务记录引用正式文档，不维护正文副本。无确认依据的材料保留在本地，不因已有文件或计划勾选而转正。
+- 既有临时材料迁移前核对引用和跟踪状态，保留本地内容，不重写 Git 历史。任务结束不自动清空材料；忽略规则不等于已跟踪文件已移出版本控制。
+- 既有由工具管理的 `.omo/` 任务历史保留原路径以维持续接和 QA 引用，同样不纳入 Git；新的手工任务材料不再写入该目录。生成的覆盖率等原始报告留在本地并由对应服务忽略。
 
 ## Agent 当前开发与设计规则
 
@@ -17,3 +26,12 @@
 ## Backend
 
 修改 `backend/` 前先阅读 [`backend/AGENTS.md`](backend/AGENTS.md)。
+
+## Frontend
+
+修改 `frontend/` 前先阅读 [`frontend/AGENTS.md`](frontend/AGENTS.md)，并按其中引用的 [`docs/services/frontend/development.md`](docs/services/frontend/development.md) 执行前端开发、API 契约、代码生成、抽象和验证规则。
+
+## Playwright E2E
+
+- **浏览器**：凡使用 Playwright（包括 E2E、冒烟、调试和临时验证）均必须使用已安装的 Microsoft Edge，不使用 Playwright 下载的 Chromium。运行前清除 `CI` 环境变量，例如：`$env:CI = ""; pnpm exec playwright test`。
+- **验证**：项目 Playwright 配置在非 CI 环境选择 `channel: "msedge"`；若 `CI=true`，配置会切换到 Chromium，仅适用于具备 Playwright Chromium 浏览器的 CI 环境。
