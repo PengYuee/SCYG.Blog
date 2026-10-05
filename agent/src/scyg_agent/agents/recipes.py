@@ -48,7 +48,13 @@ class RecipeRegistry:
     def __post_init__(self) -> None:
         """Reject duplicate or incomplete recipe keys."""
         keys = {(recipe.recipe_id, recipe.version) for recipe in self.recipes}
-        if len(keys) != len(self.recipes) or len(self.recipes) != EXPECTED_RECIPE_COUNT:
+        capabilities = {recipe.capability for recipe in self.recipes}
+        if (
+            len(keys) != len(self.recipes)
+            or len(self.recipes) != EXPECTED_RECIPE_COUNT
+            or len(capabilities) != EXPECTED_RECIPE_COUNT
+            or any(recipe.version != "v1" or not recipe.prompt for recipe in self.recipes)
+        ):
             raise InvalidRecipeRegistryError
 
     def resolve(self, recipe_id: RecipeId, version: str) -> AgentRecipe | None:

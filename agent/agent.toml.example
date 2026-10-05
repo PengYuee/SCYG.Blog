@@ -10,7 +10,15 @@ provider_model = "provider-model"
 redis_url = "redis://localhost:6379/0"
 redis_ttl_seconds = 86400
 redis_stream_maxlen = 10000
+redis_connect_timeout_seconds = 5.0
+redis_read_timeout_seconds = 30.0
+stream_flush_chars = 4096
+stream_flush_interval_ms = 100
 
+application_contract_version = "v1"
+state_schema_version = "v1"
+agent_max_iterations = 32
+agent_max_context_tokens = 128000
 # Optional values below show their defaults.
 http_host = "127.0.0.1"
 http_port = 8080

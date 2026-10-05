@@ -74,6 +74,19 @@ def test_compose_uses_one_agent_account() -> None:
     assert "SCYG_AGENT_CHECKPOINT_DATABASE_URL" not in content
 
 
+def test_compose_provides_healthy_redis_for_agent() -> None:
+    """Agent must wait for the transient stream dependency and use its internal DNS name."""
+    content = _text(COMPOSE_FILE)
+
+    assert re.search(r"\n  redis:\n", content)
+    assert "image: redis:7.4-alpine" in content
+    assert 'test: ["CMD", "redis-cli", "ping"]' in content
+    assert "SCYG_AGENT_REDIS_URL: redis://redis:6379/0" in content
+    assert "      redis:\n        condition: service_healthy" in content
+    assert "--appendonly" in content
+    assert "--save" in content
+
+
 def test_bootstrap_and_migration_prepare_one_owner() -> None:
     bootstrap = _text(INIT_SQL)
     migration = _text(MIGRATION)

@@ -163,6 +163,9 @@ class ApplicationFacade:
                     request.input_payload,
                     request.input_digest,
                     request.locale,
+                    request.thread_id,
+                    request.quality,
+                    request.state_schema_version,
                 ),
             )
         )

@@ -7,6 +7,10 @@ from typing import Final, override
 DEFAULT_SIMPLE_CAPACITY: Final = 4
 DEFAULT_DEEP_CAPACITY: Final = 1
 MAX_CAPACITY: Final = 64
+DEFAULT_STREAM_FLUSH_CHARS: Final = 4_096
+MAX_STREAM_FLUSH_CHARS: Final = 32_000
+DEFAULT_STREAM_FLUSH_INTERVAL: Final = timedelta(milliseconds=100)
+MAX_STREAM_FLUSH_INTERVAL: Final = timedelta(minutes=1)
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,6 +35,8 @@ class WorkerConfig:
     poll_interval: timedelta = timedelta(milliseconds=100)
     error_backoff: timedelta = timedelta(seconds=1)
     drain_timeout: timedelta = timedelta(seconds=10)
+    stream_flush_chars: int = DEFAULT_STREAM_FLUSH_CHARS
+    stream_flush_interval: timedelta = DEFAULT_STREAM_FLUSH_INTERVAL
 
     def __post_init__(self) -> None:
         """拒绝 bool、非正数、无界容量和不安全续租周期."""
@@ -51,3 +57,17 @@ class WorkerConfig:
         ):
             if type(value) is not timedelta or value <= timedelta(0):
                 raise InvalidWorkerConfigError(field)
+        if (
+            type(self.stream_flush_chars) is not int
+            or self.stream_flush_chars < 1
+            or self.stream_flush_chars > MAX_STREAM_FLUSH_CHARS
+        ):
+            field = "stream_flush_chars"
+            raise InvalidWorkerConfigError(field)
+        if (
+            type(self.stream_flush_interval) is not timedelta
+            or self.stream_flush_interval <= timedelta(0)
+            or self.stream_flush_interval > MAX_STREAM_FLUSH_INTERVAL
+        ):
+            field = "stream_flush_interval"
+            raise InvalidWorkerConfigError(field)

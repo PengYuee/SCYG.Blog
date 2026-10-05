@@ -69,6 +69,9 @@ class RunRecord(Base):
     capability: Mapped[str | None] = mapped_column(String(32), index=True)
     recipe_id: Mapped[str | None] = mapped_column(String(64))
     recipe_version: Mapped[str | None] = mapped_column(String(32))
+    thread_id: Mapped[str | None] = mapped_column(String(128), unique=True)
+    quality: Mapped[str | None] = mapped_column(String(16))
+    state_schema_version: Mapped[str | None] = mapped_column(String(32))
     input_schema_version: Mapped[str | None] = mapped_column(String(32))
     input_payload: Mapped[dict[str, object] | None] = mapped_column(JSONB)
     input_digest: Mapped[str | None] = mapped_column(String(64))
@@ -80,6 +83,7 @@ class RunRecord(Base):
     runtime_version: Mapped[str] = mapped_column(String(32))
     revision: Mapped[int] = mapped_column(Integer)
     status: Mapped[str] = mapped_column(String(24))
+    result_reference: Mapped[str | None] = mapped_column(String(256))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP")
     )
@@ -135,6 +139,27 @@ class InteractionRecord(Base):
     response_digest: Mapped[str | None] = mapped_column(String(128))
     resolution_semantic_digest: Mapped[str | None] = mapped_column(String(64))
     result_reference: Mapped[str | None] = mapped_column(String(256))
+
+
+@final
+class CheckpointBindingRecord(Base):
+    """Bind one LangGraph thread to the immutable Run execution identity."""
+
+    __tablename__ = "agent_checkpoint_bindings"
+    __table_args__: tuple[SchemaItem, ...] = (
+        Index("uq_agent_checkpoint_bindings_run_id", "run_id", unique=True),
+    )
+
+    thread_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    run_id: Mapped[str] = mapped_column(
+        ForeignKey("agent_runs.run_id", ondelete="CASCADE"), nullable=False
+    )
+    recipe_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    recipe_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    state_schema_version: Mapped[str] = mapped_column(String(32), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP"), nullable=False
+    )
 
 
 @final

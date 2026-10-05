@@ -2,7 +2,7 @@
 
 from collections.abc import AsyncIterator, Awaitable
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING, Protocol, cast
 
 import grpc
 import pytest
@@ -10,12 +10,13 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 from grpc import aio
 
 from scyg_agent.adapters.auth import JwtVerifier
+from scyg_agent.adapters.redis import RedisStreamStore, RedisUnavailableError
 from scyg_agent.generated.scyg.agent.v1 import agent_control_service_pb2 as service_pb2
 from scyg_agent.generated.scyg.agent.v1 import agent_control_service_pb2_grpc as service_grpc
 from scyg_agent.generated.scyg.agent.v1 import common_pb2
 from scyg_agent.transport.grpc import AgentControlServicer
 from tests.adapters.auth.test_jwt_verifier import claims, encode
-from tests.application.test_facade import facade
+from tests.application.test_facade import FakeRuns, facade
 
 NOW = datetime(2026, 7, 12, 13, tzinfo=UTC)
 Metadata = tuple[tuple[str, str], ...]
@@ -54,6 +55,13 @@ class FixedClock:
         return NOW
 
 
+class UnavailableRedis:
+    """Reject health checks without exposing a connection detail."""
+
+    async def ping(self) -> None:
+        raise RedisUnavailableError
+
+
 @pytest.fixture
 async def control_server(
     verifier: JwtVerifier,
@@ -68,6 +76,28 @@ async def control_server(
     try:
         stub: ControlStub = service_grpc.AgentControlServiceStub(channel)
         yield f"127.0.0.1:{port}", stub
+    finally:
+        await channel.close()
+        await server.stop(None)
+
+
+@pytest.fixture
+async def unavailable_control_server(
+    verifier: JwtVerifier,
+) -> AsyncIterator[tuple[str, ControlStub, FakeRuns]]:
+    """启动带 Redis 健康门禁的服务并保留仓储观察句柄."""
+    application, runs, _ = facade()
+    server = aio.server()
+    unavailable = cast("RedisStreamStore", cast("object", UnavailableRedis()))
+    add_control_servicer(
+        AgentControlServicer(application, verifier, FixedClock(), unavailable), server
+    )
+    port = server.add_insecure_port("127.0.0.1:0")
+    await server.start()
+    channel = aio.insecure_channel(f"127.0.0.1:{port}")
+    try:
+        stub: ControlStub = service_grpc.AgentControlServiceStub(channel)
+        yield f"127.0.0.1:{port}", stub, runs
     finally:
         await channel.close()
         await server.stop(None)
@@ -125,3 +155,23 @@ async def test_authentication_failures_are_stable(
     # Then: 不泄露令牌、protobuf 或验证异常。
     assert caught.value.code() is grpc.StatusCode.UNAUTHENTICATED
     assert caught.value.details() == "身份认证失败"
+
+
+@pytest.mark.anyio
+async def test_create_rejects_unavailable_redis_before_facade_mutation(
+    unavailable_control_server: tuple[str, ControlStub, FakeRuns],
+    private_key: rsa.RSAPrivateKey,
+) -> None:
+    """Redis health failure returns UNAVAILABLE and does not create a Run."""
+    _, stub, runs = unavailable_control_server
+    token = encode(private_key, claims("blog_service")).value
+
+    with pytest.raises(aio.AioRpcError) as caught:
+        _ = await stub.CreateRun(
+            create_request("redis-gated"),
+            metadata=(("authorization", f"Bearer {token}"),),
+        )
+
+    assert caught.value.code() is grpc.StatusCode.UNAVAILABLE
+    assert caught.value.details() == "Redis 流存储不可用"
+    assert runs.run is None

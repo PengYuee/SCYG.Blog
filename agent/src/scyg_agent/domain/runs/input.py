@@ -11,7 +11,7 @@ MAX_ARTICLE_ID_LENGTH = 128
 
 @dataclass(frozen=True, slots=True)
 class RunInput:
-    """保存新 Run 执行输入及可选 capability 快照。."""
+    """保存新 Run 执行输入及完整 Recipe/checkpoint 身份快照。 ."""
 
     initial_message: str
     article_id: str
@@ -22,6 +22,9 @@ class RunInput:
     input_payload: dict[str, object] | None = None
     input_digest: str | None = None
     locale: str | None = None
+    thread_id: str | None = None
+    quality: str | None = None
+    state_schema_version: str | None = None
 
     def __post_init__(self) -> None:
         """拒绝空值和超出契约长度的输入。."""

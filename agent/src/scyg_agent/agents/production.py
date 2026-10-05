@@ -7,7 +7,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Protocol, cast, final, override
 
-from langchain.agents import create_agent  # pyright: ignore[reportUnknownVariableType]
+from langchain.agents import (
+    create_agent,  # pyright: ignore[reportUnknownVariableType]  # TYPE_IGNORE_OK - LangChain 动态工厂由本地 AgentGraph 协议收窄。
+)
 from langchain_openai import ChatOpenAI
 
 from scyg_agent.adapters.database.run_request_source import PostgreSQLRunInputSource
@@ -117,7 +119,7 @@ class LangChainAgentRunner(AgentRunner):
             return _failure(FailureKind.RESULT_VALIDATION, "Agent 结果无效")
         except (TimeoutError, OSError):
             return _failure(FailureKind.DEPENDENCY, "Agent 模型调用失败", retryable=True)
-        except Exception:  # noqa: BLE001 - framework errors become a stable Agent outcome.
+        except Exception:  # noqa: BLE001, RUF100  # noqa: BROAD_EXCEPT_OK - 框架边界必须把未知第三方异常映射为稳定失败。
             return _failure(FailureKind.INTERNAL, "Agent 执行失败")
 
     @override
@@ -202,7 +204,7 @@ async def create_langchain_agent_runner(
                 )
                 for recipe in registry.recipes
             )
-    except BaseException:
+    except BaseException:  # noqa: RUF100  # noqa: BROAD_EXCEPT_OK - 构造失败时必须释放模型并原样传播取消。
         await _close_models(tuple(models.values()))
         raise
     return LangChainAgentRunner(

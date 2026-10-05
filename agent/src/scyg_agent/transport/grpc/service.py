@@ -9,6 +9,7 @@ import grpc
 from grpc import aio
 
 from scyg_agent.adapters.auth import JwtVerifier
+from scyg_agent.adapters.redis import RedisStreamError, RedisStreamStore
 from scyg_agent.agents.contracts import (
     INPUT_SCHEMA_VERSION,
     Capability,
@@ -107,12 +108,17 @@ class AgentControlServicer(service_grpc.AgentControlServiceServicer):
     """认证 Blog 服务并把两个控制面 RPC 委托给共享门面."""
 
     def __init__(
-        self, facade: AgentControlApplications, verifier: JwtVerifier, clock: Clock | None = None
+        self,
+        facade: AgentControlApplications,
+        verifier: JwtVerifier,
+        clock: Clock | None = None,
+        stream_store: RedisStreamStore | None = None,
     ) -> None:
-        """绑定完成的应用门面、JWT 验证器与可测试时钟."""
+        """绑定完成门面、JWT 验证器、时钟与 Redis 健康端口."""
         self._facade = facade
         self._verifier = verifier
         self._clock = clock or UtcClock()
+        self._stream_store = stream_store
 
     @override
     async def CreateRun(
@@ -123,6 +129,7 @@ class AgentControlServicer(service_grpc.AgentControlServiceServicer):
         """认证、解析并执行一次规范幂等 Run 创建."""
         _ = await authenticate_blog_service(context, self._verifier)
         await _require_live_context(context)
+        await _require_redis_available(context, self._stream_store)
         try:
             owner, operation_id, run_id, task_type, runtime, article_id, message = (
                 parse_create_request(request)
@@ -164,6 +171,7 @@ class AgentControlServicer(service_grpc.AgentControlServiceServicer):
         """Authenticate and adapt the public capability request to the current Run facade."""
         _ = await authenticate_blog_service(context, self._verifier)
         await _require_live_context(context)
+        await _require_redis_available(context, self._stream_store)
         try:
             owner, operation, run_id, capability, value, locale = parse_create_agent_run_request(
                 request
@@ -192,7 +200,7 @@ class AgentControlServicer(service_grpc.AgentControlServiceServicer):
             result = await _within_deadline(context, self._facade.create_run(create))
         except TimeoutError:
             await _abort(context, grpc.StatusCode.DEADLINE_EXCEEDED, "请求处理超过截止时间")
-        except Exception:  # noqa: BLE001
+        except Exception:  # noqa: BLE001  # noqa: BROAD_EXCEPT_OK - 传输最外层必须隐藏未知基础设施异常。
             await _abort(context, grpc.StatusCode.INTERNAL, "服务内部错误")
         return await _create_agent_outcome(context, result)
 
@@ -326,6 +334,19 @@ async def _get_outcome(
             return await _abort(context, grpc.StatusCode.CANCELLED, "请求已取消")
         case FacadeInternal():
             return await _abort(context, grpc.StatusCode.INTERNAL, "服务内部错误")
+
+
+async def _require_redis_available[RequestT, ResponseT](
+    context: aio.ServicerContext[RequestT, ResponseT],
+    stream_store: RedisStreamStore | None,
+) -> None:
+    """Reject Run creation before database mutation when Redis is unavailable."""
+    if stream_store is None:
+        return
+    try:
+        await stream_store.ping()
+    except RedisStreamError:
+        await _abort(context, grpc.StatusCode.UNAVAILABLE, "Redis 流存储不可用")
 
 
 async def _require_live_context[RequestT, ResponseT](

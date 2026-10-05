@@ -148,7 +148,7 @@ class RuntimeFacadeResource:
             self.facade = facade
             self.verifier = verifier
             runner = None
-        except BaseException:
+        except BaseException:  # noqa: RUF100  # noqa: BROAD_EXCEPT_OK - 启动失败和取消都必须释放已构造资源。
             if runner is not None:
                 await runner.close()
             await stack.aclose()

@@ -9,6 +9,7 @@ from scyg_agent.adapters.database.records import Base
 EXPECTED_TABLES = {
     "agent_runs",
     "agent_run_results",
+    "agent_checkpoint_bindings",
     "agent_events",
     "agent_commands",
     "agent_interactions",

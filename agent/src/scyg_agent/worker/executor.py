@@ -1,10 +1,21 @@
-"""单个围栏 Run 的执行、续租与原子终态提交."""
+"""单个围栏 Run 的执行、续租、流发布与原子终态提交。"""  # noqa: D415
 
-from dataclasses import replace
+from collections import deque
+from collections.abc import Mapping
+from dataclasses import dataclass, field, replace
+from datetime import datetime, timedelta
 from hashlib import sha256
+from typing import Final
 
 import anyio
 
+from scyg_agent.adapters.redis import (
+    RedisStreamKind,
+    RedisStreamStore,
+    RedisUnavailableError,
+    StaleAttemptError,
+    StreamEnvelope,
+)
 from scyg_agent.agents import AgentFailure, FailureKind
 from scyg_agent.agents.runner import (
     AgentFailed,
@@ -32,6 +43,7 @@ from scyg_agent.domain.runs import (
     InteractionId,
     Run,
     RunFailed,
+    RunId,
     RunStatus,
     RunSucceeded,
 )
@@ -45,24 +57,262 @@ from scyg_agent.domain.runs.repository import (
     RunLease,
 )
 from scyg_agent.runtimes.base import AdapterIdentityDriftError
-from scyg_agent.runtimes.deep.models import DeepRuntimeError
+from scyg_agent.runtimes.deep.models import (
+    ApprovalRequired,
+    DeepRuntimeError,
+    ExecutionInFlight,
+    ExternalOutcomeUnknownResult,
+    Rejected,
+    ToolFinished,
+)
 from scyg_agent.runtimes.normalization import (
+    DeepFailureState,
     NormalizationContext,
     NormalizationError,
     normalize_runtime,
 )
-from scyg_agent.runtimes.outputs import RuntimeNativeOutput
+from scyg_agent.runtimes.outputs import DeepRuntimeOutput, RuntimeNativeOutput, SimpleRuntimeOutput
 from scyg_agent.runtimes.router import RuntimeRouter, RuntimeSelectionMismatch
+from scyg_agent.runtimes.simple.results import CompletionFinished, ProviderDelta, ProviderFailure
 
-from .config import WorkerConfig
+from .config import DEFAULT_STREAM_FLUSH_CHARS, DEFAULT_STREAM_FLUSH_INTERVAL, WorkerConfig
 from .contracts import WorkerDependencies
 from .identity import command_id as make_command_id
 from .identity import event_id
 from .persistence import finish_persistence
 from .terminal_events import cancel_events, completion_status
 
+REDIS_FAILURE_CODE: Final = "redis_failure"
+REDIS_FAILURE_MESSAGE: Final = "Redis 流存储不可用"
 
-async def execute_lease(
+
+@dataclass(slots=True)
+class _RunStreamPublisher:
+    """Publish fenced transient events with bounded text buffering."""
+
+    store: RedisStreamStore
+    run_id: RunId
+    attempt: int
+    flush_chars: int = DEFAULT_STREAM_FLUSH_CHARS
+    flush_interval: timedelta = DEFAULT_STREAM_FLUSH_INTERVAL
+    sequence: int = 0
+    _text_parts: deque[str] = field(default_factory=deque)
+    _buffered_chars: int = 0
+    _last_flush_at: datetime | None = None
+
+    async def activate(self) -> None:
+        """Fence this attempt before any transient output is written."""
+        _ = await self.store.activate_attempt(self.run_id, self.attempt)
+        self._last_flush_at = None
+
+    async def publish(
+        self, kind: RedisStreamKind, payload: Mapping[str, str], occurred_at: datetime
+    ) -> None:
+        """Append one bounded envelope and advance sequence only after success."""
+        _ = await self.store.append(
+            StreamEnvelope(
+                self.run_id,
+                self.attempt,
+                kind,
+                self.sequence,
+                occurred_at,
+                dict(payload),
+            )
+        )
+        self.sequence += 1
+
+    async def publish_text(self, content: str, occurred_at: datetime) -> None:
+        """Buffer text and flush full chunks or an elapsed interval."""
+        if not content:
+            return
+        self._text_parts.append(content)
+        self._buffered_chars += len(content)
+        last_flush_at = self._last_flush_at
+        if last_flush_at is None:
+            last_flush_at = occurred_at
+            self._last_flush_at = occurred_at
+        if self._buffered_chars and occurred_at - last_flush_at >= self.flush_interval:
+            await self.flush(occurred_at)
+
+    async def flush(self, occurred_at: datetime) -> None:
+        """Flush all buffered text before terminal or control events."""
+        await self._flush_full_chunks(occurred_at)
+        if self._buffered_chars:
+            chunk = self._take_text(self._buffered_chars)
+            await self.publish(RedisStreamKind.TEXT_DELTA, {"text": chunk}, occurred_at)
+        self._last_flush_at = occurred_at
+
+    async def _flush_full_chunks(self, occurred_at: datetime) -> None:
+        """Flush only complete chunks, retaining a bounded remainder."""
+        flushed = False
+        while self._buffered_chars >= self.flush_chars:
+            chunk = self._take_text(self.flush_chars)
+            await self.publish(RedisStreamKind.TEXT_DELTA, {"text": chunk}, occurred_at)
+            flushed = True
+        if flushed:
+            self._last_flush_at = occurred_at
+
+    def _take_text(self, limit: int) -> str:
+        """Remove and return at most one configured text chunk."""
+        remaining = limit
+        parts: list[str] = []
+        while remaining and self._text_parts:
+            part = self._text_parts[0]
+            if len(part) <= remaining:
+                parts.append(self._text_parts.popleft())
+                remaining -= len(part)
+            else:
+                parts.append(part[:remaining])
+                self._text_parts[0] = part[remaining:]
+                remaining = 0
+        chunk = "".join(parts)
+        self._buffered_chars -= len(chunk)
+        return chunk
+
+
+def _stream_publisher(
+    dependencies: WorkerDependencies, run: Run, lease: RunLease, config: WorkerConfig
+) -> _RunStreamPublisher | None:
+    """Create a publisher only when production injected the Redis stream port."""
+    if dependencies.stream_store is None:
+        return None
+    return _RunStreamPublisher(
+        dependencies.stream_store,
+        run.id,
+        lease.attempt,
+        config.stream_flush_chars,
+        config.stream_flush_interval,
+    )
+
+
+async def _publish_control(
+    publisher: _RunStreamPublisher,
+    kind: RedisStreamKind,
+    payload: Mapping[str, str],
+    occurred_at: datetime,
+) -> None:
+    """Flush pending text before an immediate control or terminal event."""
+    await publisher.flush(occurred_at)
+    await publisher.publish(kind, payload, occurred_at)
+
+
+async def _publish_native_output(  # noqa: C901, PLR0912
+    publisher: _RunStreamPublisher | None,
+    output: RuntimeNativeOutput,
+    occurred_at: datetime,
+) -> None:
+    """Map the legacy runtime closed output set to transient stream envelopes."""
+    if publisher is None:
+        return
+    match output:
+        case SimpleRuntimeOutput(outcome=ProviderDelta(content=content)):
+            await publisher.publish_text(content, occurred_at)
+        case SimpleRuntimeOutput(
+            outcome=CompletionFinished(
+                reason=reason,
+                prompt_tokens=prompt,
+                completion_tokens=completion,
+                total_tokens=total,
+            )
+        ):
+            payload = {"status": "succeeded", "reason": reason}
+            if prompt is not None:
+                payload["prompt_tokens"] = str(prompt)
+            if completion is not None:
+                payload["completion_tokens"] = str(completion)
+            if total is not None:
+                payload["total_tokens"] = str(total)
+            await _publish_control(publisher, RedisStreamKind.TERMINAL, payload, occurred_at)
+        case SimpleRuntimeOutput(outcome=ProviderFailure(kind=kind, status_code=status_code)):
+            payload = {"status": "failed", "error_code": kind.value}
+            if status_code is not None:
+                payload["status_code"] = str(status_code)
+            await _publish_control(publisher, RedisStreamKind.TERMINAL, payload, occurred_at)
+        case DeepRuntimeOutput(proposal=proposal, result=ApprovalRequired()):
+            await _publish_control(
+                publisher,
+                RedisStreamKind.APPROVAL_REQUIRED,
+                {"interaction_id": str(proposal.intent.approval_interaction_id)},
+                occurred_at,
+            )
+        case DeepRuntimeOutput(result=DeepFailureState(kind=kind)):
+            await _publish_control(
+                publisher,
+                RedisStreamKind.TERMINAL,
+                {"status": "failed", "error_code": kind.value},
+                occurred_at,
+            )
+        case DeepRuntimeOutput(result=Rejected()):
+            await _publish_control(
+                publisher,
+                RedisStreamKind.TERMINAL,
+                {"status": "failed", "error_code": "rejected"},
+                occurred_at,
+            )
+        case DeepRuntimeOutput(result=ToolFinished(outcome=outcome)):
+            await _publish_control(
+                publisher,
+                RedisStreamKind.TERMINAL,
+                {"status": outcome.status.value},
+                occurred_at,
+            )
+        case DeepRuntimeOutput(result=ExternalOutcomeUnknownResult()):
+            await _publish_control(
+                publisher,
+                RedisStreamKind.TERMINAL,
+                {"status": "failed", "error_code": "external_outcome_unknown"},
+                occurred_at,
+            )
+        case DeepRuntimeOutput(result=ExecutionInFlight()):
+            await _publish_control(
+                publisher, RedisStreamKind.ERROR, {"code": "execution_in_flight"}, occurred_at
+            )
+        case _:
+            return
+
+
+async def _publish_agent_outcome(
+    publisher: _RunStreamPublisher | None,
+    outcome: AgentRunOutcome,
+    occurred_at: datetime,
+) -> None:
+    """Map the structured AgentRunner outcome to one safe transient frame."""
+    if publisher is None:
+        return
+    match outcome:
+        case AgentSucceeded(capability=capability) as succeeded:
+            result = succeeded.terminal_result()
+            await _publish_control(
+                publisher,
+                RedisStreamKind.TERMINAL,
+                {
+                    "status": "succeeded",
+                    "capability": capability.value,
+                    "result_digest": result.digest,
+                },
+                occurred_at,
+            )
+        case AgentWaitingForApproval(request=request):
+            await _publish_control(
+                publisher,
+                RedisStreamKind.APPROVAL_REQUIRED,
+                {
+                    "interaction_id": request.interaction_id,
+                    "title": request.title,
+                    "outline": request.outline,
+                },
+                occurred_at,
+            )
+        case AgentFailed(failure=failure):
+            await _publish_control(
+                publisher,
+                RedisStreamKind.TERMINAL,
+                {"status": "failed", "error_code": failure.kind.value},
+                occurred_at,
+            )
+
+
+async def execute_lease(  # noqa: C901, PLR0911, PLR0912
     lease: RunLease,
     dependencies: WorkerDependencies,
     router: RuntimeRouter,
@@ -80,11 +330,28 @@ async def execute_lease(
         "active": True,
         "cancelled": lease.cancellation_requested_at is not None,
     }
+    publisher = _stream_publisher(dependencies, loaded, lease, config)
+    try:
+        if publisher is not None:
+            await publisher.activate()
+    except StaleAttemptError:
+        return
+    except RedisUnavailableError:
+        if ownership["active"]:
+            await _commit_failure(
+                loaded,
+                lease,
+                dependencies,
+                error_code=REDIS_FAILURE_CODE,
+                error_message=REDIS_FAILURE_MESSAGE,
+            )
+        return
     if dependencies.agent_runner is not None:
-        await _execute_agent(loaded, lease, dependencies, config, ownership)
+        await _execute_agent(loaded, lease, dependencies, config, ownership, publisher)
         return
     outputs: list[RuntimeNativeOutput] = []
     runtime_failed = False
+    failure_code: str | None = None
     if not ownership["cancelled"]:
         with anyio.CancelScope() as execution_scope:
             async with anyio.create_task_group() as tasks:
@@ -93,7 +360,14 @@ async def execute_lease(
                 )
                 stream = route.execute(loaded) if lease.attempt == 1 else route.resume(loaded)
                 try:
-                    outputs.extend([output async for output in stream])
+                    async for output in stream:
+                        outputs.append(output)
+                        await _publish_native_output(publisher, output, dependencies.clock())
+                except StaleAttemptError:
+                    return
+                except RedisUnavailableError:
+                    runtime_failed = True
+                    failure_code = REDIS_FAILURE_CODE
                 except (
                     AdapterIdentityDriftError,
                     DeepRuntimeError,
@@ -105,7 +379,13 @@ async def execute_lease(
                     tasks.cancel_scope.cancel()
     if runtime_failed:
         if ownership["active"]:
-            await _commit_failure(loaded, lease, dependencies)
+            await _commit_failure(
+                loaded,
+                lease,
+                dependencies,
+                error_code=failure_code,
+                error_message=REDIS_FAILURE_MESSAGE if failure_code else None,
+            )
         return
     if not ownership["active"]:
         return
@@ -172,12 +452,13 @@ async def _commit(
             return
 
 
-async def _execute_agent(
+async def _execute_agent(  # noqa: PLR0913
     run: Run,
     lease: RunLease,
     dependencies: WorkerDependencies,
     config: WorkerConfig,
     ownership: dict[str, bool],
+    publisher: _RunStreamPublisher | None,
 ) -> None:
     """Run the structured AgentRunner while retaining the lease fence."""
     runner = dependencies.agent_runner
@@ -198,6 +479,18 @@ async def _execute_agent(
         return
     if outcome is None:
         outcome = AgentFailed(_internal_agent_failure())
+    try:
+        await _publish_agent_outcome(publisher, outcome, dependencies.clock())
+    except StaleAttemptError:
+        return
+    except RedisUnavailableError:
+        outcome = AgentFailed(
+            AgentFailure(
+                kind=FailureKind.REDIS_FAILURE,
+                message=REDIS_FAILURE_MESSAGE,
+                retryable=True,
+            )
+        )
     await _commit_agent(run, lease, dependencies, outcome, cancelled=ownership["cancelled"])
 
 
@@ -337,6 +630,9 @@ async def _commit_failure(
     run: Run,
     lease: RunLease,
     dependencies: WorkerDependencies,
+    *,
+    error_code: str | None = None,
+    error_message: str | None = None,
 ) -> None:
     """把已清洗运行时失败收敛为唯一围栏终态."""
     now = dependencies.clock()
@@ -353,7 +649,15 @@ async def _commit_failure(
     guard = LeaseGuard(run.id, lease.owner, lease.token, lease.revision, now)
     result = await finish_persistence(
         dependencies.terminal_committer.commit(
-            _commit_request(run, guard, RunStatus.FAILED, events, command_id)
+            _commit_request(
+                run,
+                guard,
+                RunStatus.FAILED,
+                events,
+                command_id,
+                error_code=error_code,
+                error_message=error_message,
+            )
         )
     )
     if isinstance(result, TerminalCancellationRequested):

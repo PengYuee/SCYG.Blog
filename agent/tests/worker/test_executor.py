@@ -3,12 +3,19 @@
 from collections.abc import AsyncIterator
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
-from typing import final
+from typing import cast, final
 from uuid import UUID
 
 import anyio
 import pytest
 
+from scyg_agent.adapters.redis import (
+    RedisStreamId,
+    RedisStreamKind,
+    RedisStreamStore,
+    RedisUnavailableError,
+    StreamEnvelope,
+)
 from scyg_agent.agents import (
     AgentFailure,
     ArticleDraft,
@@ -47,7 +54,12 @@ from scyg_agent.runtimes.base import AdapterIdentity
 from scyg_agent.runtimes.outputs import RuntimeNativeOutput, SimpleRuntimeOutput
 from scyg_agent.runtimes.registry import default_registry
 from scyg_agent.runtimes.router import RuntimeRouter
-from scyg_agent.runtimes.simple.results import CompletionFinished, FailureKind, ProviderFailure
+from scyg_agent.runtimes.simple.results import (
+    CompletionFinished,
+    FailureKind,
+    ProviderDelta,
+    ProviderFailure,
+)
 from scyg_agent.worker import WorkerConfig, WorkerDependencies
 from scyg_agent.worker.executor import execute_lease
 from tests.runtimes.fakes import FakeRuntimeAdapter, make_run
@@ -121,6 +133,41 @@ class FailureAdapter:
     async def execute(self, run: Run) -> AsyncIterator[RuntimeNativeOutput]:
         _ = run
         yield SimpleRuntimeOutput(ProviderFailure(FailureKind.EMPTY))
+
+    def resume(self, run: Run) -> AsyncIterator[RuntimeNativeOutput]:
+        return self.execute(run)
+
+
+@final
+class RecordingStreamStore:
+    """Record transient envelopes and optionally fail every append."""
+
+    def __init__(self, *, fail_append: bool = False) -> None:
+        self.fail_append = fail_append
+        self.activations: list[tuple[RunId, int]] = []
+        self.envelopes: list[StreamEnvelope] = []
+
+    async def activate_attempt(self, run_id: RunId, attempt: int) -> None:
+        self.activations.append((run_id, attempt))
+
+    async def append(self, envelope: StreamEnvelope) -> RedisStreamId:
+        if self.fail_append:
+            raise RedisUnavailableError
+        self.envelopes.append(envelope)
+        return RedisStreamId(f"{len(self.envelopes)}-0")
+
+
+@final
+class StreamingAdapter:
+    """Emit several small text deltas followed by a successful terminal."""
+
+    identity = AdapterIdentity("stream-worker", RuntimeKind.SIMPLE)
+
+    async def execute(self, run: Run) -> AsyncIterator[RuntimeNativeOutput]:
+        _ = run
+        for content in ("ab", "cd", "ef"):
+            yield SimpleRuntimeOutput(ProviderDelta(content))
+        yield SimpleRuntimeOutput(CompletionFinished("stop"))
 
     def resume(self, run: Run) -> AsyncIterator[RuntimeNativeOutput]:
         return self.execute(run)
@@ -364,3 +411,70 @@ async def test_persisted_runtime_selection_mismatch_commits_failed_terminal() ->
     )
 
     assert committer.requests[0].completion.status is RunStatus.FAILED
+
+
+@pytest.mark.anyio
+async def test_stream_text_is_batched_and_flushed_before_terminal() -> None:
+    """Small text deltas are coalesced and the remainder precedes the terminal frame."""
+    run = running_run()
+    committer = RecordingCommitter(run)
+    store = RecordingStreamStore()
+    runtime_router = RuntimeRouter(
+        default_registry(
+            StreamingAdapter(),
+            FakeRuntimeAdapter(AdapterIdentity("deep-stream", RuntimeKind.DEEP)),
+        )
+    )
+
+    await execute_lease(
+        lease(),
+        WorkerDependencies(
+            LoadedRepository(run),
+            committer,
+            lambda: NOW,
+            stream_store=cast("RedisStreamStore", cast("object", store)),
+        ),
+        runtime_router,
+        WorkerConfig(stream_flush_chars=5, stream_flush_interval=timedelta(seconds=30)),
+    )
+
+    assert store.activations == [(run.id, 1)]
+    assert [item.kind for item in store.envelopes] == [
+        RedisStreamKind.TEXT_DELTA,
+        RedisStreamKind.TEXT_DELTA,
+        RedisStreamKind.TERMINAL,
+    ]
+    assert [item.payload["text"] for item in store.envelopes[:2]] == ["abcde", "f"]
+    assert committer.requests[0].completion.status is RunStatus.SUCCEEDED
+
+
+@pytest.mark.anyio
+async def test_redis_write_failure_commits_redis_failure_without_success() -> None:
+    """A transient-stream write failure must not produce a pseudo-success result."""
+    run = running_run()
+    committer = RecordingCommitter(run)
+    store = RecordingStreamStore(fail_append=True)
+    runtime_router = RuntimeRouter(
+        default_registry(
+            StreamingAdapter(),
+            FakeRuntimeAdapter(AdapterIdentity("deep-stream-failure", RuntimeKind.DEEP)),
+        )
+    )
+
+    await execute_lease(
+        lease(),
+        WorkerDependencies(
+            LoadedRepository(run),
+            committer,
+            lambda: NOW,
+            stream_store=cast("RedisStreamStore", cast("object", store)),
+        ),
+        runtime_router,
+        WorkerConfig(stream_flush_chars=5, stream_flush_interval=timedelta(seconds=30)),
+    )
+
+    request = committer.requests[0]
+    assert request.completion.status is RunStatus.FAILED
+    assert request.result is None
+    assert request.error_code == "redis_failure"
+    assert request.error_message == "Redis 流存储不可用"

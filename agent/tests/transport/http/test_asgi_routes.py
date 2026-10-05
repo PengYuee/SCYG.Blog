@@ -1,6 +1,8 @@
 """通过真实 ASGI 表面验证 HTTP 快照、SSE 与 mutation。"""
 
+from collections.abc import AsyncGenerator
 from datetime import UTC, datetime
+from typing import cast
 
 import pytest
 from fastapi import FastAPI
@@ -13,7 +15,14 @@ from scyg_agent.adapters.auth import (
     Principal,
     WebRunPrincipal,
 )
-from scyg_agent.domain.runs import RunStatus
+from scyg_agent.adapters.redis import (
+    RedisStreamId,
+    RedisStreamKind,
+    RedisStreamStore,
+    StreamEnvelope,
+    StreamExpiredError,
+)
+from scyg_agent.domain.runs import RunId, RunStatus
 from scyg_agent.transport.http import HTTPDependencies, create_http_app
 from tests.application.test_facade import NOW, RUN_ID, facade, make_run
 
@@ -44,6 +53,102 @@ def make_app(*, status: RunStatus = RunStatus.PENDING, latest: int = 1) -> FastA
     """构造只含 T20 路由的内存 ASGI 应用。"""
     application, _, _ = facade(make_run(status), latest)
     return create_http_app(HTTPDependencies(application, FixedVerifier(), lambda: NOW))
+
+
+class FakeRedisStore:
+    """Provide one finite transient stream for the ASGI main path."""
+
+    def read(
+        self, run_id: RunId, cursor: RedisStreamId | None = None
+    ) -> AsyncGenerator[tuple[RedisStreamId, StreamEnvelope], None]:
+        _ = cursor
+
+        async def events() -> AsyncGenerator[tuple[RedisStreamId, StreamEnvelope], None]:
+            yield (
+                RedisStreamId("123-0"),
+                StreamEnvelope(run_id, 1, RedisStreamKind.TEXT_DELTA, 0, NOW, {"text": "hello"}),
+            )
+
+        return events()
+
+
+class ExpiredRedisStore:
+    """Raise the typed expiry outcome when the transient stream is gone."""
+
+    def read(
+        self, run_id: RunId, cursor: RedisStreamId | None = None
+    ) -> AsyncGenerator[tuple[RedisStreamId, StreamEnvelope], None]:
+        _ = run_id, cursor
+
+        async def events() -> AsyncGenerator[tuple[RedisStreamId, StreamEnvelope], None]:
+            if cursor is None:
+                yield (
+                    RedisStreamId("0-0"),
+                    StreamEnvelope(
+                        run_id,
+                        1,
+                        RedisStreamKind.PROGRESS,
+                        0,
+                        NOW,
+                        {"step": "idle"},
+                    ),
+                )
+            else:
+                raise StreamExpiredError
+
+        return events()
+
+
+def make_redis_app() -> FastAPI:
+    """Construct the HTTP surface with transient Redis stream injection."""
+    application, _, _ = facade(make_run(RunStatus.PENDING), 1)
+    return create_http_app(
+        HTTPDependencies(
+            application,
+            FixedVerifier(),
+            lambda: NOW,
+            stream_store=cast("RedisStreamStore", cast("object", FakeRedisStore())),
+        )
+    )
+
+
+def make_expired_redis_app() -> FastAPI:
+    """Construct the HTTP surface with an expired transient stream."""
+    application, _, _ = facade(make_run(RunStatus.PENDING), 1)
+    return create_http_app(
+        HTTPDependencies(
+            application,
+            FixedVerifier(),
+            lambda: NOW,
+            stream_store=cast("RedisStreamStore", cast("object", ExpiredRedisStore())),
+        )
+    )
+
+
+@pytest.mark.anyio
+async def test_redis_sse_uses_native_cursor_and_transient_payload() -> None:
+    transport = ASGITransport(app=make_redis_app())
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get(f"/api/runs/{RUN_ID}/events", headers=AUTH)
+
+    assert response.status_code == 200
+    assert "id: 123-0\nevent: text_delta\ndata: {" in response.text
+    assert '"text":"hello"' in response.text
+
+
+@pytest.mark.anyio
+async def test_redis_sse_emits_stream_expired_recovery_hint() -> None:
+    """Expired Redis state yields a safe durable-snapshot recovery frame."""
+    transport = ASGITransport(app=make_expired_redis_app())
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        response = await client.get(
+            f"/api/runs/{RUN_ID}/events?cursor=122-0",
+            headers=AUTH,
+        )
+
+    assert response.status_code == 200
+    assert "event: stream_expired" in response.text
+    assert '"snapshot_url":"/api/runs/run_t20facade0"' in response.text
 
 
 @pytest.mark.anyio

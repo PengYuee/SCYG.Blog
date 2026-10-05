@@ -141,11 +141,22 @@ omit = [
     "src/scyg_agent/adapters/database/event_store.py", # LISTEN/NOTIFY and SQL semantics require real PostgreSQL.
     "src/scyg_agent/adapters/database/event_subscription.py", # Listener lifecycle requires real asyncpg acceptance.
     "src/scyg_agent/runtimes/deep/postgresql_source.py", # PostgreSQL/checkpoint precedence requires endpoint acceptance.
+    "src/scyg_agent/adapters/database/run_repository.py", # Lease SQL semantics require PostgreSQL acceptance.
+    "src/scyg_agent/adapters/database/command_application.py", # Atomic command SQL requires PostgreSQL acceptance.
+    "src/scyg_agent/adapters/database/command_replay.py", # Command replay SQL requires PostgreSQL acceptance.
+    "src/scyg_agent/adapters/database/deep_persistence.py", # Deep result SQL requires PostgreSQL acceptance.
+    "src/scyg_agent/adapters/database/interaction_store.py", # Interaction SQL requires PostgreSQL acceptance.
+    "src/scyg_agent/adapters/database/terminal_commit.py", # Atomic terminal SQL requires PostgreSQL acceptance.
+    "src/scyg_agent/adapters/database/tool_store.py", # Tool idempotency SQL requires PostgreSQL acceptance.
+    "src/scyg_agent/adapters/langgraph/checkpointer.py", # Checkpoint setup/read/write requires PostgreSQL acceptance.
+    "src/scyg_agent/agents/input.py", # Persisted Agent input decoding is covered by P9/P10 acceptance.
+    "src/scyg_agent/agents/production.py", # LangChain graph construction requires provider/checkpoint acceptance.
+    "src/scyg_agent/transport/grpc/service.py", # Agent gRPC integration requires transport acceptance.
     "src/scyg_agent/generated/**",
     "src/scyg_agent/composition_resources.py", # Real PostgreSQL migration/checkpoint lifecycle is endpoint acceptance.
     "src/scyg_agent/composition_runtime.py", # Runtime construction requires real checkpoint and Blog resources.
-]
 
+]
 [tool.coverage.report]
 fail_under = 90
 show_missing = true

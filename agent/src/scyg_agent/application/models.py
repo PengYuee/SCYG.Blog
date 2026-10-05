@@ -48,6 +48,9 @@ class CreateRunInput:
     input_payload: dict[str, object] | None = None
     input_digest: str | None = None
     locale: str | None = None
+    thread_id: str | None = None
+    quality: str | None = None
+    state_schema_version: str | None = None
 
     def __post_init__(self) -> None:
         """拒绝非精确创建请求类型。."""

@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
 
+from scyg_agent.adapters.redis import RedisStreamStore
 from scyg_agent.agents.runner import AgentRunner
 from scyg_agent.domain.ports.terminal_commit import TerminalCommitRequest, TerminalCommitResult
 from scyg_agent.domain.runs import RunId
@@ -49,3 +50,4 @@ class WorkerDependencies:
     terminal_committer: TerminalCommitter
     clock: Callable[[], datetime]
     agent_runner: AgentRunner | None = None
+    stream_store: RedisStreamStore | None = None

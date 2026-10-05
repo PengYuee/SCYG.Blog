@@ -19,63 +19,76 @@ OLD_CONSTRAINT: Final = "uq_agent_runs_operation_id"
 CAPABILITY_INDEX: Final = "uq_agent_runs_capability_identity"
 LEGACY_INDEX: Final = "uq_agent_runs_legacy_operation_id"
 
-UPGRADE_SQL: Final = """
-ALTER TABLE agent_runs DROP CONSTRAINT IF EXISTS uq_agent_runs_operation_id;
-DROP INDEX IF EXISTS uq_agent_runs_operation_id;
-DO $$
-BEGIN
-    IF EXISTS (
-        SELECT 1
-        FROM agent_runs
+UPGRADE_STATEMENTS: Final = (
+    "ALTER TABLE agent_runs DROP CONSTRAINT IF EXISTS uq_agent_runs_operation_id",
+    "DROP INDEX IF EXISTS uq_agent_runs_operation_id",
+    """
+    DO $$
+    BEGIN
+        IF EXISTS (
+            SELECT 1
+            FROM agent_runs
+            WHERE capability IS NOT NULL
+            GROUP BY owner_user_id, capability, operation_id
+            HAVING count(*) > 1
+        ) THEN
+            RAISE EXCEPTION 'duplicate capability Run idempotency identities block migration';
+        END IF;
+    END $$
+    """,
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_agent_runs_capability_identity
+        ON agent_runs (owner_user_id, capability, operation_id)
         WHERE capability IS NOT NULL
-        GROUP BY owner_user_id, capability, operation_id
-        HAVING count(*) > 1
-    ) THEN
-        RAISE EXCEPTION 'duplicate capability Run idempotency identities block migration';
-    END IF;
-END $$;
-CREATE UNIQUE INDEX IF NOT EXISTS uq_agent_runs_capability_identity
-    ON agent_runs (owner_user_id, capability, operation_id)
-    WHERE capability IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS uq_agent_runs_legacy_operation_id
-    ON agent_runs (operation_id)
-    WHERE capability IS NULL;
-"""
+    """,
+    """
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_agent_runs_legacy_operation_id
+        ON agent_runs (operation_id)
+        WHERE capability IS NULL
+    """,
+)
 
-DOWNGRADE_SQL: Final = """
-DO $$
-BEGIN
-    IF EXISTS (
-        SELECT 1
-        FROM agent_runs
-        GROUP BY operation_id
-        HAVING count(*) > 1
-    ) THEN
-        RAISE EXCEPTION 'capability-aware Run identities cannot downgrade to global operation_id';
-    END IF;
-END $$;
-DROP INDEX IF EXISTS uq_agent_runs_capability_identity;
-DROP INDEX IF EXISTS uq_agent_runs_legacy_operation_id;
-DO $$
-BEGIN
-    IF NOT EXISTS (
-        SELECT 1
-        FROM pg_constraint
-        WHERE conrelid = 'agent_runs'::regclass
-          AND conname = 'uq_agent_runs_operation_id'
-    ) THEN
-        ALTER TABLE agent_runs
-            ADD CONSTRAINT uq_agent_runs_operation_id UNIQUE (operation_id);
-    END IF;
-END $$;
-"""
+DOWNGRADE_STATEMENTS: Final = (
+    """
+    DO $$
+    BEGIN
+        IF EXISTS (
+            SELECT 1
+            FROM agent_runs
+            GROUP BY operation_id
+            HAVING count(*) > 1
+        ) THEN
+            RAISE EXCEPTION
+                'capability-aware Run identities cannot downgrade to global operation_id';
+        END IF;
+    END $$
+    """,
+    "DROP INDEX IF EXISTS uq_agent_runs_capability_identity",
+    "DROP INDEX IF EXISTS uq_agent_runs_legacy_operation_id",
+    """
+    DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1
+            FROM pg_constraint
+            WHERE conrelid = 'agent_runs'::regclass
+              AND conname = 'uq_agent_runs_operation_id'
+        ) THEN
+            ALTER TABLE agent_runs
+                ADD CONSTRAINT uq_agent_runs_operation_id UNIQUE (operation_id);
+        END IF;
+    END $$
+    """,
+)
 
 
 def upgrade() -> None:
     """Replace global operation uniqueness with capability-aware partial indexes."""
-    op.execute(UPGRADE_SQL)
+    for statement in UPGRADE_STATEMENTS:
+        op.execute(statement)
 
 
 def downgrade() -> None:
     """Restore global operation uniqueness only when existing rows permit it."""
-    op.execute(DOWNGRADE_SQL)
+    for statement in DOWNGRADE_STATEMENTS:
+        op.execute(statement)

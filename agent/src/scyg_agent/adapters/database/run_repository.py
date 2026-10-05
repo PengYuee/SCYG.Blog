@@ -40,7 +40,7 @@ from scyg_agent.domain.runs.repository import (
 from .run_fencing import TERMINAL_STATUSES, lease_predicates
 from .run_mapper import map_run
 from .run_queries import claim_candidates_statement, renew_lease_statement
-from .run_records import RunRecord
+from .run_records import CheckpointBindingRecord, RunRecord
 from .run_results import (
     CompletionPlan,
     claim_results,
@@ -78,6 +78,10 @@ class PostgreSQLRunRepository:
             capability=request.input.capability,
             recipe_id=request.input.recipe_id,
             recipe_version=request.input.recipe_version,
+            thread_id=request.input.thread_id or str(run.id).removeprefix("run_"),
+            quality=request.input.quality,
+            state_schema_version=request.input.state_schema_version,
+            result_reference=None,
             input_schema_version=request.input.input_schema_version,
             input_payload=request.input.input_payload,
             input_digest=request.input.input_digest,
@@ -118,6 +122,18 @@ class PostgreSQLRunRepository:
         async with self._sessions.begin() as session:
             inserted = (await session.execute(statement)).scalar_one_or_none()
             if inserted is not None:
+                if request.input.recipe_id is not None and request.input.recipe_version is not None:
+                    _ = await session.execute(
+                        insert(CheckpointBindingRecord)
+                        .values(
+                            thread_id=request.input.thread_id or str(run.id).removeprefix("run_"),
+                            run_id=str(run.id),
+                            state_schema_version=request.input.state_schema_version or "v1",
+                            recipe_id=request.input.recipe_id,
+                            recipe_version=request.input.recipe_version,
+                        )
+                        .on_conflict_do_nothing()
+                    )
                 return Created(run)
             record = (
                 await session.execute(select(RunRecord).where(*identity_filters).with_for_update())
@@ -136,6 +152,9 @@ class PostgreSQLRunRepository:
                 or record.capability != request.input.capability
                 or record.recipe_id != request.input.recipe_id
                 or record.recipe_version != request.input.recipe_version
+                or record.thread_id != (request.input.thread_id or str(run.id).removeprefix("run_"))
+                or record.quality != request.input.quality
+                or record.state_schema_version != request.input.state_schema_version
                 or record.input_schema_version != request.input.input_schema_version
                 or record.input_payload != request.input.input_payload
                 or record.input_digest != request.input.input_digest

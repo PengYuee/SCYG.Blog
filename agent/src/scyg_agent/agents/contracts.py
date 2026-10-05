@@ -195,14 +195,19 @@ def output_digest(value: CapabilityOutput) -> str:
 
 
 class FailureKind(StrEnum):
-    """Stable failure categories persisted by the run layer."""
+    """Stable failure categories persisted by the Run layer."""
 
     VALIDATION = "validation_failure"
-    DEPENDENCY = "dependency_unavailable"
-    PERMISSION = "permission_denied"
     RESULT_VALIDATION = "result_validation_failure"
+    INVALID_REQUEST = "invalid_request"
+    UNAUTHORIZED = "unauthorized"
+    FORBIDDEN = "forbidden"
+    DEPENDENCY = "dependency_unavailable"
+    REDIS_FAILURE = "redis_failure"
+    TOOL_FAILURE = "tool_failure"
+    APPROVAL_REJECTED = "approval_rejected"
     CANCELLED = "cancelled"
-    INTERNAL = "internal"
+    INTERNAL = "internal_failure"
 
 
 class AgentFailure(ContractModel):
@@ -211,6 +216,13 @@ class AgentFailure(ContractModel):
     kind: FailureKind
     message: Annotated[str, Field(min_length=1, max_length=512)]
     retryable: bool = False
+
+
+class AgentInterrupt(ContractModel):
+    """Framework-independent approval interruption."""
+
+    interaction_id: Annotated[str, Field(min_length=1, max_length=128)]
+    reason: Annotated[str, Field(min_length=1, max_length=512)]
 
 
 class ApprovalDecision(StrEnum):

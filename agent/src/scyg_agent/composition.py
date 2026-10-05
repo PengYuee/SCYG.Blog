@@ -14,6 +14,8 @@ from scyg_agent.adapters.database.run_repository import PostgreSQLRunRepository
 from scyg_agent.adapters.database.terminal_commit import PostgreSQLTerminalCommitter
 from scyg_agent.adapters.langgraph.checkpointer import CheckpointStore
 from scyg_agent.adapters.langgraph.values import CheckpointerConfig
+from scyg_agent.adapters.redis import RedisSettings, RedisStreamClient, RedisStreamStore
+from scyg_agent.composition_redis import RedisResource
 from scyg_agent.composition_resources import (
     CheckpointResource,
     DatabaseResource,
@@ -95,6 +97,17 @@ class ProductionApplicationFactory:
             )
         )
         checkpoint = CheckpointResource(CheckpointStore(CheckpointerConfig(checkpoint_dsn)))
+        redis = RedisResource(
+            RedisStreamClient.create(
+                RedisSettings(
+                    self.settings.redis_url,
+                    self.settings.redis_ttl_seconds,
+                    self.settings.redis_stream_maxlen,
+                    self.settings.redis_connect_timeout_seconds,
+                    self.settings.redis_read_timeout_seconds,
+                )
+            )
+        )
         runtime = RuntimeFacadeResource(self.settings, sessions, checkpoint.store)
         lifecycle_slot: list[AgentApplication] = []
         components: list[LifecycleComponent] = [
@@ -103,9 +116,10 @@ class ProductionApplicationFactory:
                 MigrationHeadResource(database.engine, Path(__file__).parents[2] / "alembic.ini")
             ),
             self.decorate(checkpoint),
+            self.decorate(redis),
             self.decorate(runtime),
         ]
-        self._append_surfaces(components, sessions, runtime, lifecycle_slot)
+        self._append_surfaces(components, sessions, runtime, redis, lifecycle_slot)
         lifecycle = AgentApplication(
             LifecycleComponents(tuple(components)), float(self.settings.shutdown_seconds)
         )
@@ -117,20 +131,25 @@ class ProductionApplicationFactory:
         components: list[LifecycleComponent],
         sessions: async_sessionmaker[AsyncSession],
         runtime: RuntimeFacadeResource,
+        redis: RedisResource,
         lifecycle_slot: list[AgentApplication],
     ) -> None:
         """按 gRPC、Worker、HTTP 顺序追加已启用表面."""
         if self.settings.feature_flags.grpc:
-            components.append(self.decorate(self._grpc(runtime)))
+            components.append(self.decorate(self._grpc(runtime, redis.client)))
         if self.settings.feature_flags.worker:
-            components.append(self.decorate(self._worker(sessions, runtime)))
+            components.append(self.decorate(self._worker(sessions, runtime, redis.client)))
         if self.settings.feature_flags.http:
-            components.append(self.decorate(self._http(runtime, lifecycle_slot)))
+            components.append(self.decorate(self._http(runtime, lifecycle_slot, redis.client)))
 
-    def _grpc(self, runtime: RuntimeFacadeResource) -> LifecycleComponent:
+    def _grpc(
+        self, runtime: RuntimeFacadeResource, stream_store: RedisStreamStore
+    ) -> LifecycleComponent:
         def build() -> LifecycleComponent:
             return GrpcServerComponent(
-                AgentControlServicer(runtime.require_facade(), runtime.require_verifier()),
+                AgentControlServicer(
+                    runtime.require_facade(), runtime.require_verifier(), stream_store=stream_store
+                ),
                 GrpcServerConfig(
                     self.settings.grpc_host,
                     self.settings.grpc_port,
@@ -145,6 +164,7 @@ class ProductionApplicationFactory:
         self,
         sessions: async_sessionmaker[AsyncSession],
         runtime: RuntimeFacadeResource,
+        stream_store: RedisStreamStore,
     ) -> LifecycleComponent:
         def build() -> Worker:
             return Worker(
@@ -154,6 +174,7 @@ class ProductionApplicationFactory:
                     PostgreSQLTerminalCommitter(sessions, NOTIFICATION_CHANNEL),
                     utc_now,
                     runtime.require_agent_runner(),
+                    stream_store,
                 ),
                 runtime.require_router(),
                 WorkerConfig(
@@ -163,6 +184,10 @@ class ProductionApplicationFactory:
                     poll_interval=timedelta(milliseconds=self.settings.worker_poll_milliseconds),
                     error_backoff=timedelta(seconds=self.settings.worker_error_backoff_seconds),
                     drain_timeout=timedelta(seconds=self.settings.worker_drain_seconds),
+                    stream_flush_chars=self.settings.stream_flush_chars,
+                    stream_flush_interval=timedelta(
+                        milliseconds=self.settings.stream_flush_interval_ms
+                    ),
                 ),
             )
 
@@ -172,10 +197,13 @@ class ProductionApplicationFactory:
         self,
         runtime: RuntimeFacadeResource,
         lifecycle_slot: list[AgentApplication],
+        stream_store: RedisStreamStore,
     ) -> LifecycleComponent:
         def build() -> LifecycleComponent:
             app = create_http_app(
-                HTTPDependencies(runtime.require_facade(), runtime.require_verifier())
+                HTTPDependencies(
+                    runtime.require_facade(), runtime.require_verifier(), stream_store=stream_store
+                )
             )
             self.mount_health(app, lifecycle_slot)
             return HttpServerComponent(

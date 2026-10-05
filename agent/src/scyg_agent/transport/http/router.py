@@ -8,6 +8,7 @@ from typing import Annotated, Final
 from fastapi import APIRouter, HTTPException, Query, Request, Response, status
 from fastapi.responses import StreamingResponse
 
+from scyg_agent.adapters.redis import RedisStreamId, RedisStreamStore
 from scyg_agent.application import (
     ApplicationFacade,
     CancelRequest,
@@ -30,7 +31,7 @@ from scyg_agent.domain.runs import CancelRun, CommandId, EventId, InteractionId,
 
 from .auth import PrincipalVerifier, authorize_run
 from .schemas import CommandRequest, InputRequest, MutationResponse, SnapshotResponse
-from .sse import StreamPolicy, buffered_sse
+from .sse import StreamPolicy, buffered_redis_sse, buffered_sse, encode_stream_expired
 
 REPLAY_HEADER: Final = "Idempotency-Replayed"
 SSE_HEADERS: Final = {
@@ -46,12 +47,13 @@ MutationOutcome = (
 
 @dataclass(frozen=True, slots=True)
 class HTTPDependencies:
-    """绑定 HTTP 路由所需的门面、验证器和时钟。."""
+    """绑定 HTTP 路由所需的门面、验证器、Redis 流和时钟。"""  # noqa: D415
 
     facade: ApplicationFacade
     verifier: PrincipalVerifier
     now: Callable[[], datetime] = field(default=lambda: datetime.now(tz=UTC))
     stream_policy: StreamPolicy = field(default_factory=StreamPolicy)
+    stream_store: RedisStreamStore | None = None
 
 
 def _error(code: int, detail: str) -> HTTPException:
@@ -87,6 +89,23 @@ def _cursor(request: Request, query: str | None) -> EventCursor:
     return parsed_header if header is not None else parsed_query
 
 
+def _redis_cursor(request: Request, query: str | None) -> RedisStreamId | None:
+    """Parse one optional Redis cursor and reject conflicting sources."""
+    values = request.headers.getlist("last-event-id")
+    if len(values) > 1:
+        raise _error(status.HTTP_400_BAD_REQUEST, "事件游标请求头重复")
+    header = values[0] if values else None
+    if query is not None and header is not None and query != header:
+        raise _error(status.HTTP_400_BAD_REQUEST, "事件游标相互冲突")
+    raw = header if header is not None else query
+    if raw is None or raw == "":
+        return None
+    try:
+        return RedisStreamId(raw)
+    except ValueError:
+        raise _error(status.HTTP_400_BAD_REQUEST, "Redis 流游标无效") from None
+
+
 @dataclass(frozen=True, slots=True)
 class HTTPHandlers:
     """实现固定路由并把业务处理委托给应用门面。."""
@@ -119,30 +138,58 @@ class HTTPHandlers:
             case FacadeInternal(message=message):
                 raise _error(status.HTTP_500_INTERNAL_SERVER_ERROR, message)
 
-    async def events(
+    async def events(  # noqa: C901
         self, request: Request, run_id: str, cursor: CursorQuery = None
     ) -> StreamingResponse:
-        """验证回放边界后跟随 T11 持久化事件。."""
+        """验证回放边界后跟随 Redis 临时流或持久化事件。"""  # noqa: D415
         bound = authorize_run(request, run_id, self.dependencies.verifier)
-        start = _cursor(request, cursor)
-        checked = await self.dependencies.facade.replay_events(bound.owner, bound.run_id, start, 1)
-        match checked:  # noqa: RUF100  # noqa: MATCH_OK - 闭合回放结果已穷尽。
-            case ReplaySuccess():
-                followed = await self.dependencies.facade.follow(bound.owner, bound.run_id, start)
+        if self.dependencies.stream_store is None:
+            start = _cursor(request, cursor)
+            checked = await self.dependencies.facade.replay_events(
+                bound.owner, bound.run_id, start, 1
+            )
+            match checked:
+                case ReplaySuccess():
+                    followed = await self.dependencies.facade.follow(
+                        bound.owner, bound.run_id, start
+                    )
+                case FacadeNotFound(message=message):
+                    raise _error(status.HTTP_404_NOT_FOUND, message)
+                case FacadeConflict(message=message):
+                    raise _error(status.HTTP_409_CONFLICT, message)
+                case FacadeInternal(message=message):
+                    raise _error(status.HTTP_500_INTERNAL_SERVER_ERROR, message)
+            match followed:
+                case FollowOpened(events=stream):
+                    body = buffered_sse(stream, self.dependencies.stream_policy)
+                    return StreamingResponse(
+                        body, media_type="text/event-stream", headers=SSE_HEADERS
+                    )
+                case FacadeNotFound(message=message):
+                    raise _error(status.HTTP_404_NOT_FOUND, message)
+                case FacadeInternal(message=message):
+                    raise _error(status.HTTP_500_INTERNAL_SERVER_ERROR, message)
+        checked_snapshot = await self.dependencies.facade.get_snapshot(bound.owner, bound.run_id)
+        match checked_snapshot:
+            case SnapshotSuccess():
+                pass
             case FacadeNotFound(message=message):
                 raise _error(status.HTTP_404_NOT_FOUND, message)
-            case FacadeConflict(message=message):
-                raise _error(status.HTTP_409_CONFLICT, message)
             case FacadeInternal(message=message):
                 raise _error(status.HTTP_500_INTERNAL_SERVER_ERROR, message)
-        match followed:  # noqa: RUF100  # noqa: MATCH_OK - 闭合跟随结果已穷尽。
-            case FollowOpened(events=stream):
-                body = buffered_sse(stream, self.dependencies.stream_policy)
-                return StreamingResponse(body, media_type="text/event-stream", headers=SSE_HEADERS)
-            case FacadeNotFound(message=message):
-                raise _error(status.HTTP_404_NOT_FOUND, message)
-            case FacadeInternal(message=message):
-                raise _error(status.HTTP_500_INTERNAL_SERVER_ERROR, message)
+        redis_cursor = _redis_cursor(request, cursor)
+        stream = self.dependencies.stream_store.read(bound.run_id, redis_cursor)
+
+        async def expired() -> str:
+            snapshot = await self.dependencies.facade.get_snapshot(bound.owner, bound.run_id)
+            if isinstance(snapshot, SnapshotSuccess):
+                return encode_stream_expired(
+                    str(snapshot.run.id), snapshot.run.status.value, snapshot.run.revision
+                )
+            return encode_stream_expired(str(bound.run_id), "unknown", 0)
+
+        body = buffered_redis_sse(stream, self.dependencies.stream_policy, expired)
+        return StreamingResponse(body, media_type="text/event-stream", headers=SSE_HEADERS)
 
     async def submit_input(
         self, request: Request, response: Response, run_id: str, body: InputRequest

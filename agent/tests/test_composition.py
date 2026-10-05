@@ -24,11 +24,11 @@ def test_factory_builds_authoritative_real_component_order(
     settings = load_settings()
 
     application = ProductionApplicationFactory(settings).build()
-
     assert application.lifecycle.component_names == (
         "database",
         "migration",
         "checkpoint",
+        "redis",
         "runtime",
         "grpc",
         "worker",
@@ -43,11 +43,11 @@ def test_factory_preserves_typed_optional_surfaces(configured_environment: None)
     )
 
     application = ProductionApplicationFactory(settings).build()
-
     assert application.lifecycle.component_names == (
         "database",
         "migration",
         "checkpoint",
+        "redis",
         "runtime",
     )
 
@@ -106,7 +106,7 @@ class FailpointComponent:
 
 @pytest.mark.parametrize(
     "failed_name",
-    ["database", "migration", "checkpoint", "runtime", "grpc", "worker", "http"],
+    ["database", "migration", "checkpoint", "redis", "runtime", "grpc", "worker", "http"],
 )
 def test_each_factory_failpoint_closes_prior_components_in_reverse(
     configured_environment: None, failed_name: str

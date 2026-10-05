@@ -1,9 +1,11 @@
 """Agent capability contracts and policy boundaries."""
 
+from .context import AgentRequestContext, Quality
 from .contracts import (
     INPUT_SCHEMA_VERSION,
     OUTPUT_SCHEMA_VERSION,
     AgentFailure,
+    AgentInterrupt,
     ApprovalDecision,
     ApprovalReply,
     ApprovalRequest,
@@ -53,7 +55,9 @@ __all__ = [
     "AgentFailed",
     "AgentFailure",
     "AgentInputSnapshot",
+    "AgentInterrupt",
     "AgentRecipe",
+    "AgentRequestContext",
     "AgentRunOutcome",
     "AgentRunner",
     "AgentSucceeded",
@@ -75,6 +79,7 @@ __all__ = [
     "InvalidRecipeRegistryError",
     "PolishInput",
     "PolishResponse",
+    "Quality",
     "RecipeId",
     "RecipeRegistry",
     "SearchInput",

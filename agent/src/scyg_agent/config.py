@@ -4,8 +4,9 @@ import os
 import tomllib
 from dataclasses import dataclass
 from enum import StrEnum
+from importlib.metadata import version
 from pathlib import Path
-from typing import Annotated, ClassVar, Self, override
+from typing import Annotated, ClassVar, Final, Self, override
 
 from pydantic import (
     AnyHttpUrl,
@@ -20,7 +21,12 @@ from pydantic_core import ErrorDetails
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PositiveSeconds = Annotated[int, Field(ge=1)]
+PositiveBoundedIterations = Annotated[int, Field(ge=1, le=128)]
+ContextTokens = Annotated[int, Field(ge=1_024, le=1_000_000)]
 type ErrorLocation = str | int
+
+AGENT_CONTRACT_VERSION: Final = "v1"
+AGENT_STATE_SCHEMA_VERSION: Final = "v1"
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,6 +102,10 @@ class ApplicationSettings(BaseSettings):
         extra="forbid",
     )
 
+    application_contract_version: str = AGENT_CONTRACT_VERSION
+    state_schema_version: str = AGENT_STATE_SCHEMA_VERSION
+    agent_max_iterations: PositiveBoundedIterations = 32
+    agent_max_context_tokens: ContextTokens = 128_000
     http_host: str = "127.0.0.1"
     http_port: Annotated[int, Field(ge=1, le=65535)] = 8080
     grpc_host: str = "127.0.0.1"
@@ -104,6 +114,10 @@ class ApplicationSettings(BaseSettings):
     redis_url: SecretStr = Field(default=SecretStr("redis://localhost:6379/0"), repr=False)
     redis_ttl_seconds: PositiveSeconds = 86_400
     redis_stream_maxlen: Annotated[int, Field(ge=100, le=1_000_000)] = 10_000
+    redis_connect_timeout_seconds: Annotated[float, Field(gt=0, le=300)] = 5.0
+    redis_read_timeout_seconds: Annotated[float, Field(gt=0, le=300)] = 30.0
+    stream_flush_chars: Annotated[int, Field(ge=1, le=32_000)] = 4_096
+    stream_flush_interval_ms: Annotated[int, Field(ge=1, le=60_000)] = 100
     jwt_public_key_path: Path = Field(repr=False)
     jwt_issuer: SecretStr = Field(default=SecretStr("scyg-blog"), repr=False)
     jwt_audience: SecretStr = Field(default=SecretStr("scyg-agent"), repr=False)
@@ -159,6 +173,12 @@ def load_settings(config_file: Path | None = None) -> ApplicationSettings:
     )
     file_values = _read_config_file(resolved_file)
     return ApplicationSettings.model_validate(file_values)
+
+
+def dependency_contract_fingerprint() -> str:
+    """Return the pinned framework versions used by checkpoint compatibility."""
+    packages = ("deepagents", "langchain", "langgraph", "langgraph-checkpoint-postgres")
+    return "|".join(f"{package}={version(package)}" for package in packages)
 
 
 def _read_config_file(config_file: Path) -> dict[str, object]:

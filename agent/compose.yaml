@@ -1,6 +1,21 @@
 name: ${SCYG_COMPOSE_PROJECT_NAME:-scyg-agent-local}
 
 services:
+  redis:
+    image: redis:7.4-alpine
+    command: ["redis-server", "--appendonly", "no", "--save", ""]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+    networks:
+      - scyg_agent_local
+    restart: unless-stopped
+    stop_grace_period: 10s
+    security_opt:
+      - no-new-privileges:true
   postgres:
     # PostgreSQL 17.5 Bookworm; digest is immutable.
     image: postgres:17.5-bookworm@sha256:aadf2c0696f5ef357aa7a68da995137f0cf17bad0bf6e1f17de06ae5c769b302
@@ -74,9 +89,17 @@ services:
       SCYG_AGENT_PROVIDER_API_KEY: ${SCYG_AGENT_PROVIDER_API_KEY:?请设置提供方 API 密钥}
       SCYG_AGENT_PROVIDER_MODEL: ${SCYG_AGENT_PROVIDER_MODEL:?请设置提供方模型}
       SCYG_AGENT_BLOG_GRPC_TARGET: ${SCYG_AGENT_BLOG_GRPC_TARGET:?请设置 Blog gRPC 地址}
+      SCYG_AGENT_REDIS_URL: redis://redis:6379/0
+      SCYG_AGENT_REDIS_TTL_SECONDS: "86400"
+      SCYG_AGENT_REDIS_STREAM_MAXLEN: "10000"
+      SCYG_AGENT_REDIS_CONNECT_TIMEOUT_SECONDS: "5"
+      SCYG_AGENT_REDIS_READ_TIMEOUT_SECONDS: "30"
       SCYG_AGENT_SHUTDOWN_SECONDS: "30"
     depends_on:
       postgres:
+        condition: service_healthy
+        restart: true
+      redis:
         condition: service_healthy
         restart: true
       agent-setup:
