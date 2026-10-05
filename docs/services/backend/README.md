@@ -53,4 +53,3 @@ Docker 开发路径为 `task compose:smoke`，结束后必须执行 `task compos
 - [当前架构](architecture/current-state-architecture.zh-CN.md)
 - [ADR-010：Scalar 自托管资产版本](architecture/adr-010-scalar-asset-pin.md)
 - [未来协议与外部集成](guides/protocol-integration-extension.md)
-- [项目交接](handover.md)
