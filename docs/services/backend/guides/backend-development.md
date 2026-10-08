@@ -214,6 +214,8 @@ E2E 管理请求必须携带真实签发的 Bearer JWT；注入 `AllowAll` 只�
 | bootstrap、readiness、运行生命周期或完整 HTTP 流程 | 受影响的 bootstrap、database 和 E2E |
 | 容器、部署或镜像交付 | `qa:container` |
 
+CI 镜像扫描以已有修复版本的 `HIGH`、`CRITICAL` 为失败门槛。SARIF 模式必须显式启用 `limit-severities-for-sarif`，否则固定 Trivy Action 会移除严重级别筛选；扫描通过不代表所有级别均无问题。实际配置以 [`backend-quality.yml`](../../../../.github/workflows/backend-quality.yml) 为准。
+
 常用局部命令：
 
 ```powershell

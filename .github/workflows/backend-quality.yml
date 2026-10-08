@@ -194,6 +194,7 @@ jobs:
           format: sarif
           output: backend/backend-trivy.sarif
           severity: HIGH,CRITICAL
+          limit-severities-for-sarif: true
           ignore-unfixed: true
           exit-code: "1"
       # actions/upload-artifact v7.0.1，扫描失败时仍上传审计结果。
