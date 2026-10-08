@@ -185,11 +185,11 @@ sequenceDiagram
 
 ## 容器、Compose 与质量门禁
 
-[`Dockerfile`](../../../../backend/Dockerfile) 使用仓库根构建上下文，复制根 `contracts/` 并生成内部 Go Proto bindings，再以固定摘要的 Go 构建阶段编译 `api` 和 `healthcheck`，复制到非 root 的 distroless 静态运行时。运行时镜像没有 shell、包管理器、Go 工具链或源码，并通过 `/healthcheck` 检查 `/live` 与 `/ready`。
+[`Dockerfile`](../../../../backend/Dockerfile) 使用仓库根构建上下文，复制根 `contracts/` 并生成内部 Go Proto bindings，再以固定摘要的 Go 构建阶段编译 `api`、`migrate` 和 `healthcheck`，复制到非 root 的 distroless 静态运行时。运行时镜像没有 shell、包管理器、Go 工具链或源码，并通过 `/healthcheck` 检查 `/live` 与 `/ready`。
 
-[`compose.yaml`](../../../../backend/compose.yaml) 当前只运行 PostgreSQL 和 API。PostgreSQL 有 `pg_isready` healthcheck，API 依赖 PostgreSQL healthy，API 使用只读根文件系统、有限的 `/tmp`、去除 capabilities 和非特权安全选项。Compose 路径使用 `SCYG_` 环境变量注入容器运行配置。
+[`compose.yaml`](../../../../backend/compose.yaml) 运行 PostgreSQL、一次性 migrate 和 API。API 等待 PostgreSQL 健康及迁移成功，使用只读根文件系统、有限的 `/tmp`、去除 capabilities 和非特权安全选项；初始化流程见[开发指南](../guides/backend-development.md#6-配置和-qa-数据库)。运行配置使用 `SCYG_` 环境变量注入。
 
-仓库根 [`compose.yaml`](../../../../compose.yaml) 是 Blog↔Agent 联合集成定义，使用根构建上下文；Blog 只依赖 Blog 数据库 healthy，不依赖 Agent 在线。AgentControl 与 BlogContent 使用 Compose 内部地址，gRPC 端口不发布到宿主机；该集成定义不同于后端自身容器门禁。
+仓库根 [`compose.yaml`](../../../../compose.yaml) 是 Blog↔Agent 联合集成定义，使用根构建上下文；Blog 等待自身数据库及初始化就绪，不依赖 Agent 在线。AgentControl 与 BlogContent 使用 Compose 内部地址，gRPC 端口不发布到宿主机；该集成定义不同于后端自身容器门禁。
 
 根工作流 [`backend-quality.yml`](../../../../.github/workflows/backend-quality.yml) 把质量门禁分成三组：静态与生成物门禁，数据库迁移 roundtrip、integration 和 E2E，容器 smoke、SBOM 与高危漏洞扫描。对应本地任务聚合在 [`Taskfile.yml`](../../../../backend/Taskfile.yml)。这些是当前仓库声明的质量检查入口，不表示本文执行过这些命令。
 
