@@ -11,6 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 SHA_LENGTH = 40
+BUF_ANNOTATION_EXIT_CODE = 100
 
 
 def commit_sha(value: str, label: str) -> str:
@@ -54,9 +55,14 @@ def main() -> int:
     if result.returncode == 0:
         return 0
     # A single explicitly approved SHA pair cannot exempt subsequent commits or baselines.
+    # Buf 1.47.2 reports breaking-change annotations with exit code 100, not 1.
     approval_base = os.environ.get("SCYG_CONTRACTS_CUTOVER_BASE", "")
     approval_head = os.environ.get("SCYG_CONTRACTS_CUTOVER_HEAD", "")
-    if approval_base != accepted or approval_head != current or result.returncode != 1:
+    if (
+        approval_base != accepted
+        or approval_head != current
+        or result.returncode != BUF_ANNOTATION_EXIT_CODE
+    ):
         return result.returncode
     contract_changes = subprocess.check_output(
         ("git", "status", "--porcelain=v1", "--untracked-files=all", "--", "contracts"),

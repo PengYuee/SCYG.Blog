@@ -8,6 +8,8 @@
 
 新增独立 RPC 仅在出现真实服务调用或强类型流式需求时实施，沿用共享 `contracts/` 与版本化 package；删除字段 reserve，不创建第二套 `api/proto`、生成器或兼容客户端。
 
+共享合同门禁从仓库根执行 `task contracts:check`，`SCYG_CONTRACTS_ACCEPTED_BASE` 必须是已接受、可达且不同于当前 HEAD 的完整提交 SHA。固定 Buf 1.47.2 的不兼容诊断退出码是 100，普通工具失败不属于获准切换。首次 clean cutover 仅在明确批准的 `SCYG_CONTRACTS_CUTOVER_BASE`/`SCYG_CONTRACTS_CUTOVER_HEAD` 精确匹配实际 base/HEAD、合同工作树与该 HEAD 一致且保留有效诊断时允许一次性通过；之后以新合同提交作为基线，不继续传切换豁免变量。CI 的手动输入与仓库变量只允许记录该已批准 SHA 对，不得设置长期跳过开关。
+
 ## Binary Protobuf WebSocket
 
 只有真实双向实时交互存在时才在现有 HTTP server 挂载 `wss://.../ws/v1`。subprotocol 固定为 `scyg.realtime.protobuf.v1`，只接受 binary frame；方向分离的 `ClientMessage`/`ServerMessage` 各自使用 `oneof`，携带 message/correlation/causation ID、UTC Timestamp，服务端消息携带 sequence 与 typed Error。必须限制 frame、建立 backpressure、deadline、Ping/Pong，并以 REST 获取重连后的权威最终状态。Go/TypeScript 消息统一由 Buf 生成。
