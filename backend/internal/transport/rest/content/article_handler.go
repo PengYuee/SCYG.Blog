@@ -25,13 +25,9 @@ func (handler *Handler) ListArticles(ctx context.Context, request generated.List
 	if err != nil {
 		return nil, err
 	}
-	items := make([]generated.Article, len(result.Items))
-	for index, item := range result.Items {
-		mapped, mapErr := articleDTO(item)
-		if mapErr != nil {
-			return nil, mapErr
-		}
-		items[index] = mapped
+	items, err := articleListDTO(result.Items)
+	if err != nil {
+		return nil, err
 	}
 	metadata, err := pageInfo(result.Number, result.Size, result.TotalItems, result.TotalPages, len(items))
 	if err != nil {
@@ -144,7 +140,7 @@ func (handler *Handler) ListManageArticles(ctx context.Context, request generate
 	if err != nil {
 		return nil, err
 	}
-	return manageArticleListResponse(result)
+	return handler.manageArticleListResponse(ctx, result)
 }
 
 // GetManageArticle implements the protected article management detail.
@@ -206,14 +202,10 @@ func (handler *Handler) ArchiveManageArticle(ctx context.Context, request genera
 	return generated.ArchiveManageArticle200JSONResponse{Body: dto, Headers: generated.ArchiveManageArticle200ResponseHeaders{ETag: etag}}, nil
 }
 
-func manageArticleListResponse(result article.Page) (generated.ListManageArticlesResponseObject, error) {
-	items := make([]generated.Article, len(result.Items))
-	for index, item := range result.Items {
-		mapped, err := articleDTO(item)
-		if err != nil {
-			return nil, err
-		}
-		items[index] = mapped
+func (handler *Handler) manageArticleListResponse(ctx context.Context, result article.Page) (generated.ListManageArticlesResponseObject, error) {
+	items, err := articleListDTO(result.Items)
+	if err != nil {
+		return nil, err
 	}
 	metadata, err := pageInfo(result.Number, result.Size, result.TotalItems, result.TotalPages, len(items))
 	if err != nil {

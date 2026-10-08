@@ -108,7 +108,14 @@ def upgrade() -> None:
     role = _role_sql()
     bind = op.get_bind()
     Base.metadata.create_all(bind=bind, checkfirst=True)
-    op.execute("CREATE SCHEMA IF NOT EXISTS langgraph")
+    # Deployment prepares this schema as admin; PostgreSQL checks database CREATE
+    # even for CREATE SCHEMA IF NOT EXISTS when the schema already exists.
+    op.execute(
+        "DO $$ BEGIN "
+        "IF NOT EXISTS (SELECT 1 FROM pg_namespace WHERE nspname = 'langgraph') THEN "
+        "CREATE SCHEMA langgraph; "
+        "END IF; END $$"
+    )
     op.execute(f"GRANT USAGE, CREATE ON SCHEMA langgraph TO {role}")
     op.execute(f"GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA langgraph TO {role}")
     op.execute(f"GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA langgraph TO {role}")

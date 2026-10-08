@@ -2,9 +2,9 @@
 
 ## 范围与运行现状
 
-后端是独立部署的 modular monolith，提供 REST over HTTP，包含 content 与 identity 模块，数据归后端拥有并存放 PostgreSQL，文章图片使用本地文件系统。
+后端是独立部署的 modular monolith，提供 REST over HTTP，包含 content 与 identity 模块，数据归后端拥有并存放 PostgreSQL，文章图片使用本地文件系统。启用 Agent 集成时，Blog 通过 AgentControl gRPC 调用 Agent，并在同一进程提供内部 BlogContent gRPC。
 
-当前已提供用户登录、短期 Bearer JWT 与请求上下文授权，不包含 gRPC、WebSocket、消息 broker、Outbox、对象存储、Kubernetes 或 OTLP exporter。旧绑定决策见历史文档 [go-backend-architecture.md](go-backend-architecture.md)，现行扩展规则见 [module-extension.md](../guides/module-extension.md)。
+当前已提供用户登录、短期 Bearer JWT、请求上下文授权与 Blog↔Agent 双向接入；不包含 WebSocket、消息 broker、Outbox、对象存储、Kubernetes 或 OTLP exporter。本轮跨服务真实验收进行中，具体 QA 证据由主验收统一补充。旧绑定决策见历史文档 [go-backend-architecture.md](go-backend-architecture.md)，现行扩展规则见 [module-extension.md](../guides/module-extension.md)。
 
 ## 目录边界与新增功能落点
 
@@ -22,9 +22,14 @@ backend/
 │   ├── article/                      # 文章 feature：规则、查询、Persistence Record 与仓储
 │   ├── taxonomy/                     # ArticleType、Tag feature
 │   ├── image/                        # 图片、Blob、引用与清理 feature
+│   ├── operation/                    # 全局文章操作成功幂等账本
 │   └── application/                  # 跨 feature 事务动作
 ├── internal/modules/identity/        # 用户、登录与JWT签发验证
 ├── internal/transport/rest/content/  # REST 窄接口、DTO、HTTP 映射
+├── internal/transport/rest/agent_*.go # Agent HTTP/SSE 薄代理
+├── internal/transport/grpc/blogcontent/ # 八个 Blog 管理 RPC 与标准 health
+├── internal/adapters/agent/           # AgentControl 出站连接与调用预算
+├── internal/generated/proto/         # 根 contracts/ 的生成物
 ├── migrations/                       # 嵌入式 SQL schema migrations
 ├── README.md                         # 指向根 docs/services/backend/ 的文档入口
 └── Dockerfile / compose.yaml         # 交付定义
@@ -37,11 +42,14 @@ backend/
 | 文章规则、查询、持久化 | `internal/modules/content/article/` | Article feature 的 Service、Query Service、Repository、Persistence Record、校验与错误 |
 | 分类与标签 | `internal/modules/content/taxonomy/` | taxonomy feature 的按业务主体拆分的 Service、Query Service、Repository、Persistence Record、校验与错误 |
 | 图片与 Blob 生命周期 | `internal/modules/content/image/` | 图片 Service、引用替换、Repository、Persistence Record、Blob、Policy 与清理 |
-| 跨 feature 文章图片协作 | `internal/modules/content/application/` | Create/Patch 的事务边界与 article/image 协作 |
+| 跨 feature 文章协作 | `internal/modules/content/application/` | `ArticleImages` 协调文章/图片；`ArticleResponses` 维护文章/分类的读取快照及写响应事务 |
 | content 共享协作者 | `internal/modules/content/security.go`、`clock.go` | 授权、作者身份和 Clock；不承载业务方法 |
 | REST handler | `internal/transport/rest/content/` | 窄接口、DTO、headers、HTTP 状态、multipart 和错误映射 |
 | OpenAPI 契约 | `api/openapi.yaml` | REST 对外 API 的源契约 |
 | 生成的 OpenAPI bindings | `internal/generated/openapi/` | 仅由生成流程产出，不手工编辑 |
+| 共享 Proto / Go 生成物 | 根 `contracts/proto/scyg/` / `internal/generated/proto/` | Blog↔Agent 源合同 / 仅由 `task proto:generate` 产出 |
+| Agent HTTP/SSE 与 gRPC | `internal/transport/rest/agent_*.go`、`internal/transport/grpc/blogcontent/`、`internal/adapters/agent/` | JWT 薄代理、管理业务适配、出站连接 |
+| 全局文章写入幂等 | `internal/modules/content/operation/`、`internal/modules/content/application/article_operations.go` | 成功账本 / 同事务业务写入与仲裁 |
 | bootstrap 依赖接线 | `internal/bootstrap/` | feature/application、路由、worker 与生命周期资源的构造和清理 |
 | 测试 | 相邻受测包或既有后端测试包 | 领域、持久化、transport、架构和用户可观察行为验证 |
 
@@ -60,9 +68,9 @@ backend/
 
 ## 组合、启动与关闭
 
-[组合根](../../../../backend/internal/bootstrap/construct.go)装配配置、日志、数据库、迁移检查、用户仓储、LoginService、TokenService、上下文作者与授权，以及内容 features、图片事务、清理 worker、REST 和 HTTP server。开发环境显式设置开发作者 ID 时使用开发身份，默认使用认证上下文。没有动态依赖注入容器。
+[组合根](../../../../backend/internal/bootstrap/construct.go)装配配置、日志、数据库、迁移检查、用户仓储、LoginService、TokenService、上下文作者与授权，以及内容 features、图片事务、清理 worker、REST 和 HTTP server。启用 Agent 时还装配 AgentControl 客户端、BlogContent gRPC、operation 账本及 ArticleOperations。开发环境显式设置开发作者 ID 时使用开发身份，默认使用认证上下文。没有动态依赖注入容器。
 
-构造阶段要求迁移版本匹配 [CurrentVersion](../../../../backend/migrations/runner.go) 且非 dirty；当前包含第 4 版 users 迁移。失败时不进入运行态，运行时不自动迁移或 AutoMigrate。数据库构造时 ping，图片存储根解析为绝对路径并创建。
+构造阶段要求迁移版本匹配 [CurrentVersion](../../../../backend/migrations/runner.go) 且非 dirty；当前包含第 5 版 article_operations 迁移。失败时不进入运行态，运行时不自动迁移或 AutoMigrate。数据库构造时 ping，图片存储根解析为绝对路径并创建；AgentControl 连接非阻塞，不要求 Agent 在线。
 
 ```mermaid
 flowchart TB
@@ -78,6 +86,14 @@ flowchart TB
     Bootstrap --> Workflow[content/application/ArticleImages]
     Bootstrap --> Identity[identity 用户与JWT]
     Bootstrap --> REST[REST 路由]
+    Bootstrap --> AgentControl[可选 AgentControl client]
+    Bootstrap --> BlogContent[可选 BlogContent gRPC]
+    Bootstrap --> Operations[content/application/ArticleOperations]
+    Operations --> Ledger[content/operation]
+    Operations --> Workflow
+    Ledger --> Database
+    BlogContent --> Operations
+    REST --> AgentControl
     REST --> HTTP[net/http + Gin]
     Article --> Database
     Taxonomy --> Database
@@ -87,7 +103,7 @@ flowchart TB
     Workflow --> Image
 ```
 
-`App.Start` 先启动图片清理 worker，再绑定 HTTP listener，最后开放 readiness。`App.Run` 等待信号上下文取消或 HTTP 服务错误。`App.Shutdown` 按以下顺序执行，并共享并发关闭结果：撤回 readiness，排空 HTTP，停止 worker，关闭数据库，再关闭遥测。关闭过程使用配置中的有界超时；worker 未确认退出时，数据库和遥测会保持存活，允许后续关闭继续等待。见 [`internal/bootstrap/app.go`](../../../../backend/internal/bootstrap/app.go)。
+`App.Start` 先启动清理 worker，启用 Agent 时绑定 BlogContent listener，再绑定 HTTP listener，最后开放 readiness 与标准 `grpc.health.v1.Health` 的 SERVING 状态。任一 listener 绑定失败均使启动失败并回收资源；Agent 离线不影响 Blog `/ready`。`App.Run` 等待信号取消、HTTP 或 gRPC 服务错误。`App.Shutdown` 共享并发关闭结果：撤回 HTTP readiness 和 gRPC health，排空 HTTP/SSE，再用独立 `agent.grpc_shutdown_timeout` 预算排空 gRPC，停止 worker，关闭 Agent client、数据库和遥测。worker 未确认退出时，数据库和遥测保持存活，允许后续关闭继续等待。见 [`internal/bootstrap/app.go`](../../../../backend/internal/bootstrap/app.go) 与 [`agent_integration.go`](../../../../backend/internal/bootstrap/agent_integration.go)。
 
 ## 配置责任与边界
 
@@ -95,19 +111,28 @@ flowchart TB
 
 API 入口负责选择配置文件路径，bootstrap 负责把已验证配置传给数据库、HTTP 和图片存储构造器。`cmd/migrate` 是有意分离的纯 YAML 入口，支持数据库初始化所需的迁移命令，但它不改变 API 运行时配置责任。
 
+`agent.enabled` 默认 `false`，此时 Agent HTTP/SSE 整组不注册并返回 404，不构造 Agent client 或 BlogContent listener。默认 `agent.target=127.0.0.1:9090`、`agent.blog_content_listen=127.0.0.1:50051`；`unary_timeout`、`sse_idle_timeout` 与 `grpc_shutdown_timeout` 分别限制一元调用/订阅建立、SSE 空闲和帧写入、gRPC 排空。字段以 [`config.example.yaml`](../../../../backend/config.example.yaml) 和 [`config/agent.go`](../../../../backend/internal/platform/config/agent.go) 为准。
+
 ## HTTP 与 OpenAPI
 [`api/openapi.yaml`](../../../../backend/api/openapi.yaml) 是 REST API 契约的唯一所有者。生成的绑定和传输模型位于 [`internal/generated/openapi`](../../../../backend/internal/generated/openapi)，REST 内容 handler 在边界处把生成 DTO、multipart、`ETag`/`If-Match` 和 RFC 9457 错误映射为 article、taxonomy、image 与 application 的协议无关命令、查询和结果类型。运行时文档由 [`internal/transport/rest/apidocs`](../../../../backend/internal/transport/rest/apidocs) 提供 `/docs`、`/openapi.yaml` 和 `/docs/assets/scalar.js`；Scalar 资产自托管，不依赖运行时 CDN。
 
+文章正文原样保存非空 UTF-8 Markdown，包括首行 TAB/空格缩进与尾部空格、换行；仅用去空白检查拒绝全空白输入。正文允许换行、回车和制表符，拒绝其他控制字符；标题与摘要继续使用严格文本校验。受管图片仅从 Markdown 图片节点识别，相对媒体路径与 HTTP(S) 绝对 URL 均按 `/media/article-images/` 路径提取存储键，继续由图片工作流校验存储键和归属并提交引用。文章响应必需的分类摘要 `articleType` 只包含 `id`、`name`、`image`；`application.ArticleResponses` 在只读 RepeatableRead 事务内通过 article/taxonomy 的 InTx 查询装配读取结果，写响应则在原写事务内补齐摘要，保留本次写入版本。分类读取使用活跃分类字典，不依赖只含已发布文章的公共 taxonomy 投影；REST mapper 只做 DTO 校验和转换。已有文章的分类装配失败返回安全的 HTTP 500，不误报文章不存在，写入装配失败则整体回滚；原始原因只保留在内部错误链。
+
+八个 Blog JWT Agent 入口为 `POST /api/v1/ai/search`、`POST /api/v1/ai/write`、`POST /api/v1/ai/polish`、`POST /api/v1/ai/chat`、`GET /api/v1/runs/{runId}`、`GET /api/v1/runs/{runId}/events`、`POST /api/v1/runs/{runId}/resume`、`POST /api/v1/runs/{runId}/cancel`。Blog 将认证 `user_id` 传给 Agent，由 Agent 校验 owner；创建与恢复要求 UUIDv4 `Idempotency-Key`。SSE 转发不透明 `Last-Event-ID` 和 Agent 编码 frame，不由 Blog 保存 Run 状态、事件或结果。源合同仍为 OpenAPI，适配在 [`agent_handler.go`](../../../../backend/internal/transport/rest/agent_handler.go) 与 [`agent_events.go`](../../../../backend/internal/transport/rest/agent_events.go)。
+
+内部 BlogContentService 提供 SearchArticles、GetArticle、ListTags、ListArticleTypes、CreateArticle、UpdateArticle、PublishArticle、ArchiveArticle 八 RPC，使用现有管理投影、分页、排序白名单、状态机、版本与图片引用规则；`user_id` 必须对应活动账号并经过现有业务授权。双向 gRPC 依赖可信内部网络，不使用 service JWT，不应公开端口，也不改变 Agent 生产 Tool 写权限。共享 Proto 位于根 [`contracts/proto/scyg/`](../../../../contracts/proto/scyg/)，由 `task proto:generate` 生成至 `internal/generated/proto/`，不是未来 `api/proto/` 空壳。
+
 ## `content` 模块边界
 
-content 与 identity 是并列模块。content 根只保留共享 security.go 与 clock.go；article、taxonomy、image 分别承载内容能力，跨 feature 图片写入由 application.ArticleImages 拥有事务边界。REST 只持有操作所需的窄接口，不接收数据库、Repository 或 Blob filesystem。
+content 与 identity 是并列模块。content 根只保留共享 security.go 与 clock.go；article、taxonomy、image、operation 分别承载内容能力和成功账本，跨 feature 读写由 application.ArticleImages、ArticleResponses 与 ArticleOperations 拥有事务边界。REST 与 gRPC 只持有操作所需的窄接口，不接收数据库、Repository 或 Blob filesystem。
 
 依赖方向如下：
 
 - `content/article` 负责文章规则、查询、Persistence Record、Repository、校验与错误，不导入 taxonomy、image 或 `content/application`。
 - `content/taxonomy` 负责 ArticleType、Tag 的规则、查询和 Persistence Record；为删除判定执行局部只读查询，但不导入 article Record 或 package。
 - `content/image` 负责图片元数据、引用关系、Persistence Record、Blob、Policy、上传/读取/取消和清理，不导入 article 或 `content/application`。
-- `content/application` 只负责具名跨 feature 动作；`ArticleImages` 使用同一个 GORM transaction handle 协调 article 与 image，不写 SQL、不访问 Persistence Record 或 Repository。
+- `content/application` 只负责具名跨 feature 协作与事务；`ArticleImages` 协调 article/image，`ArticleResponses` 调用各 feature 的 InTx 查询装配分类摘要，不写 SQL、不访问 Persistence Record 或 Repository。
+- `content/operation` 拥有全局 UUIDv4 `operation_id` 成功账本；`ArticleOperations` 在同一 PostgreSQL 事务中仲裁键、写文章与图片引用、记录成功。成功时起算 24 小时，失败回滚不占键；有效成功键重放返回绑定文章的当前管理投影，仍经过当前用户授权。Create/Update 的 Blob 预备读取在事务外完成，预备错误只在排除成功重放后影响新写入；过期成功记录由现有 worker 有界清理。
 - `internal/transport/rest/content` 负责 OpenAPI DTO、HTTP 状态、headers、multipart 和错误响应，依赖消费方窄接口，不把传输类型带入 feature/application。
 
 跨顶层业务模块协作时，只能调用对方公共 API 或消费方定义的窄接口；模块目录和扩展规则见 [`../guides/module-extension.md`](../guides/module-extension.md)。
@@ -124,6 +149,7 @@ PostgreSQL 连接由 [database.go](../../../../backend/internal/platform/databas
 2. [`000002_article_images.up.sql`](../../../../backend/migrations/000002_article_images.up.sql) 增加 `article_images` 元数据表和 `article_image_references` 引用表，并约束 `pending`、`committed`、`orphaned` 状态及图片元数据。
 3. [`000003_article_image_cleanup_claims.up.sql`](../../../../backend/migrations/000003_article_image_cleanup_claims.up.sql) 为清理 worker 增加短期 claim token 和过期时间，使多实例清理可安全分工并在失败后重试。
 4. [000004_users.up.sql](../../../../backend/migrations/000004_users.up.sql) 建立 users 与默认活动用户 admin，只保存 bcrypt 密码哈希。
+5. [`000005_article_operations.up.sql`](../../../../backend/migrations/000005_article_operations.up.sql) 建立全局 UUID operation_id 成功账本及成功/过期时间约束。
 
 文章图片使用配置的存储目录，运行时会转换为绝对路径，并由 `blobstorage.Filesystem` 在固定根目录内管理文件。当前生命周期是：
 
@@ -159,15 +185,17 @@ sequenceDiagram
 
 ## 容器、Compose 与质量门禁
 
-[`Dockerfile`](../../../../backend/Dockerfile) 使用固定摘要的 Go 构建阶段编译 `api` 和 `healthcheck`，再复制到非 root 的 distroless 静态运行时。运行时镜像没有 shell、包管理器、Go 工具链或源码，并通过 `/healthcheck` 检查 `/live` 与 `/ready`。
+[`Dockerfile`](../../../../backend/Dockerfile) 使用仓库根构建上下文，复制根 `contracts/` 并生成内部 Go Proto bindings，再以固定摘要的 Go 构建阶段编译 `api` 和 `healthcheck`，复制到非 root 的 distroless 静态运行时。运行时镜像没有 shell、包管理器、Go 工具链或源码，并通过 `/healthcheck` 检查 `/live` 与 `/ready`。
 
 [`compose.yaml`](../../../../backend/compose.yaml) 当前只运行 PostgreSQL 和 API。PostgreSQL 有 `pg_isready` healthcheck，API 依赖 PostgreSQL healthy，API 使用只读根文件系统、有限的 `/tmp`、去除 capabilities 和非特权安全选项。Compose 路径使用 `SCYG_` 环境变量注入容器运行配置。
+
+仓库根 [`compose.yaml`](../../../../compose.yaml) 是 Blog↔Agent 联合集成定义，使用根构建上下文；Blog 只依赖 Blog 数据库 healthy，不依赖 Agent 在线。AgentControl 与 BlogContent 使用 Compose 内部地址，gRPC 端口不发布到宿主机；该集成定义不同于后端自身容器门禁。
 
 根工作流 [`backend-quality.yml`](../../../../.github/workflows/backend-quality.yml) 把质量门禁分成三组：静态与生成物门禁，数据库迁移 roundtrip、integration 和 E2E，容器 smoke、SBOM 与高危漏洞扫描。对应本地任务聚合在 [`Taskfile.yml`](../../../../backend/Taskfile.yml)。这些是当前仓库声明的质量检查入口，不表示本文执行过这些命令。
 
 ## 明确排除的未来能力
 
-尚未实现 gRPC、WebSocket、broker、CloudEvents、Outbox、外部服务 ACL、对象存储、搜索、AI 或 Kubernetes；身份登录和用户 token 已实现，不属于未来能力。协议扩展见 [protocol-integration-extension.md](../guides/protocol-integration-extension.md)，模块约束见 [module-extension.md](../guides/module-extension.md)。设计文档不证明运行能力已交付。
+尚未实现 WebSocket、broker、CloudEvents、Outbox、对象存储或 Kubernetes；身份登录、用户 token 与 Blog↔Agent gRPC/HTTP/SSE 接入已存在，不属于未来能力。协议与集成见 [protocol-integration-extension.md](../guides/protocol-integration-extension.md)，模块约束见 [module-extension.md](../guides/module-extension.md)。源码接入不等同于本轮验收已通过。
 
 ## Source of truth
 

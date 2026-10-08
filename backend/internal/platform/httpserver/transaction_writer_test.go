@@ -2,12 +2,15 @@ package httpserver
 
 import (
 	"bufio"
+	"errors"
 	"io"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -126,5 +129,37 @@ func Test_TransactionWriter_Hijack_and_CloseNotify_delegate(t *testing.T) {
 	}
 	if !recorder.hijacked || connection != expectedConnection || buffer != expectedBuffer || writer.CloseNotify() != recorder.disconnected {
 		t.Fatal("optional writer interfaces were not delegated")
+	}
+}
+
+func Test_TransactionWriter_Flush_reports_real_socket_deadline_failure(t *testing.T) {
+	flushed := make(chan error, 1)
+	router := gin.New()
+	router.GET("/stream", func(ctx *gin.Context) {
+		writer := newTransactionWriter(ctx.Writer)
+		controller := http.NewResponseController(writer)
+		if err := controller.SetWriteDeadline(time.Now().Add(-time.Second)); err != nil {
+			flushed <- err
+			return
+		}
+		if _, err := writer.WriteString("stream-prefix"); err != nil {
+			flushed <- err
+			return
+		}
+		flushed <- controller.Flush()
+	})
+	host := httptest.NewServer(router)
+	defer host.Close()
+	response, _ := http.Get(host.URL + "/stream")
+	if response != nil {
+		_ = response.Body.Close()
+	}
+	select {
+	case err := <-flushed:
+		if !errors.Is(err, os.ErrDeadlineExceeded) {
+			t.Fatalf("flush masked socket deadline failure: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("flush did not finish after the socket deadline")
 	}
 }

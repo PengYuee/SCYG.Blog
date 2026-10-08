@@ -29,7 +29,7 @@ def test_factory_builds_authoritative_real_component_order(
         "migration",
         "checkpoint",
         "redis",
-        "runtime",
+        "agent_runner",
         "grpc",
         "worker",
         "http",
@@ -48,7 +48,7 @@ def test_factory_preserves_typed_optional_surfaces(configured_environment: None)
         "migration",
         "checkpoint",
         "redis",
-        "runtime",
+        "agent_runner",
     )
 
 
@@ -106,7 +106,7 @@ class FailpointComponent:
 
 @pytest.mark.parametrize(
     "failed_name",
-    ["database", "migration", "checkpoint", "redis", "runtime", "grpc", "worker", "http"],
+    ["database", "migration", "checkpoint", "redis", "agent_runner", "grpc", "worker", "http"],
 )
 def test_each_factory_failpoint_closes_prior_components_in_reverse(
     configured_environment: None, failed_name: str

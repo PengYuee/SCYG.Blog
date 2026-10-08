@@ -1,10 +1,12 @@
 # 未来协议与外部集成扩展指南
 
-本文只规定触发条件和落地步骤。当前不得创建 gRPC、WebSocket、Buf、Kafka、Outbox 依赖、代码、监听器、表或空目录。
+本文规定现有 Agent 集成与未来协议扩展的边界。当前已启用共享 Proto、AgentControlService client 与独立 BlogContentService listener；尚未启用 WebSocket、Kafka 或 Outbox，不能为未来需求预建空壳。
 
 ## 独立 gRPC Proto
 
-只有出现真实服务调用、强类型 RPC 或 REST 无法满足的流式需求时才添加。届时在 `api/proto/<domain>/v1` 建立独立版本化 RPC contract，固定 Buf lint/breaking/generate，以及 `protoc-gen-go`、`protoc-gen-go-grpc`；删除字段必须 reserve。adapter 自己拥有窄消费接口，将 Proto DTO 与 canonical status/details 映射到协议中立用例。独立 listener 纳入共同取消、readiness 和有界 graceful-stop，超时后强制停止。
+当前 Blog↔Agent 合同位于根 `contracts/proto/scyg/{agent,blog}/v1/`，由固定 Buf 插件生成至 `backend/internal/generated/proto/`，执行 `task proto:generate` 重建。Blog 对外 HTTP/SSE 仍以 OpenAPI 为源契约；gRPC DTO 与 canonical status/details 由各自 adapter 映射，不共用传输 envelope。BlogContent listener 纳入 readiness、标准 Health 和独立有界 graceful-stop；Agent 下线不影响 Blog 启动。现行接入入口与网络边界见[架构](../architecture/current-state-architecture.zh-CN.md)。
+
+新增独立 RPC 仅在出现真实服务调用或强类型流式需求时实施，沿用共享 `contracts/` 与版本化 package；删除字段 reserve，不创建第二套 `api/proto`、生成器或兼容客户端。
 
 ## Binary Protobuf WebSocket
 
@@ -12,7 +14,9 @@
 
 ## External ACL
 
-仅在接入确定的外部服务时创建 `internal/integration/<service>`。ACL 翻译外部术语、标识、DTO、错误、timeout 与 retry policy 到 application 消费端口；领域/application 不导入外部 SDK。即时调用必须 deadline-bound，严禁在本地数据库事务内发起网络请求，双方也不得访问对方数据库。
+当前 Agent ACL 位于 `internal/adapters/agent/`，翻译五 RPC 的 Run、事件和公开错误；领域/application 不导入 gRPC 生成 DTO。新增确定的外部集成才创建相应窄适配器；即时调用必须 deadline-bound，双方不得读取对方数据库。BlogContent 写入先在事务外预备 Blob 与图片校验，再通过 `operation_id` 仲裁业务事务，不在持锁事务中执行 Blob 或网络 I/O。
+
+成功重放读取文章和标签时使用同一条 SQL 的快照，不能拼接不同提交版本。REST 文章与分类摘要的跨 feature 快照规则统一由[当前架构](../architecture/current-state-architecture.zh-CN.md#http-与-openapi)维护，mapper 不再二次查询分类。
 
 ## Outbox
 

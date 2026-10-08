@@ -6,7 +6,7 @@ import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import ClassVar, Self, override
+from typing import ClassVar, Final, Self, override
 
 from .errors import (
     InvalidEnumValueError,
@@ -15,6 +15,8 @@ from .errors import (
     InvalidRuntimeVersionError,
     InvalidTimestampError,
 )
+
+_OPAQUE_ID_MAX_BYTES: Final = 128
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,14 +41,19 @@ class _Identifier:
 class RunId(_Identifier):
     """Identify one durable Agent run."""
 
-    pattern: ClassVar[re.Pattern[str]] = re.compile(r"run_[A-Za-z0-9][A-Za-z0-9_-]{7,63}")
+    pattern: ClassVar[re.Pattern[str]] = re.compile(r"(?!(?:\.|\.\.)$)[A-Za-z0-9._~-]{1,128}")
 
 
 @dataclass(frozen=True, slots=True)
 class UserId(_Identifier):
     """Identify the Blog user who owns a run."""
 
-    pattern: ClassVar[re.Pattern[str]] = re.compile(r"(?=\S)(?!.*\s$).{1,128}")
+    pattern: ClassVar[re.Pattern[str]] = re.compile(r"[\s\S]+")
+
+    def __post_init__(self) -> None:
+        """按 UTF-8 字节长度验证不透明用户标识符."""
+        if not 1 <= len(self.value.encode("utf-8")) <= _OPAQUE_ID_MAX_BYTES:
+            raise InvalidIdentifierError(type(self).__name__, self.value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,7 +81,12 @@ class EventId(_Identifier):
 class InteractionId(_Identifier):
     """Identify one durable user interaction."""
 
-    pattern: ClassVar[re.Pattern[str]] = re.compile(r"int_[A-Za-z0-9][A-Za-z0-9_-]{7,63}")
+    pattern: ClassVar[re.Pattern[str]] = re.compile(r"[\s\S]+")
+
+    def __post_init__(self) -> None:
+        """按 UTF-8 字节长度验证不透明交互标识符."""
+        if not 1 <= len(self.value.encode("utf-8")) <= _OPAQUE_ID_MAX_BYTES:
+            raise InvalidIdentifierError(type(self).__name__, self.value)
 
 
 @dataclass(frozen=True, slots=True)

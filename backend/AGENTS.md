@@ -1,6 +1,6 @@
 # Backend Agent 规则
 
-Go 1.26.0 模块化单体基础工程。本目录是仓库中唯一的 Go module。
+Go 1.26.8 模块化单体基础工程。本目录是仓库中唯一的 Go module。
 
 ## 文档
 
@@ -20,8 +20,8 @@ Go 1.26.0 模块化单体基础工程。本目录是仓库中唯一的 Go module
 
 ## 固定环境
 
-- Go：`1.26.0`；
-- Go 构建镜像：`golang:1.26.0-bookworm@sha256:2a0ba12e116687098780d3ce700f9ce3cb340783779646aafbabed748fa6677c`；
+- Go：`1.26.8`；
+- Go 构建镜像的固定版本与摘要以 `Taskfile.yml` 的 `GO_IMAGE` 为准；
 - PostgreSQL：`postgres:17.5@sha256:aadf2c0696f5ef357aa7a68da995137f0cf17bad0bf6e1f17de06ae5c769b302`；
 - Task：`v3.49.1`；可以使用 `go run github.com/go-task/task/v3/cmd/task@v3.49.1 <task>`，或安装该精确版本。
 

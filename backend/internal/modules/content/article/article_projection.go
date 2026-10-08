@@ -17,4 +17,5 @@ type projectionRow struct {
 	Version       int64      `gorm:"column:version"`
 	CreatedAt     time.Time  `gorm:"column:created_at"`
 	UpdatedAt     *time.Time `gorm:"column:updated_at"`
+	TagIDsJSON    string     `gorm:"column:tag_ids_json"`
 }

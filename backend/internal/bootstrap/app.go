@@ -19,6 +19,7 @@ type App struct {
 	logger *slog.Logger
 	health *observability.Health
 	server HTTPServer
+	agent  *agentIntegration
 	// worker 在 HTTP ready 前启动，并在数据库关闭前停止。
 	worker       CleanupWorker
 	telemetry    Telemetry
@@ -61,6 +62,11 @@ func (app *App) Start(ctx context.Context) error {
 		return app.cleanupStartFailure(ctx, fmt.Errorf("启动图片清理 worker: %w", err), false)
 	}
 	app.httpCleanup = true
+	if app.agent != nil {
+		if err := app.agent.start(); err != nil {
+			return app.cleanupStartFailure(ctx, fmt.Errorf("绑定 BlogContent: %w", err), false)
+		}
+	}
 	listener, serveErrors, err := app.server.Start()
 	if err == nil && nilLike(listener) {
 		err = errors.New("HTTP 启动返回空监听器")
@@ -77,6 +83,9 @@ func (app *App) Start(ctx context.Context) error {
 	}
 	app.listener, app.serveErrors = listener, serveErrors
 	app.health.Activate()
+	if app.agent != nil {
+		app.agent.activate()
+	}
 	app.logger.InfoContext(ctx, "API 服务已就绪", attributes...)
 	return nil
 }
@@ -90,15 +99,28 @@ func (app *App) cleanupStartFailure(ctx context.Context, root error, cleanupHTTP
 	if cleanupHTTP {
 		httpErr = app.server.Shutdown(shutdownCtx)
 	}
-	workerErr := app.worker.Stop(shutdownCtx)
+	if httpErr != nil {
+		httpErr = errors.Join(httpErr, app.server.Close())
+	}
+	if app.agent != nil {
+		app.agent.stop(app.config.Agent().GRPCShutdownTimeout())
+	}
+	workerContext, cancelWorker := context.WithTimeout(context.WithoutCancel(ctx), app.config.HTTP().ShutdownTimeout())
+	workerErr := app.worker.Stop(workerContext)
+	cancelWorker()
 	app.shutdownErr = errors.Join(root, httpErr, workerErr)
 	if workerErr != nil {
 		app.startFailed = true
 		app.httpCleanup = cleanupHTTP
 		return app.shutdownErr
 	}
+	if app.agent != nil {
+		app.shutdownErr = errors.Join(app.shutdownErr, app.agent.client.Close())
+	}
 	databaseErr := app.database.Close()
-	telemetryErr := app.telemetry.Shutdown(shutdownCtx)
+	telemetryContext, cancelTelemetry := context.WithTimeout(context.WithoutCancel(ctx), app.config.HTTP().ShutdownTimeout())
+	telemetryErr := app.telemetry.Shutdown(telemetryContext)
+	cancelTelemetry()
 	app.shutdownErr = errors.Join(app.shutdownErr, databaseErr, telemetryErr)
 	app.stopped = true
 	return app.shutdownErr
@@ -123,6 +145,10 @@ func (app *App) Run(ctx context.Context) error {
 	app.mutex.Lock()
 	serveErrors := app.serveErrors
 	app.mutex.Unlock()
+	var grpcErrors <-chan error
+	if app.agent != nil {
+		grpcErrors = app.agent.errors
+	}
 	var root error
 	select {
 	case <-ctx.Done():
@@ -130,10 +156,12 @@ func (app *App) Run(ctx context.Context) error {
 		if root != nil {
 			root = fmt.Errorf("HTTP 服务失败: %w", root)
 		}
+	case root = <-grpcErrors:
+		if root == nil {
+			root = errors.New("BlogContent 服务意外停止")
+		}
 	}
-	shutdownCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), app.config.HTTP().ShutdownTimeout())
-	defer cancel()
-	return errors.Join(root, app.Shutdown(shutdownCtx))
+	return errors.Join(root, app.Shutdown(context.WithoutCancel(ctx)))
 }
 
 // Shutdown 第一步撤回 readiness，再严格按 HTTP、worker、数据库、遥测顺序关闭；并发调用共享一次结果。
@@ -161,17 +189,30 @@ func (app *App) Shutdown(ctx context.Context) error {
 	app.shutdownDone = make(chan struct{})
 	done := app.shutdownDone
 	app.health.Withdraw()
+	if app.agent != nil {
+		app.agent.health.Shutdown()
+	}
 	app.observer.ReadinessWithdrawn()
 	app.mutex.Unlock()
 	// HTTP drain 后必须确认 worker 退出，才能关闭其依赖的数据库与遥测。
 	var httpErr error
 	if app.httpCleanup {
-		httpErr = app.server.Shutdown(ctx)
+		httpContext, cancel := context.WithTimeout(ctx, app.config.HTTP().ShutdownTimeout())
+		httpErr = app.server.Shutdown(httpContext)
+		cancel()
+		if httpErr != nil {
+			httpErr = errors.Join(httpErr, app.server.Close())
+		}
 	}
 	if httpErr == nil {
 		app.observer.HTTPClosed()
 	}
-	workerErr := app.worker.Stop(ctx)
+	if app.agent != nil {
+		app.agent.stop(app.config.Agent().GRPCShutdownTimeout())
+	}
+	workerContext, cancelWorker := context.WithTimeout(context.WithoutCancel(ctx), app.config.HTTP().ShutdownTimeout())
+	workerErr := app.worker.Stop(workerContext)
+	cancelWorker()
 	if workerErr != nil {
 		// worker 未确认退出时保持数据库与遥测存活，允许后续 Shutdown 使用新期限继续等待。
 		err := errors.Join(httpErr, workerErr)
@@ -183,15 +224,21 @@ func (app *App) Shutdown(ctx context.Context) error {
 		return err
 	}
 	app.observer.WorkerStopped()
+	var clientErr error
+	if app.agent != nil {
+		clientErr = app.agent.client.Close()
+	}
 	databaseErr := app.database.Close()
 	if databaseErr == nil {
 		app.observer.DatabaseClosed()
 	}
-	telemetryErr := app.telemetry.Shutdown(ctx)
+	telemetryContext, cancelTelemetry := context.WithTimeout(context.WithoutCancel(ctx), app.config.HTTP().ShutdownTimeout())
+	telemetryErr := app.telemetry.Shutdown(telemetryContext)
+	cancelTelemetry()
 	if telemetryErr == nil {
 		app.observer.TelemetryClosed()
 	}
-	err := errors.Join(httpErr, workerErr, databaseErr, telemetryErr)
+	err := errors.Join(httpErr, workerErr, clientErr, databaseErr, telemetryErr)
 	app.mutex.Lock()
 	app.shutdownErr = err
 	app.shuttingDown = false

@@ -1,89 +1,85 @@
-"""双 Worker PostgreSQL 测试的确定性运行时探针."""
+"""Controlled AgentRunner outcomes for real PostgreSQL Worker integration."""
 
-from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from typing import final
 
 import anyio
 
-from scyg_agent.domain.runs import ExecutionOwnerId, Run, RunId, RuntimeKind
-from scyg_agent.runtimes.base import AdapterIdentity
-from scyg_agent.runtimes.deep.models import DeepFailureKind, DeepRuntimeError
-from scyg_agent.runtimes.outputs import RuntimeNativeOutput, SimpleRuntimeOutput
-from scyg_agent.runtimes.simple.results import CompletionFinished
+from scyg_agent.adapters.database.run_request_source import PostgreSQLRunInputSource
+from scyg_agent.agents.contracts import AgentFailure, Capability, ChatResponse, FailureKind
+from scyg_agent.agents.runner import AgentFailed, AgentRunOutcome, AgentSucceeded
+from scyg_agent.domain.ports.command_store import CommandSubmission
+from scyg_agent.domain.runs import ExecutionOwnerId, Run, RunId
+from scyg_agent.domain.runs.input import RunInput
+from scyg_agent.domain.runs.repository import RunLease
 
 
 @dataclass(frozen=True, slots=True)
 class Visit:
-    """记录一次实际运行时调用的围栏身份."""
+    """Record the actual runner invocation's persisted execution fence."""
 
     run_id: RunId
     owner: ExecutionOwnerId
     attempt: int
-    kind: RuntimeKind
+    capability: Capability
 
 
 @final
-class RuntimeProbe:
-    """以确定性闸门记录两个 Worker 的实际运行时并发."""
+class RunnerProbe:
+    """Hold real Worker execution while observing unified per-owner capacity."""
 
     def __init__(self) -> None:
         self.gate = anyio.Event()
-        self.started = anyio.Event()
+        self.both_started = anyio.Event()
         self.lock = anyio.Lock()
         self.visits: list[Visit] = []
-        self.active: dict[tuple[ExecutionOwnerId, RuntimeKind], int] = {}
-        self.maxima: dict[tuple[ExecutionOwnerId, RuntimeKind], int] = {}
+        self.active: dict[ExecutionOwnerId, int] = {}
+        self.maxima: dict[ExecutionOwnerId, int] = {}
 
-    async def enter(self, run: Run) -> None:
-        """记录活动计数并等待测试释放."""
-        owner = run.execution_owner
-        assert owner is not None
-        key = (owner, run.runtime.kind)
+    async def enter(self, run: Run, lease: RunLease, capability: Capability) -> None:
+        assert run.execution_owner == lease.owner
+        assert run.id == lease.run_id
+        assert run.attempt == lease.attempt
+        owner = lease.owner
         async with self.lock:
-            self.visits.append(Visit(run.id, owner, run.attempt, run.runtime.kind))
-            self.active[key] = self.active.get(key, 0) + 1
-            self.maxima[key] = max(self.maxima.get(key, 0), self.active[key])
-            self.started.set()
+            self.visits.append(Visit(run.id, owner, lease.attempt, capability))
+            self.active[owner] = self.active.get(owner, 0) + 1
+            self.maxima[owner] = max(self.maxima.get(owner, 0), self.active[owner])
+            if len(self.maxima) == 2:
+                self.both_started.set()
         try:
             await self.gate.wait()
         finally:
             with anyio.CancelScope(shield=True):
                 async with self.lock:
-                    self.active[key] -= 1
+                    self.active[owner] -= 1
 
 
 @final
-class SimpleBarrierAdapter:
-    """产生 SIMPLE 成功结果并仅用闸门控制执行时长."""
+class BarrierAgentRunner:
+    """Return validated success or closed failure without external provider/tool I/O."""
 
-    identity = AdapterIdentity("worker-pg-simple", RuntimeKind.SIMPLE)
-
-    def __init__(self, probe: RuntimeProbe) -> None:
+    def __init__(self, probe: RunnerProbe, inputs: PostgreSQLRunInputSource) -> None:
         self._probe = probe
+        self._inputs = inputs
 
-    async def execute(self, run: Run) -> AsyncIterator[RuntimeNativeOutput]:
-        await self._probe.enter(run)
-        yield SimpleRuntimeOutput(CompletionFinished("stop"))
+    async def execute(self, run: Run, lease: RunLease) -> AgentRunOutcome:
+        persisted = await self._inputs.get_input(run.id)
+        assert isinstance(persisted, RunInput)
+        assert persisted.capability is not None
+        capability = Capability(persisted.capability)
+        await self._probe.enter(run, lease, capability)
+        if capability is Capability.SEARCH:
+            return AgentFailed(
+                AgentFailure(kind=FailureKind.VALIDATION, message="Invalid search input"),
+            )
+        return AgentSucceeded(Capability.CHAT, ChatResponse(response="Persisted worker result"))
 
-    def resume(self, run: Run) -> AsyncIterator[RuntimeNativeOutput]:
-        return self.execute(run)
-
-
-@final
-class DeepFailureAdapter:
-    """记录 DEEP 调度后产生封闭失败, 避免测试调用外部工具."""
-
-    identity = AdapterIdentity("worker-pg-deep", RuntimeKind.DEEP)
-
-    def __init__(self, probe: RuntimeProbe) -> None:
-        self._probe = probe
-
-    async def execute(self, run: Run) -> AsyncIterator[RuntimeNativeOutput]:
-        await self._probe.enter(run)
-        if run.runtime.kind is RuntimeKind.DEEP:
-            raise DeepRuntimeError(DeepFailureKind.INVALID_INPUT)
-        yield SimpleRuntimeOutput(CompletionFinished("stop"))
-
-    def resume(self, run: Run) -> AsyncIterator[RuntimeNativeOutput]:
-        return self.execute(run)
+    async def resume(
+        self,
+        run: Run,
+        command: CommandSubmission,
+        lease: RunLease,
+    ) -> AgentRunOutcome:
+        assert command.run_id == run.id
+        return await self.execute(run, lease)

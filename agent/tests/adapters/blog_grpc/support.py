@@ -1,59 +1,56 @@
-"""真实 Blog gRPC 测试服务与类型化夹具。"""
+"""Real local BlogContent gRPC test service."""
 
-from collections.abc import AsyncIterator
-from typing import TYPE_CHECKING, NoReturn, Protocol, override
+from collections.abc import AsyncIterator, Awaitable, Callable
+from typing import override
 
 import anyio
 import grpc
 import pytest
+from google.protobuf.message import Message
+from google.protobuf.timestamp_pb2 import Timestamp
 from grpc import aio
 
-from scyg_agent.generated.scyg.blog.v1 import article_pb2, common_pb2
-from scyg_agent.generated.scyg.blog.v1 import blog_tool_service_pb2 as service_pb2
-from scyg_agent.generated.scyg.blog.v1 import blog_tool_service_pb2_grpc as service_grpc
-
-if TYPE_CHECKING:
-
-    def add_blog_servicer(_servicer: "FakeBlog", _server: aio.Server) -> None:
-        """声明生成注册函数缺失的静态类型。"""
-
-else:
-    add_blog_servicer = service_grpc.add_BlogToolServiceServicer_to_server
+from scyg_agent.generated.proto.scyg.blog.v1 import article_pb2, common_pb2
+from scyg_agent.generated.proto.scyg.blog.v1 import blog_content_service_pb2 as service_pb2
+from scyg_agent.generated.proto.scyg.blog.v1 import blog_content_service_pb2_grpc as service_grpc
 
 
-NEXT_PAGE_CURSOR = "page-next"
+async def dispatch_call(start: Callable[[], Awaitable[object]]) -> object:
+    """Test-only Call starter; production must supply its database Run-lock fence."""
+    return await start()
 
 
-class RpcContext(Protocol):
-    """描述测试服务使用的最小上下文能力。"""
-
-    def time_remaining(self) -> float:
-        """返回客户端剩余截止期秒数。"""
-        ...
-
-    async def abort(self, code: grpc.StatusCode, details: str) -> NoReturn:
-        """以指定远端状态终止调用。"""
-        ...
-
-
-class FakeBlog(service_grpc.BlogToolServiceServicer):
-    """记录真实传输请求并提供可控响应和生命周期。"""
-
+class FakeBlog(service_grpc.BlogContentServiceServicer):
     def __init__(self) -> None:
-        """初始化每个测试独占的可变观测状态。"""
         self.calls: list[str] = []
         self.operation_ids: list[str] = []
-        self.request_metadata: list[common_pb2.ToolRequestMetadata] = []
-        self.deadlines: list[float] = []
+        self.requests: list[Message] = []
         self.status: grpc.StatusCode | None = None
         self.malformed: bool = False
+        self.article_status: common_pb2.ArticleStatus = common_pb2.ARTICLE_STATUS_DRAFT
+        self.search_articles: list[article_pb2.Article] | None = None
         self.block: bool = False
         self.started: anyio.Event = anyio.Event()
         self.drained: anyio.Event = anyio.Event()
 
-    async def _before(self, name: str, context: RpcContext) -> None:
+    async def _before[Request: Message, Response: Message](
+        self,
+        name: str,
+        request: Request,
+        context: aio.ServicerContext[Request, Response],
+    ) -> None:
         self.calls.append(name)
-        self.deadlines.append(context.time_remaining())
+        if isinstance(
+            request,
+            (
+                service_pb2.CreateArticleRequest,
+                service_pb2.UpdateArticleRequest,
+                service_pb2.PublishArticleRequest,
+                service_pb2.ArchiveArticleRequest,
+            ),
+        ):
+            self.operation_ids.append(request.operation_id)
+        self.requests.append(request)
         if self.status is not None:
             await context.abort(self.status, "server-secret-token")
         if self.block:
@@ -64,106 +61,176 @@ class FakeBlog(service_grpc.BlogToolServiceServicer):
                 self.drained.set()
 
     @override
-    async def GetPublishedArticle(
+    async def GetArticle(
         self,
-        request: service_pb2.GetPublishedArticleRequest,
-        context: aio.ServicerContext[
-            service_pb2.GetPublishedArticleRequest,
-            service_pb2.GetPublishedArticleResponse,
-        ],
-    ) -> service_pb2.GetPublishedArticleResponse:
-        self.request_metadata.append(request.metadata)
-        await self._before("get", context)
-        if self.malformed:
-            return service_pb2.GetPublishedArticleResponse()
-        return service_pb2.GetPublishedArticleResponse(article=article(request.article_id.value))
+        request: service_pb2.GetArticleRequest,
+        context: aio.ServicerContext[service_pb2.GetArticleRequest, service_pb2.GetArticleResponse],
+    ) -> service_pb2.GetArticleResponse:
+        await self._before("get", request, context)
+        return (
+            service_pb2.GetArticleResponse()
+            if self.malformed
+            else service_pb2.GetArticleResponse(
+                article=article(request.article_id, self.article_status),
+            )
+        )
 
     @override
     async def SearchArticles(
         self,
         request: service_pb2.SearchArticlesRequest,
         context: aio.ServicerContext[
-            service_pb2.SearchArticlesRequest,
-            service_pb2.SearchArticlesResponse,
+            (
+                service_pb2.SearchArticlesRequest,
+                service_pb2.SearchArticlesResponse,
+            )
         ],
     ) -> service_pb2.SearchArticlesResponse:
-        self.request_metadata.append(request.metadata)
-        await self._before("search", context)
-        hit = article_pb2.ArticleSearchHit(
-            id=common_pb2.ArticleId(value="hit-1"), title=request.query, summary="摘要"
+        await self._before("search", request, context)
+        return service_pb2.SearchArticlesResponse(
+            articles=(
+                self.search_articles
+                if self.search_articles is not None
+                else [article(0 if self.malformed else 1, self.article_status)]
+            ),
+            page=request.page,
+            page_size=request.page_size,
+            total_items=len(self.search_articles) if self.search_articles is not None else 11,
+            total_pages=(
+                (len(self.search_articles) + request.page_size - 1) // request.page_size
+                if self.search_articles is not None
+                else (11 + request.page_size - 1) // request.page_size
+            ),
         )
-        if self.malformed:
-            hit.ClearField("id")
-        return service_pb2.SearchArticlesResponse(articles=[hit], next_page_token=NEXT_PAGE_CURSOR)
 
     @override
-    async def CreateArticleDraft(
+    async def ListTags(
         self,
-        request: service_pb2.CreateArticleDraftRequest,
-        context: aio.ServicerContext[
-            service_pb2.CreateArticleDraftRequest,
-            service_pb2.CreateArticleDraftResponse,
-        ],
-    ) -> service_pb2.CreateArticleDraftResponse:
-        self._record_write(request.metadata)
-        await self._before("create", context)
-        return service_pb2.CreateArticleDraftResponse(article=article("created-1"))
+        request: service_pb2.ListTagsRequest,
+        context: aio.ServicerContext[service_pb2.ListTagsRequest, service_pb2.ListTagsResponse],
+    ) -> service_pb2.ListTagsResponse:
+        await self._before("tags", request, context)
+        return service_pb2.ListTagsResponse(
+            tags=[article_pb2.Tag(id=2, name="Tag")],
+            page=request.page,
+            page_size=request.page_size,
+            total_items=1,
+            total_pages=1,
+        )
 
     @override
-    async def UpdateArticleDraft(
+    async def ListArticleTypes(
         self,
-        request: service_pb2.UpdateArticleDraftRequest,
+        request: service_pb2.ListArticleTypesRequest,
         context: aio.ServicerContext[
-            service_pb2.UpdateArticleDraftRequest,
-            service_pb2.UpdateArticleDraftResponse,
+            (
+                service_pb2.ListArticleTypesRequest,
+                service_pb2.ListArticleTypesResponse,
+            )
         ],
-    ) -> service_pb2.UpdateArticleDraftResponse:
-        self._record_write(request.metadata)
-        await self._before("update", context)
-        return service_pb2.UpdateArticleDraftResponse(article=article(request.article_id.value))
+    ) -> service_pb2.ListArticleTypesResponse:
+        await self._before("types", request, context)
+        return service_pb2.ListArticleTypesResponse(
+            article_types=[article_pb2.ArticleType(id=3, name="Type")],
+            page=request.page,
+            page_size=request.page_size,
+            total_items=1,
+            total_pages=1,
+        )
 
     @override
-    async def AddArticleTags(
+    async def CreateArticle(
         self,
-        request: service_pb2.AddArticleTagsRequest,
+        request: service_pb2.CreateArticleRequest,
         context: aio.ServicerContext[
-            service_pb2.AddArticleTagsRequest,
-            service_pb2.AddArticleTagsResponse,
+            (
+                service_pb2.CreateArticleRequest,
+                service_pb2.CreateArticleResponse,
+            )
         ],
-    ) -> service_pb2.AddArticleTagsResponse:
-        self._record_write(request.metadata)
-        await self._before("tags", context)
-        return service_pb2.AddArticleTagsResponse(article=article(request.article_id.value))
+    ) -> service_pb2.CreateArticleResponse:
+        await self._before("create", request, context)
+        return service_pb2.CreateArticleResponse(article=article(1))
 
-    def _record_write(self, metadata: common_pb2.WriteOperationMetadata) -> None:
-        self.operation_ids.append(metadata.operation_id)
-        self.request_metadata.append(metadata.request)
+    @override
+    async def UpdateArticle(
+        self,
+        request: service_pb2.UpdateArticleRequest,
+        context: aio.ServicerContext[
+            (
+                service_pb2.UpdateArticleRequest,
+                service_pb2.UpdateArticleResponse,
+            )
+        ],
+    ) -> service_pb2.UpdateArticleResponse:
+        await self._before("update", request, context)
+        return service_pb2.UpdateArticleResponse(article=article(request.article_id))
+
+    @override
+    async def PublishArticle(
+        self,
+        request: service_pb2.PublishArticleRequest,
+        context: aio.ServicerContext[
+            (
+                service_pb2.PublishArticleRequest,
+                service_pb2.PublishArticleResponse,
+            )
+        ],
+    ) -> service_pb2.PublishArticleResponse:
+        await self._before("publish", request, context)
+        return service_pb2.PublishArticleResponse(
+            article=article(request.article_id, common_pb2.ARTICLE_STATUS_PUBLISHED),
+        )
+
+    @override
+    async def ArchiveArticle(
+        self,
+        request: service_pb2.ArchiveArticleRequest,
+        context: aio.ServicerContext[
+            (
+                service_pb2.ArchiveArticleRequest,
+                service_pb2.ArchiveArticleResponse,
+            )
+        ],
+    ) -> service_pb2.ArchiveArticleResponse:
+        await self._before("archive", request, context)
+        return service_pb2.ArchiveArticleResponse(
+            article=article(request.article_id, common_pb2.ARTICLE_STATUS_ARCHIVED),
+        )
 
 
-def article(article_id: str) -> article_pb2.Article:
-    """构造语义完整的文章响应。"""
+def article(
+    article_id: int,
+    status: common_pb2.ArticleStatus = common_pb2.ARTICLE_STATUS_DRAFT,
+) -> article_pb2.Article:
     return article_pb2.Article(
-        id=common_pb2.ArticleId(value=article_id),
+        id=article_id,
         title="标题",
-        body_markdown="正文",
-        summary="摘要",
-        status=common_pb2.ARTICLE_STATUS_DRAFT,
+        content="正文",
+        digest="摘要",
+        slug="article",
+        article_type_id=3,
+        status=status,
         version=1,
+        tags=[article_pb2.Tag(id=2, name="Tag")],
+        created_at=Timestamp(seconds=1),
+        updated_at=Timestamp(seconds=2),
+        support=4,
+        comment=5,
+        visited=6,
     )
 
 
 @pytest.fixture
 def anyio_backend() -> str:
-    """grpc.aio 明确运行在 asyncio 后端。"""
     return "asyncio"
 
 
 @pytest.fixture
 async def blog_server() -> AsyncIterator[tuple[str, FakeBlog]]:
-    """启动并确定停止一个本地真实 grpc.aio 服务。"""
     fake = FakeBlog()
     server = aio.server()
-    add_blog_servicer(fake, server)
+    service_grpc.add_BlogContentServiceServicer_to_server(fake, server)
     port = server.add_insecure_port("127.0.0.1:0")
     await server.start()
     try:

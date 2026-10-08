@@ -9,29 +9,21 @@ from scyg_agent.adapters.database.tool_codec import decode_tool_operation
 from scyg_agent.adapters.database.tool_store import (
     PostgreSQLToolOperationStore,
 )
-from scyg_agent.domain.ports.idempotency import AuditMetadata, RequestDigest, ResultReference
 from scyg_agent.domain.ports.interaction_store import (
-    AlreadyResolved,
     InteractionConflict,
     InteractionDataIntegrity,
     InteractionIdempotencyConflict,
-    InteractionNotFound,
     InteractionPending,
     InteractionRequest,
 )
 from scyg_agent.domain.ports.tool_store import (
-    DecisionConflict,
-    SemanticIdentityConflict,
     ToolDataIntegrity,
     ToolIdempotencyConflict,
-    ToolIntent,
-    ToolIntentPrepared,
     ToolOperation,
     ToolOperationStored,
     ToolOutcomeStatus,
     ToolRunNotFound,
 )
-from scyg_agent.domain.runs import InteractionId, OperationId, ToolCallId
 
 from .scripted_session_support import (
     INTERACTION_ID,
@@ -41,7 +33,6 @@ from .scripted_session_support import (
     ScriptedSession,
     audit_fact,
     interaction,
-    resolution,
     run,
     session,
     tool_operation,
@@ -56,10 +47,10 @@ def anyio_backend() -> str:
 
 
 @pytest.mark.anyio
-async def test_interaction_create_unknown_duplicate_and_resolved(
+async def test_interaction_create_unknown_duplicate_and_conflict(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """覆盖交互调用方会话的全部幂等分支。"""
+    """覆盖交互请求的未知 Run、首次请求、重放与冲突。"""
     store = PostgreSQLInteractionStore(async_sessionmaker(), "scyg_t12_test")
     request = InteractionRequest(INTERACTION_ID, RUN_ID, "approval", NOW)
     assert await store.request_in_session(
@@ -90,23 +81,6 @@ async def test_interaction_create_unknown_duplicate_and_resolved(
     assert await store.request_in_session(
         session(monkeypatch, conflict), request
     ) == InteractionIdempotencyConflict(INTERACTION_ID)
-    resolved = ScriptedSession([FakeResult(interaction("resolved", "approval:accepted"))])
-    assert await store.resolve_in_session(
-        session(monkeypatch, resolved), resolution()
-    ) == AlreadyResolved(INTERACTION_ID, ResultReference("approval:accepted"))
-    corrupt = interaction("resolved", None)
-    assert await store.resolve_in_session(
-        session(monkeypatch, ScriptedSession([FakeResult(corrupt)])), resolution()
-    ) == InteractionDataIntegrity(INTERACTION_ID)
-    changed = interaction("resolved", "approval:accepted")
-    changed.resolution_semantic_digest = "0" * 64
-    assert await store.resolve_in_session(
-        session(monkeypatch, ScriptedSession([FakeResult(changed)])), resolution()
-    ) == InteractionIdempotencyConflict(INTERACTION_ID)
-    unknown = ScriptedSession([FakeResult(None)])
-    assert await store.resolve_in_session(
-        session(monkeypatch, unknown), resolution()
-    ) == InteractionNotFound(INTERACTION_ID)
 
 
 @pytest.mark.anyio
@@ -144,65 +118,6 @@ async def test_audit_and_tool_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
         session(monkeypatch, success), operation
     ) == ToolOperationStored(operation, replayed=False)
     assert isinstance(success.added[0], AuditEventRecord)
-
-
-@pytest.mark.anyio
-async def test_resolve_and_prepare_binds_approval_and_intent_identity(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """覆盖审批解析与 pending 意图的原子首次、语义冲突和决策冲突。"""
-    store = PostgreSQLInteractionStore(async_sessionmaker(), "scyg_t17_test")
-    intent = ToolIntent(
-        ToolCallId("tool_t17script0"),
-        OperationId("t17:script:tool"),
-        RUN_ID,
-        "update_article",
-        RequestDigest.parse("7" * 64),
-        INTERACTION_ID,
-        NOW,
-        AuditMetadata("source", "runtime"),
-    )
-    prepared = ScriptedSession(
-        [
-            FakeResult(run()),
-            FakeResult(interaction("resolved", "approval:accepted")),
-            FakeResult(str(intent.operation_id)),
-        ]
-    )
-    first = await store.resolve_and_prepare_in_session(
-        session(monkeypatch, prepared), resolution(), intent
-    )
-    assert first == ToolIntentPrepared(intent.operation_id, replayed=False)
-
-    conflicting_record = tool_record(tool_operation())
-    conflicting_record.intent_semantic_digest = "0" * 64
-    semantic = ScriptedSession(
-        [
-            FakeResult(run()),
-            FakeResult(interaction("resolved", "approval:accepted")),
-            FakeResult(None),
-            FakeResult(conflicting_record),
-        ]
-    )
-    conflict = await store.resolve_and_prepare_in_session(
-        session(monkeypatch, semantic), resolution(), intent
-    )
-    assert conflict == SemanticIdentityConflict(intent.operation_id)
-
-    changed = ToolIntent(
-        intent.tool_call_id,
-        intent.operation_id,
-        intent.run_id,
-        intent.tool_name,
-        intent.request_digest,
-        InteractionId("int_t17changed0"),
-        intent.prepared_at,
-        intent.audit_metadata,
-    )
-    decision = await store.resolve_and_prepare_in_session(
-        session(monkeypatch, ScriptedSession([FakeResult(run())])), resolution(), changed
-    )
-    assert decision == DecisionConflict(intent.operation_id)
 
 
 def test_decode_failed_tool_and_corruption() -> None:

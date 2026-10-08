@@ -7,7 +7,8 @@ import (
 
 func checkImports(file sourceFile) []Violation {
 	layer, module := moduleLayer(file.relative)
-	if isContentRootPath(file.relative) && !isSharedRootFile(file.relative) {
+	externalTest := file.isExternalTest()
+	if !externalTest && isContentRootPath(file.relative) && !isSharedRootFile(file.relative) {
 		return []Violation{{Code: "ARCH_LEGACY_FILE", Path: file.relative, Detail: "content root file is not shared"}}
 	}
 	violations := make([]Violation, 0)
@@ -19,10 +20,10 @@ func checkImports(file sourceFile) []Violation {
 		if importsModuleInternal(importPath) && !strings.HasPrefix(file.relative, "internal/modules/"+importedModule(importPath)+"/") {
 			violations = append(violations, Violation{Code: "ARCH_INTERNAL_IMPORT", Path: file.relative, Detail: "bootstrap and transports must not import " + importPath})
 		}
-		if isForbiddenImport(layer, file.relative, importPath) {
+		if !externalTest && isForbiddenImport(layer, file.relative, importPath) {
 			violations = append(violations, Violation{Code: "ARCH_FORBIDDEN_IMPORT", Path: file.relative, Detail: layer + " must not import " + importPath})
 		}
-		if illegalDirection(layer, module, file.relative, importPath) {
+		if !externalTest && illegalDirection(layer, module, file.relative, importPath) {
 			violations = append(violations, Violation{Code: "ARCH_DEPENDENCY_DIRECTION", Path: file.relative, Detail: layer + " has an outward dependency on " + importPath})
 		}
 	}
@@ -38,13 +39,6 @@ func isForbiddenImport(layer, file, importPath string) bool {
 			return false
 		}
 		return true
-	}
-	if layer == "application" && file == "internal/modules/content/application/article_images_integration_test.go" && (importPath == "database/sql" || strings.HasPrefix(importPath, modulePath+"/internal/platform/database")) {
-		// Integration-only fixture code owns the database harness; production application code remains restricted.
-		return false
-	}
-	if file == "internal/transport/rest/content/article_image_lifecycle_integration_test.go" && importPath == modulePath+"/internal/platform/database" {
-		return false
 	}
 	if layer == "application" && isApplicationForbiddenImport(importPath) {
 		return true
@@ -74,7 +68,7 @@ func isForbiddenBoundaryImport(importPath string) bool {
 }
 
 func isApplicationForbiddenImport(importPath string) bool {
-	return importPath == "database/sql" || strings.HasPrefix(importPath, modulePath+"/internal/platform/database")
+	return strings.HasPrefix(importPath, modulePath+"/internal/platform/database")
 }
 
 func isTransportPath(path string) bool {

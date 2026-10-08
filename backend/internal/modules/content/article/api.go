@@ -80,13 +80,18 @@ type List struct {
 	Page, PageSize       int
 	ArticleTypeID, TagID int64
 	Query                string
+	// Status optionally filters draft, published, or archived management rows.
+	Status string
 	// Sort uses the OpenAPI values: createdAt, -createdAt, updatedAt, -updatedAt, title, and -title.
 	Sort string
 }
 
 // Result is the protocol-neutral article read result.
 type Result struct {
-	ID, ArticleTypeID                    int64
+	ID, ArticleTypeID int64
+	// ArticleTypeName and ArticleTypeImage are populated by the cross-feature response workflow.
+	ArticleTypeName                      string
+	ArticleTypeImage                     *string
 	Title, Slug, Digest, Content, Status string
 	TagIDs                               []int64
 	Support, Comment, Visited            int64

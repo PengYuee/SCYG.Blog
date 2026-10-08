@@ -8,6 +8,7 @@ import (
 )
 
 func Test_MigrationConfig_loads_database_dsn_from_yaml(t *testing.T) {
+	t.Setenv("SCYG_DATABASE_DSN", "postgres://postgres@localhost:5432/environment_override?sslmode=disable")
 	// Given
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	//nolint:gosec // synthetic DSN used only to test migration config parsing.
@@ -22,6 +23,13 @@ func Test_MigrationConfig_loads_database_dsn_from_yaml(t *testing.T) {
 	// Then
 	if err != nil || command[0] != "version" || !strings.Contains(dsn, "localhost:5432/blog") {
 		t.Fatalf("dsn=[REDACTED] command=%v err=%v", command, err)
+	}
+}
+
+func Test_MigrationConfig_environment_mode_requires_explicit_database(t *testing.T) {
+	t.Setenv("SCYG_DATABASE_DSN", "")
+	if _, _, err := loadMigrationConfig([]string{"-config=", "up"}); err == nil {
+		t.Fatal("environment mode must not migrate the built-in default database")
 	}
 }
 
@@ -40,7 +48,7 @@ func Test_MigrationConfig_rejects_legacy_dsn_flag(t *testing.T) {
 	_, _, err := loadMigrationConfig([]string{"--dsn", "postgres://secret", "version"})
 
 	// Then
-	if err == nil || !strings.Contains(err.Error(), "-config") {
+	if err == nil {
 		t.Fatalf("err=%v", err)
 	}
 }

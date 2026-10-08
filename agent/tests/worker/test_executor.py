@@ -1,12 +1,10 @@
-"""Worker 单租约执行和围栏提交测试."""
+"""Recipe Worker admission, fenced commits, and post-commit transient events."""
 
-from collections.abc import AsyncIterator
 from dataclasses import replace
 from datetime import UTC, datetime, timedelta
-from typing import cast, final
+from typing import cast, override
 from uuid import UUID
 
-import anyio
 import pytest
 
 from scyg_agent.adapters.redis import (
@@ -16,253 +14,78 @@ from scyg_agent.adapters.redis import (
     RedisUnavailableError,
     StreamEnvelope,
 )
-from scyg_agent.agents import (
-    AgentFailure,
-    ArticleDraft,
-    Capability,
+from scyg_agent.agents import AgentFailure, ApprovalRequest, ArticleDraft, Capability
+from scyg_agent.agents import FailureKind as AgentFailureKind
+from scyg_agent.agents.runner import (
+    AgentFailed,
+    AgentRunOutcome,
+    AgentSucceeded,
+    AgentWaitingForApproval,
 )
-from scyg_agent.agents import (
-    FailureKind as AgentFailureKind,
-)
-from scyg_agent.agents.runner import AgentFailed, AgentRunOutcome, AgentSucceeded
+from scyg_agent.domain.ports.audit_store import StoredAuditFact
+from scyg_agent.domain.ports.command_store import CommandSubmission
+from scyg_agent.domain.ports.event_store import EventCursor, StoredEvent
 from scyg_agent.domain.ports.terminal_commit import (
     TerminalCancellationRequested,
     TerminalCommitRequest,
     TerminalCommitResult,
+    TerminalCommitted,
+    TerminalLeaseLost,
     TerminalReplay,
+    TerminalStateConflict,
 )
 from scyg_agent.domain.runs import (
     ExecutionOwnerId,
     Run,
-    RunCancelled,
     RunId,
     RunStatus,
     RuntimeKind,
     RuntimeSelection,
     TaskType,
+    UserId,
 )
 from scyg_agent.domain.runs.repository import (
     ClaimRequest,
     GetResult,
     NotFound,
+    Renewed,
     RenewRequest,
     RenewResult,
     RunLease,
 )
 from scyg_agent.domain.runs.repository_values import LeaseToken
-from scyg_agent.runtimes.base import AdapterIdentity
-from scyg_agent.runtimes.outputs import RuntimeNativeOutput, SimpleRuntimeOutput
-from scyg_agent.runtimes.registry import default_registry
-from scyg_agent.runtimes.router import RuntimeRouter
-from scyg_agent.runtimes.simple.results import (
-    CompletionFinished,
-    FailureKind,
-    ProviderDelta,
-    ProviderFailure,
-)
 from scyg_agent.worker import WorkerConfig, WorkerDependencies
 from scyg_agent.worker.executor import execute_lease
-from tests.runtimes.fakes import FakeRuntimeAdapter, make_run
 
 NOW = datetime(2026, 7, 12, 19, tzinfo=UTC)
 OWNER = ExecutionOwnerId("worker_executor01")
-
-
-@final
-class LoadedRepository:
-    """返回一个已认领 Run 的执行测试仓储."""
-
-    def __init__(self, run: Run) -> None:
-        self.run = run
-
-    async def claim(self, request: ClaimRequest) -> tuple[RunLease, ...]:
-        """单执行测试不经过调度认领."""
-        raise AssertionError(request)
-
-    async def get(self, run_id: RunId) -> GetResult:
-        """返回精确测试 Run."""
-        assert run_id == self.run.id
-        return self.run
-
-    async def renew(self, request: RenewRequest) -> RenewResult:
-        """即时输出会在首次续租前结束."""
-        raise AssertionError(request)
-
-
-@final
-class RecordingCommitter:
-    """记录终态请求并返回幂等重放."""
-
-    def __init__(
-        self,
-        run: Run,
-        first_result: TerminalCommitResult | None = None,
-    ) -> None:
-        self.run = run
-        self.first_result = first_result
-        self.requests: list[TerminalCommitRequest] = []
-
-    async def commit(self, request: TerminalCommitRequest) -> TerminalCommitResult:
-        """记录原子请求."""
-        self.requests.append(request)
-        if len(self.requests) == 1 and self.first_result is not None:
-            return self.first_result
-        return TerminalReplay(self.run)
-
-
-@final
-class MissingRepository:
-    """返回不存在结果以证明执行安全停止."""
-
-    async def claim(self, request: ClaimRequest) -> tuple[RunLease, ...]:
-        raise AssertionError(request)
-
-    async def get(self, run_id: RunId) -> GetResult:
-        return NotFound(run_id)
-
-    async def renew(self, request: RenewRequest) -> RenewResult:
-        raise AssertionError(request)
-
-
-@final
-class FailureAdapter:
-    """产生一个已清洗 SIMPLE 失败终态."""
-
-    identity = AdapterIdentity("failure-worker", RuntimeKind.SIMPLE)
-
-    async def execute(self, run: Run) -> AsyncIterator[RuntimeNativeOutput]:
-        _ = run
-        yield SimpleRuntimeOutput(ProviderFailure(FailureKind.EMPTY))
-
-    def resume(self, run: Run) -> AsyncIterator[RuntimeNativeOutput]:
-        return self.execute(run)
-
-
-@final
-class RecordingStreamStore:
-    """Record transient envelopes and optionally fail every append."""
-
-    def __init__(self, *, fail_append: bool = False) -> None:
-        self.fail_append = fail_append
-        self.activations: list[tuple[RunId, int]] = []
-        self.envelopes: list[StreamEnvelope] = []
-
-    async def activate_attempt(self, run_id: RunId, attempt: int) -> None:
-        self.activations.append((run_id, attempt))
-
-    async def append(self, envelope: StreamEnvelope) -> RedisStreamId:
-        if self.fail_append:
-            raise RedisUnavailableError
-        self.envelopes.append(envelope)
-        return RedisStreamId(f"{len(self.envelopes)}-0")
-
-
-@final
-class StreamingAdapter:
-    """Emit several small text deltas followed by a successful terminal."""
-
-    identity = AdapterIdentity("stream-worker", RuntimeKind.SIMPLE)
-
-    async def execute(self, run: Run) -> AsyncIterator[RuntimeNativeOutput]:
-        _ = run
-        for content in ("ab", "cd", "ef"):
-            yield SimpleRuntimeOutput(ProviderDelta(content))
-        yield SimpleRuntimeOutput(CompletionFinished("stop"))
-
-    def resume(self, run: Run) -> AsyncIterator[RuntimeNativeOutput]:
-        return self.execute(run)
-
-
-@final
-class RenewingRepository:
-    """在首次续租返回指定控制结果."""
-
-    def __init__(self, run: Run, result: RenewResult) -> None:
-        self.run = run
-        self.result = result
-
-    async def claim(self, request: ClaimRequest) -> tuple[RunLease, ...]:
-        raise AssertionError(request)
-
-    async def get(self, run_id: RunId) -> GetResult:
-        assert run_id == self.run.id
-        return self.run
-
-    async def renew(self, request: RenewRequest) -> RenewResult:
-        _ = request
-        return self.result
-
-
-@final
-class BlockingAdapter:
-    """保持执行活动直到续租控制路径取消作用域."""
-
-    identity = AdapterIdentity("blocking-worker", RuntimeKind.SIMPLE)
-
-    async def execute(self, run: Run) -> AsyncIterator[RuntimeNativeOutput]:
-        _ = run
-        blocked = anyio.Event()
-        await blocked.wait()
-        yield SimpleRuntimeOutput(CompletionFinished("stop"))
-
-    def resume(self, run: Run) -> AsyncIterator[RuntimeNativeOutput]:
-        return self.execute(run)
-
-
-@final
-class StructuredRunner:
-    """Return one capability-validated result for the Worker path."""
-
-    async def execute(self, run: Run, lease: RunLease) -> AgentRunOutcome:
-        _ = run, lease
-        return AgentSucceeded(
-            Capability.WRITE,
-            ArticleDraft(title="标题", outline="大纲", markdown="# 正文"),
-        )
-
-    async def resume(self, run: Run, command: object, lease: RunLease) -> AgentRunOutcome:
-        _ = command
-        return await self.execute(run, lease)
-
-
-@final
-class FailedRunner:
-    """Return one sanitized dependency failure for the Worker path."""
-
-    async def execute(self, run: Run, lease: RunLease) -> AgentRunOutcome:
-        _ = run, lease
-        return AgentFailed(
-            AgentFailure(
-                kind=AgentFailureKind.DEPENDENCY,
-                message="Blog 依赖不可用",
-                retryable=True,
-            )
-        )
-
-    async def resume(self, run: Run, command: object, lease: RunLease) -> AgentRunOutcome:
-        _ = command
-        return await self.execute(run, lease)
+RUN_ID = RunId("run_12345678")
 
 
 def running_run() -> Run:
-    """构造与租约 revision 一致的运行中 SIMPLE Run."""
-    base = make_run(TaskType.SUMMARY, RuntimeSelection(RuntimeKind.SIMPLE, "v1"))
-    return replace(
-        base,
-        revision=2,
-        status=RunStatus.RUNNING,
-        updated_at=NOW,
-        attempt=1,
-        execution_owner=OWNER,
+    return Run(
+        RUN_ID,
+        UserId("user_worker"),
+        TaskType.COMPOSE,
+        RuntimeSelection(
+            RuntimeKind.DEEP,
+            "v1",
+        ),
+        2,
+        RunStatus.RUNNING,
+        NOW,
+        NOW,
+        1,
+        OWNER,
+        None,
     )
 
 
 def lease(*, cancelled: bool = False) -> RunLease:
-    """构造活动围栏并可携带已持久化取消请求."""
     return RunLease(
-        RunId("run_12345678"),
+        RUN_ID,
         OWNER,
-        LeaseToken(UUID("12345678-1234-5678-9234-567812345678")),
+        LeaseToken(UUID(int=1)),
         2,
         1,
         NOW + timedelta(minutes=1),
@@ -270,211 +93,285 @@ def lease(*, cancelled: bool = False) -> RunLease:
     )
 
 
-def router() -> RuntimeRouter:
-    """构造共享精确注册适配器的静态目录."""
-    return RuntimeRouter(
-        default_registry(
-            FakeRuntimeAdapter(AdapterIdentity("simple-worker", RuntimeKind.SIMPLE)),
-            FakeRuntimeAdapter(AdapterIdentity("deep-worker", RuntimeKind.DEEP)),
+class LoadedRepository:
+    def __init__(self, run: Run) -> None:
+        self.run: Run = run
+        self.renewals: list[RenewRequest] = []
+
+    async def claim(self, request: ClaimRequest) -> tuple[RunLease, ...]:
+        raise AssertionError(request)
+
+    async def get(self, run_id: RunId) -> GetResult:
+        assert run_id == self.run.id
+        return self.run
+
+    async def renew(self, request: RenewRequest) -> RenewResult:
+        self.renewals.append(request)
+        return Renewed(replace(lease(), expires_at=request.guard.now + request.lease_duration))
+
+
+class MissingRepository(LoadedRepository):
+    @override
+    async def get(self, run_id: RunId) -> GetResult:
+        return NotFound(run_id)
+
+
+class RecordingCommitter:
+    def __init__(
+        self,
+        run: Run,
+        first_result: TerminalCommitResult | None = None,
+        trace: list[str] | None = None,
+    ) -> None:
+        self.run: Run = run
+        self.first_result: TerminalCommitResult | None = first_result
+        self.requests: list[TerminalCommitRequest] = []
+        self.trace: list[str] = trace if trace is not None else []
+
+    async def commit(self, request: TerminalCommitRequest) -> TerminalCommitResult:
+        self.requests.append(request)
+        self.trace.append("commit")
+        if self.first_result is not None:
+            return self.first_result
+        completed = replace(
+            self.run,
+            status=request.completion.status,
+            revision=request.completion.guard.expected_revision + 1,
+            execution_owner=None,
+            pending_interaction_id=request.completion.pending_interaction_id,
         )
-    )
+        return TerminalCommitted(
+            completed,
+            tuple(
+                StoredEvent(EventCursor(index + 1), event)
+                for (
+                    index,
+                    event,
+                ) in enumerate(request.events.events)
+            ),
+            StoredAuditFact(
+                1,
+                request.audit,
+            ),
+        )
+
+
+class StructuredRunner:
+    def __init__(self, outcome: AgentRunOutcome | None = None) -> None:
+        self.calls: int = 0
+        self.outcome: AgentRunOutcome = (
+            outcome
+            if outcome is not None
+            else AgentSucceeded(
+                Capability.WRITE, ArticleDraft(title="标题", outline="大纲", markdown="# 正文")
+            )
+        )
+
+    async def execute(self, run: Run, lease: RunLease) -> AgentRunOutcome:
+        assert run.id == lease.run_id
+        self.calls += 1
+        return self.outcome
+
+    async def resume(
+        self,
+        run: Run,
+        command: CommandSubmission,
+        lease: RunLease,
+    ) -> AgentRunOutcome:
+        assert command.run_id == run.id
+        return await self.execute(run, lease)
+
+
+class RecordingStreamStore:
+    def __init__(
+        self,
+        *,
+        fail_append: bool = False,
+        fail_activate: bool = False,
+        trace: list[str] | None = None,
+    ) -> None:
+        self.fail_append: bool = fail_append
+        self.fail_activate: bool = fail_activate
+        self.activations: list[tuple[RunId, int]] = []
+        self.envelopes: list[StreamEnvelope] = []
+        self.trace: list[str] = trace if trace is not None else []
+
+    async def activate_attempt(self, run_id: RunId, attempt: int) -> None:
+        if self.fail_activate:
+            raise RedisUnavailableError
+        self.activations.append((run_id, attempt))
+
+    async def append(self, envelope: StreamEnvelope) -> RedisStreamId:
+        if self.fail_append:
+            raise RedisUnavailableError
+        self.trace.append("publish")
+        self.envelopes.append(envelope)
+        return RedisStreamId(f"{len(self.envelopes)}-0")
+
+    def port(self) -> RedisStreamStore:
+        return cast("RedisStreamStore", cast("object", self))
 
 
 @pytest.mark.anyio
-async def test_agent_runner_result_is_attached_to_terminal_commit() -> None:
-    """Given AgentRunner success, When Worker commits, Then result payload is atomic input."""
+async def test_agent_result_commits_before_transient_terminal() -> None:
     run = running_run()
-    committer = RecordingCommitter(run)
-
+    trace: list[str] = []
+    committer = RecordingCommitter(run, trace=trace)
+    store = RecordingStreamStore(trace=trace)
+    repository = LoadedRepository(run)
+    runner = StructuredRunner()
     await execute_lease(
         lease(),
-        WorkerDependencies(LoadedRepository(run), committer, lambda: NOW, StructuredRunner()),
-        router(),
+        WorkerDependencies(repository, committer, lambda: NOW, runner, store.port()),
         WorkerConfig(),
     )
-
     request = committer.requests[0]
     assert request.completion.status is RunStatus.SUCCEEDED
+    assert request.events.events[-1].revision == 3
     assert request.result is not None
     assert request.result.capability == "write"
-    assert request.result.payload["markdown"] == "# 正文"
+    result = ArticleDraft.model_validate(request.result.payload)
+    assert result.markdown == "# 正文"
+    assert trace == ["commit", "publish"]
+    assert len(repository.renewals) == 1
+    assert runner.calls == 1
+    assert store.envelopes[0].kind is RedisStreamKind.TERMINAL
 
 
 @pytest.mark.anyio
-async def test_agent_runner_failure_is_attached_to_terminal_commit() -> None:
-    """Given sanitized Agent failure, When Worker commits, Then code and message persist."""
+async def test_failure_fields_are_attached_to_atomic_commit() -> None:
     run = running_run()
+    runner = StructuredRunner(
+        AgentFailed(
+            AgentFailure(
+                kind=AgentFailureKind.DEPENDENCY, message="Blog 依赖不可用", retryable=True
+            ),
+        )
+    )
     committer = RecordingCommitter(run)
-
     await execute_lease(
         lease(),
-        WorkerDependencies(LoadedRepository(run), committer, lambda: NOW, FailedRunner()),
-        router(),
+        WorkerDependencies(LoadedRepository(run), committer, lambda: NOW, runner),
         WorkerConfig(),
     )
-
     request = committer.requests[0]
     assert request.completion.status is RunStatus.FAILED
     assert request.error_code == AgentFailureKind.DEPENDENCY.value
     assert request.error_message == "Blog 依赖不可用"
+    assert request.result is None
 
 
 @pytest.mark.anyio
-async def test_native_output_is_normalized_once_and_committed_atomically() -> None:
-    """Given SIMPLE 原生终态, When 执行, Then 提交唯一成功批."""
+async def test_approval_request_kind_and_payload_commit_atomically() -> None:
     run = running_run()
-    committer = RecordingCommitter(run)
-
-    await execute_lease(
-        lease(),
-        WorkerDependencies(LoadedRepository(run), committer, lambda: NOW),
-        router(),
-        WorkerConfig(),
-    )
-
-    assert len(committer.requests) == 1
-    request = committer.requests[0]
-    assert request.completion.status is RunStatus.SUCCEEDED
-    assert request.events.events[-1].revision == 3
-
-
-@pytest.mark.anyio
-async def test_preobserved_cancellation_commits_only_cancelled_terminal() -> None:
-    """Given 租约携带取消请求, When 执行, Then 不调用运行时并提交取消."""
-    run = running_run()
-    committer = RecordingCommitter(run)
-
-    await execute_lease(
-        lease(cancelled=True),
-        WorkerDependencies(LoadedRepository(run), committer, lambda: NOW),
-        router(),
-        WorkerConfig(),
-    )
-
-    request = committer.requests[0]
-    assert request.completion.status is RunStatus.CANCELLED
-    assert isinstance(request.events.events[-1], RunCancelled)
-
-
-@pytest.mark.anyio
-async def test_agent_runner_cancellation_drops_failure_details() -> None:
-    """Given preobserved cancellation, When Agent path commits, Then no failure fields leak."""
-    run = running_run()
-    committer = RecordingCommitter(run)
-
-    await execute_lease(
-        lease(cancelled=True),
-        WorkerDependencies(LoadedRepository(run), committer, lambda: NOW, StructuredRunner()),
-        router(),
-        WorkerConfig(),
-    )
-
-    request = committer.requests[0]
-    assert request.completion.status is RunStatus.CANCELLED
-    assert request.error_code is None
-    assert request.error_message is None
-
-
-@pytest.mark.anyio
-async def test_cancellation_winning_terminal_race_retries_as_cancelled() -> None:
-    """Given 成功提交观察到取消, When 处理竞态, Then 第二次仅提交取消终态."""
-    run = running_run()
-    committer = RecordingCommitter(run, TerminalCancellationRequested(run.id))
-
-    await execute_lease(
-        lease(),
-        WorkerDependencies(LoadedRepository(run), committer, lambda: NOW),
-        router(),
-        WorkerConfig(),
-    )
-
-    assert [request.completion.status for request in committer.requests] == [
-        RunStatus.SUCCEEDED,
-        RunStatus.CANCELLED,
-    ]
-
-
-@pytest.mark.anyio
-async def test_persisted_runtime_selection_mismatch_commits_failed_terminal() -> None:
-    """Given 持久选择漂移, When 执行, Then 不调用适配器并提交失败."""
-    run = replace(
-        running_run(),
-        runtime=RuntimeSelection(RuntimeKind.DEEP, "v1"),
-    )
-    committer = RecordingCommitter(run)
-
-    await execute_lease(
-        lease(),
-        WorkerDependencies(LoadedRepository(run), committer, lambda: NOW),
-        router(),
-        WorkerConfig(),
-    )
-
-    assert committer.requests[0].completion.status is RunStatus.FAILED
-
-
-@pytest.mark.anyio
-async def test_stream_text_is_batched_and_flushed_before_terminal() -> None:
-    """Small text deltas are coalesced and the remainder precedes the terminal frame."""
-    run = running_run()
+    approval = ApprovalRequest(interaction_id="int_waiting001", title="标题", outline="大纲")
+    runner = StructuredRunner(AgentWaitingForApproval(approval))
     committer = RecordingCommitter(run)
     store = RecordingStreamStore()
-    runtime_router = RuntimeRouter(
-        default_registry(
-            StreamingAdapter(),
-            FakeRuntimeAdapter(AdapterIdentity("deep-stream", RuntimeKind.DEEP)),
-        )
+    await execute_lease(
+        lease(),
+        WorkerDependencies(LoadedRepository(run), committer, lambda: NOW, runner, store.port()),
+        WorkerConfig(),
     )
+    request = committer.requests[0]
+    assert request.completion.status is RunStatus.WAITING_INPUT
+    assert str(request.completion.pending_interaction_id) == approval.interaction_id
+    assert request.interaction_payload == approval.model_dump(mode="json")
+    assert request.interaction_kind == approval.kind
+    assert store.envelopes[0].kind is RedisStreamKind.APPROVAL_REQUIRED
 
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    "lost",
+    ["cancelled", "expired", "revision", "owner", "attempt", "missing"],
+)
+async def test_invalid_admission_never_runs_or_publishes(lost: str) -> None:
+    run = running_run()
+    current = lease(cancelled=lost == "cancelled")
+    if lost == "expired":
+        current = replace(current, expires_at=NOW)
+    elif lost == "revision":
+        run = replace(run, revision=3)
+    elif lost == "owner":
+        run = replace(run, execution_owner=ExecutionOwnerId("worker_other0001"))
+    elif lost == "attempt":
+        run = replace(run, attempt=2)
+    repository = MissingRepository(run) if lost == "missing" else LoadedRepository(run)
+    runner = StructuredRunner()
+    committer = RecordingCommitter(run)
+    store = RecordingStreamStore()
+    await execute_lease(
+        current,
+        WorkerDependencies(repository, committer, lambda: NOW, runner, store.port()),
+        WorkerConfig(),
+    )
+    assert runner.calls == 0
+    assert committer.requests == []
+    assert repository.renewals == []
+    assert store.activations == []
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("rejected", ["lost", "conflict", "cancelled", "replay"])
+async def test_rejected_commit_never_publishes_or_overwrites_cancelled(rejected: str) -> None:
+    run = running_run()
+    results: dict[str, TerminalCommitResult] = {
+        "lost": TerminalLeaseLost(run.id),
+        "conflict": TerminalStateConflict(run.id),
+        "cancelled": TerminalCancellationRequested(run.id),
+        "replay": TerminalReplay(replace(run, status=RunStatus.CANCELLED, execution_owner=None)),
+    }
+    committer = RecordingCommitter(run, results[rejected])
+    store = RecordingStreamStore()
     await execute_lease(
         lease(),
         WorkerDependencies(
             LoadedRepository(run),
             committer,
             lambda: NOW,
-            stream_store=cast("RedisStreamStore", cast("object", store)),
+            StructuredRunner(),
+            store.port(),
         ),
-        runtime_router,
-        WorkerConfig(stream_flush_chars=5, stream_flush_interval=timedelta(seconds=30)),
+        WorkerConfig(),
     )
-
-    assert store.activations == [(run.id, 1)]
-    assert [item.kind for item in store.envelopes] == [
-        RedisStreamKind.TEXT_DELTA,
-        RedisStreamKind.TEXT_DELTA,
-        RedisStreamKind.TERMINAL,
-    ]
-    assert [item.payload["text"] for item in store.envelopes[:2]] == ["abcde", "f"]
+    assert len(committer.requests) == 1
     assert committer.requests[0].completion.status is RunStatus.SUCCEEDED
+    assert store.envelopes == []
 
 
 @pytest.mark.anyio
-async def test_redis_write_failure_commits_redis_failure_without_success() -> None:
-    """A transient-stream write failure must not produce a pseudo-success result."""
+async def test_redis_failure_after_commit_cannot_rewrite_success() -> None:
     run = running_run()
     committer = RecordingCommitter(run)
     store = RecordingStreamStore(fail_append=True)
-    runtime_router = RuntimeRouter(
-        default_registry(
-            StreamingAdapter(),
-            FakeRuntimeAdapter(AdapterIdentity("deep-stream-failure", RuntimeKind.DEEP)),
-        )
-    )
-
     await execute_lease(
         lease(),
         WorkerDependencies(
             LoadedRepository(run),
             committer,
             lambda: NOW,
-            stream_store=cast("RedisStreamStore", cast("object", store)),
+            StructuredRunner(),
+            store.port(),
         ),
-        runtime_router,
-        WorkerConfig(stream_flush_chars=5, stream_flush_interval=timedelta(seconds=30)),
+        WorkerConfig(),
     )
+    assert len(committer.requests) == 1
+    assert committer.requests[0].completion.status is RunStatus.SUCCEEDED
+    assert store.envelopes == []
 
-    request = committer.requests[0]
-    assert request.completion.status is RunStatus.FAILED
-    assert request.result is None
-    assert request.error_code == "redis_failure"
-    assert request.error_message == "Redis 流存储不可用"
+
+@pytest.mark.anyio
+async def test_redis_activation_failure_commits_failure_before_runner() -> None:
+    run = running_run()
+    committer = RecordingCommitter(run)
+    runner = StructuredRunner()
+    store = RecordingStreamStore(fail_activate=True)
+    await execute_lease(
+        lease(),
+        WorkerDependencies(LoadedRepository(run), committer, lambda: NOW, runner, store.port()),
+        WorkerConfig(),
+    )
+    assert runner.calls == 0
+    assert committer.requests[0].completion.status is RunStatus.FAILED
+    assert committer.requests[0].error_code == "redis_failure"

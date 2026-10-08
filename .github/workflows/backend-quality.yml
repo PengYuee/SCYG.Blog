@@ -3,6 +3,18 @@ name: backend-quality
 on:
   workflow_dispatch:
     inputs:
+      accepted_base:
+        description: Accepted pre-change contract commit SHA
+        required: true
+        type: string
+      cutover_base:
+        description: Optional explicitly approved one-time cutover baseline SHA
+        required: false
+        type: string
+      cutover_head:
+        description: Optional explicitly approved one-time cutover HEAD SHA
+        required: false
+        type: string
       plan_document:
         description: 'Todo13 计划文档正文（手动 F1 审计必填）'
         required: false
@@ -15,10 +27,20 @@ on:
     branches: [main]
     paths:
       - "backend/**"
+      - "contracts/**"
+      - "compose.yaml"
+      - ".dockerignore"
+      - "agent/scripts/contracts_gate.py"
+      - "Taskfile.yml"
       - ".github/workflows/backend-quality.yml"
   pull_request:
     paths:
       - "backend/**"
+      - "contracts/**"
+      - "compose.yaml"
+      - ".dockerignore"
+      - "agent/scripts/contracts_gate.py"
+      - "Taskfile.yml"
       - ".github/workflows/backend-quality.yml"
 
 permissions:
@@ -34,7 +56,7 @@ defaults:
     working-directory: backend
 
 env:
-  GO_VERSION: "1.26.0"
+  GO_VERSION: "1.26.8"
   TASK_VERSION: "3.49.1"
 
 jobs:
@@ -46,6 +68,8 @@ jobs:
       # actions/checkout v7.0.0，来源：官方 release。
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           clean: true
           persist-credentials: false
       # actions/setup-go v6.5.0，来源：官方 release。
@@ -57,6 +81,12 @@ jobs:
       - uses: go-task/setup-task@01a4adf9db2d14c1de7a560f09170b6e0df736aa
         with:
           version: ${{ env.TASK_VERSION }}
+      - name: Lint contracts and enforce accepted-base compatibility
+        env:
+          SCYG_CONTRACTS_ACCEPTED_BASE: ${{ github.event.pull_request.base.sha || github.event.before || inputs.accepted_base }}
+          SCYG_CONTRACTS_CUTOVER_BASE: ${{ inputs.cutover_base || vars.CONTRACTS_CUTOVER_BASE }}
+          SCYG_CONTRACTS_CUTOVER_HEAD: ${{ inputs.cutover_head || vars.CONTRACTS_CUTOVER_HEAD }}
+        run: python ../agent/scripts/contracts_gate.py
       - name: Verify generated artifacts are fresh
         run: task generate:freshness
       - name: Run shared static quality gates including pinned govulncheck
@@ -106,6 +136,7 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
+          fetch-depth: 0
           clean: true
           persist-credentials: false
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
@@ -134,9 +165,11 @@ jobs:
     env:
       SCYG_POSTGRES_PASSWORD: ci-compose-only-password
       SCYG_DATABASE_DSN: postgres://scyg_blog:ci-compose-only-password@postgres:5432/scyg_blog?sslmode=disable
+      SCYG_AUTH_JWT_SECRET: ci-compose-only-jwt-secret-01234567890123456789
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
+          fetch-depth: 0
           clean: true
           persist-credentials: false
       - uses: go-task/setup-task@01a4adf9db2d14c1de7a560f09170b6e0df736aa # v2.1.0

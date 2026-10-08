@@ -49,12 +49,6 @@ class ConfigurationFileError(ValueError):
         return f"{self.path}: {self.reason}"
 
 
-class RuntimeProvider(StrEnum):
-    """限定生产运行时提供方."""
-
-    OPENAI_COMPATIBLE = "openai-compatible"
-
-
 class ModelProtocol(StrEnum):
     """Explicit provider API protocol shared by all model tiers."""
 
@@ -98,6 +92,7 @@ class ApplicationSettings(BaseSettings):
 
     model_config: ClassVar[SettingsConfigDict] = SettingsConfigDict(
         env_prefix="SCYG_AGENT_",
+        env_nested_delimiter="__",
         frozen=True,
         extra="forbid",
     )
@@ -118,19 +113,10 @@ class ApplicationSettings(BaseSettings):
     redis_read_timeout_seconds: Annotated[float, Field(gt=0, le=300)] = 30.0
     stream_flush_chars: Annotated[int, Field(ge=1, le=32_000)] = 4_096
     stream_flush_interval_ms: Annotated[int, Field(ge=1, le=60_000)] = 100
-    jwt_public_key_path: Path = Field(repr=False)
-    jwt_issuer: SecretStr = Field(default=SecretStr("scyg-blog"), repr=False)
-    jwt_audience: SecretStr = Field(default=SecretStr("scyg-agent"), repr=False)
-    jwt_service_subject: SecretStr = Field(default=SecretStr("scyg-blog-api"), repr=False)
-    runtime_provider: RuntimeProvider = RuntimeProvider.OPENAI_COMPATIBLE
-    provider_base_url: AnyHttpUrl = Field(repr=False)
-    provider_api_key: SecretStr = Field(repr=False)
-    provider_model: Annotated[str, Field(min_length=1, repr=False)]
     blog_grpc_target: SecretStr = Field(default=SecretStr("127.0.0.1:50051"), repr=False)
     blog_deadline_seconds: PositiveSeconds = 10
-    simple_concurrency: Annotated[int, Field(ge=1, le=64)] = 4
-    models: ModelSettings | None = None
-    deep_concurrency: Annotated[int, Field(ge=1, le=1)] = 1
+    worker_concurrency: Annotated[int, Field(ge=1, le=64)] = 4
+    models: ModelSettings
     lease_seconds: PositiveSeconds = 60
     heartbeat_seconds: PositiveSeconds = 15
     shutdown_seconds: PositiveSeconds = 30
@@ -138,19 +124,6 @@ class ApplicationSettings(BaseSettings):
     worker_error_backoff_seconds: PositiveSeconds = 1
     worker_drain_seconds: PositiveSeconds = 10
     feature_flags: FeatureFlags = FeatureFlags()
-
-    @model_validator(mode="after")
-    def normalize_model_settings(self) -> Self:
-        """Map the legacy single provider to all tiers until TOML migrates."""
-        if self.models is None:
-            tier = ModelTierSettings(
-                model=self.provider_model,
-                base_url=self.provider_base_url,
-                api_key=self.provider_api_key,
-                timeout_seconds=self.shutdown_seconds,
-            )
-            object.__setattr__(self, "models", ModelSettings(fast=tier, standard=tier, strong=tier))
-        return self
 
     @model_validator(mode="after")
     def validate_database_url(self) -> Self:

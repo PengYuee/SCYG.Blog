@@ -35,6 +35,19 @@ func (repo *Repository) FindActiveByUsername(ctx context.Context, username strin
 	return userFromRecord(row)
 }
 
+// FindActiveByID resolves an internal caller's declared user without JWT parsing.
+func (repo *Repository) FindActiveByID(ctx context.Context, id ID) (*User, error) {
+	var row userRecord
+	result := repo.db.WithContext(ctx).Where("id = ? AND is_active = true", id.String()).Take(&row)
+	if errors.Is(result.Error, gorm.ErrRecordNotFound) {
+		return nil, ErrNotFound
+	}
+	if result.Error != nil {
+		return nil, translateDatabase(result.Error)
+	}
+	return userFromRecord(row)
+}
+
 func translateDatabase(err error) error {
 	if err == nil {
 		return nil

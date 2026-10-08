@@ -26,7 +26,7 @@ func Test_ContentREST_CreateManageArticle_maps_supported_statuses_and_returns_cr
 		t.Run(testCase.name, func(t *testing.T) {
 			// Given
 			createdAt := time.Date(2026, 7, 15, 1, 0, 0, 0, time.UTC)
-			service := &testService{allowWrites: true, article: article.Result{ID: 7, ArticleTypeID: 1, Title: "标题", Slug: "title", Digest: "摘要", Content: "正文", Status: testCase.resultStatus, TagIDs: []int64{1}, Version: 1, CreatedAt: createdAt}}
+			service := &testService{allowWrites: true, article: article.Result{ID: 7, ArticleTypeID: 1, ArticleTypeName: "News", Title: "标题", Slug: "title", Digest: "摘要", Content: "正文", Status: testCase.resultStatus, TagIDs: []int64{1}, Version: 1, CreatedAt: createdAt}}
 			handler, err := restcontent.NewHandler(service, service, service, service, service, image.DefaultPolicy())
 			if err != nil {
 				t.Fatalf("创建 REST 处理器失败：%v", err)

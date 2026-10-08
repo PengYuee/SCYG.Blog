@@ -16,6 +16,7 @@ import (
 	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/application"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/article"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/image"
+	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/operation"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/taxonomy"
 	identityauth "github.com/PengYuee/SCYG.Blog/backend/internal/modules/identity/auth"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/identity/user"
@@ -60,6 +61,9 @@ func DefaultDependencies() Dependencies {
 		},
 		NewArticleImages: func(resource Database, authorizer content.Authorizer, currentAuthor content.CurrentAuthorProvider, clock content.Clock, articles *article.Service, images *image.Service) (*application.ArticleImages, error) {
 			return application.NewArticleImages(application.Dependencies{DB: resource.GORM(), Clock: clock, Authorizer: authorizer, CurrentAuthor: currentAuthor, Articles: articles, Images: images})
+		},
+		NewArticleResponses: func(resource Database, articles *article.Service, categories *taxonomy.Service, images *application.ArticleImages) (*application.ArticleResponses, error) {
+			return application.NewArticleResponses(resource.GORM(), articles, categories, images)
 		},
 		NewImageCleanup: func(resource Database, filesystem *blobstorage.Filesystem, policy image.Policy, clock content.Clock) (CleanupRunner, error) {
 			return image.NewDatabaseCleanup(resource.GORM(), image.NewFilesystemBlob(filesystem, policy), clock, policy)
@@ -204,12 +208,33 @@ func New(ctx context.Context, options Options, dependencies Dependencies) (*App,
 	if articleImages == nil {
 		return nil, fail(ctx, errors.New("文章图片协作构造器返回空结果"))
 	}
+	articleResponses, err := dependencies.NewArticleResponses(db, articleService, taxonomyService, articleImages)
+	if err != nil {
+		return nil, fail(ctx, fmt.Errorf("构造文章响应协作: %w", err))
+	}
+	if articleResponses == nil {
+		return nil, fail(ctx, errors.New("文章响应协作构造器返回空结果"))
+	}
+	var integration *agentIntegration
+	var agentOptions *rest.AgentOptions
+	var ledger *operation.Service
+	if cfg.Agent().Enabled() {
+		integration, ledger, err = newAgentIntegration(cfg.Agent(), db, articleService, taxonomyService, articleImages)
+		if err != nil {
+			return nil, fail(ctx, fmt.Errorf("构造 Agent 集成: %w", err))
+		}
+		stack = append(stack, cleanupStep{name: "Agent client", close: func(context.Context) error { return integration.client.Close() }})
+		agentOptions = &rest.AgentOptions{Client: integration.client, ReadyTimeout: cfg.Agent().UnaryTimeout(), IdleTimeout: cfg.Agent().SSEIdleTimeout()}
+	}
 	cleanupRunner, err := dependencies.NewImageCleanup(db, imageFilesystem, imagePolicy, clock)
 	if err != nil {
 		return nil, fail(ctx, fmt.Errorf("构造图片清理: %w", err))
 	}
 	if nilLike(cleanupRunner) {
 		return nil, fail(ctx, errors.New("图片清理构造器返回空结果"))
+	}
+	if ledger != nil {
+		cleanupRunner = combinedCleanup{images: cleanupRunner, operations: ledger}
 	}
 	worker, workerErr := dependencies.NewCleanupWorker(cleanupRunner, imageConfig.CleanupInterval(), logger)
 	if workerErr != nil {
@@ -222,21 +247,27 @@ func New(ctx context.Context, options Options, dependencies Dependencies) (*App,
 	if err != nil {
 		return nil, fail(ctx, fmt.Errorf("构造健康检查: %w", err))
 	}
-	mount, err := dependencies.NewREST(rest.Options{ArticleQueries: articleService, ArticleCommands: articleImages, ArticleDeleter: articleService, Taxonomy: taxonomyService, Images: imageService, ImagePolicy: imagePolicy, Health: health, DocsEnabled: cfg.Docs().Enabled(), TokenVerifier: tokenService, Login: loginService})
+	mount, err := dependencies.NewREST(rest.Options{ArticleQueries: articleResponses, ArticleCommands: articleResponses, ArticleDeleter: articleService, Taxonomy: taxonomyService, Images: imageService, ImagePolicy: imagePolicy, Health: health, DocsEnabled: cfg.Docs().Enabled(), TokenVerifier: tokenService, Login: loginService, Agent: agentOptions})
 	if err != nil {
 		return nil, fail(ctx, fmt.Errorf("构造 REST: %w", err))
 	}
 	if nilLike(mount) {
 		return nil, fail(ctx, errors.New("REST 构造器返回空结果"))
 	}
-	server, err := dependencies.NewHTTP(httpserver.Options{Logger: logger, Mount: mount, HTTP: cfg.HTTP(), ArticleImages: imageConfig})
+	var agentLimitWriter func(*gin.Context)
+	if integration != nil {
+		agentLimitWriter = rest.AgentRequestTooLarge
+	}
+	server, err := dependencies.NewHTTP(httpserver.Options{Logger: logger, Mount: mount, HTTP: cfg.HTTP(), ArticleImages: imageConfig, AgentRequestTooLarge: agentLimitWriter})
 	if err != nil {
 		return nil, fail(ctx, fmt.Errorf("构造 HTTP: %w", err))
 	}
 	if nilLike(server) {
 		return nil, fail(ctx, errors.New("HTTP 构造器返回空结果"))
 	}
-	return newApp(ctx, cfg, logger, health, server, worker, telemetry, &databaseWithStorage{Database: db, storage: imageFilesystem}, options.LifecycleObserver), nil
+	app := newApp(ctx, cfg, logger, health, server, worker, telemetry, &databaseWithStorage{Database: db, storage: imageFilesystem}, options.LifecycleObserver)
+	app.agent = integration
+	return app, nil
 }
 
 // databaseWithStorage 保持既有关闭顺序，并在数据库后关闭固定根句柄。

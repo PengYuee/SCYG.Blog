@@ -50,13 +50,12 @@ func NewDigest(raw string) (Digest, error) {
 	return Digest{value}, nil
 }
 
-// NewContent 解析非空文章正文。
+// NewContent 解析非全空白 UTF-8 正文，原样保留 Markdown 缩进、空格和换行。
 func NewContent(raw string) (Content, error) {
-	value := strings.TrimSpace(raw)
-	if !validResponseText(value, 0) {
+	if !validContent(raw) {
 		return Content{}, invalid("content")
 	}
-	return Content{value}, nil
+	return Content{raw}, nil
 }
 
 // NewName 解析并去除分类名称首尾空白。
@@ -88,13 +87,26 @@ func (value Slug) valid() bool {
 	return utf8.ValidString(value.value) && len([]rune(value.value)) <= 160 && matched
 }
 func (value Digest) valid() bool  { return validResponseText(value.value, 500) }
-func (value Content) valid() bool { return validResponseText(value.value, 0) }
+func (value Content) valid() bool { return validContent(value.value) }
 func validResponseText(value string, maximum int) bool {
 	if value == "" || !utf8.ValidString(value) || (maximum > 0 && len([]rune(value)) > maximum) {
 		return false
 	}
 	for _, character := range value {
 		if unicode.IsControl(character) {
+			return false
+		}
+	}
+	return true
+}
+
+// validContent 拒绝全空白正文，允许 LF、CR 和 TAB，其他控制字符仍不合法。
+func validContent(value string) bool {
+	if !utf8.ValidString(value) || strings.TrimSpace(value) == "" {
+		return false
+	}
+	for _, character := range value {
+		if unicode.IsControl(character) && character != '\n' && character != '\r' && character != '\t' {
 			return false
 		}
 	}

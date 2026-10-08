@@ -52,109 +52,172 @@ func NewArticleImages(dependencies Dependencies) (*ArticleImages, error) {
 	return &ArticleImages{db: dependencies.DB, clock: dependencies.Clock, authorizer: content.AuthorizerOrDeny(dependencies.Authorizer), currentAuthor: content.CurrentAuthorProviderOrUnavailable(dependencies.CurrentAuthor), articles: dependencies.Articles, images: dependencies.Images}, nil
 }
 
-// Create creates an article and commits its managed image references.
-func (workflow *ArticleImages) Create(ctx context.Context, input article.Create) (article.Result, error) {
+// PreparedCreate holds validated input and Blob-checked references before a write transaction.
+type PreparedCreate struct {
+	input         article.Create
+	references    image.PreparedReferences
+	hasReferences bool
+}
+
+// PreparedPatch holds one version-checked preview and its Blob-checked references.
+type PreparedPatch struct {
+	preview       article.PatchPreview
+	references    image.PreparedReferences
+	hasReferences bool
+}
+
+// PrepareCreate validates and authorizes creation without opening a write transaction.
+func (workflow *ArticleImages) PrepareCreate(ctx context.Context, input article.Create) (PreparedCreate, error) {
 	status, err := workflow.articles.ValidateCreate(input)
 	if err != nil {
-		return article.Result{}, err
+		return PreparedCreate{}, err
+	}
+	if err := workflow.authorizer.Authorize(ctx, article.ActionCreateArticle, content.Resource{Kind: "article"}); err != nil {
+		return PreparedCreate{}, permission()
+	}
+	if status == article.StatusPublished {
+		if err := workflow.authorizer.Authorize(ctx, article.ActionPublishArticle, content.Resource{Kind: "article"}); err != nil {
+			return PreparedCreate{}, permission()
+		}
 	}
 	keys, err := article.ManagedImageReferences(input.Content)
 	if err != nil {
-		return article.Result{}, validation(err)
+		return PreparedCreate{}, validation(err)
 	}
-	referenceKeys, err := image.ParseReferenceKeys(keys)
+	references, err := image.ParseReferenceKeys(keys)
+	if err != nil {
+		return PreparedCreate{}, stable(err)
+	}
+	prepared, err := workflow.prepare(ctx, 0, references)
+	if err != nil {
+		return PreparedCreate{}, err
+	}
+	return PreparedCreate{input: input, references: prepared, hasReferences: !references.Empty()}, nil
+}
+
+// Create prepares images outside the atomic article/reference write.
+func (workflow *ArticleImages) Create(ctx context.Context, input article.Create) (article.Result, error) {
+	prepared, err := workflow.PrepareCreate(ctx, input)
 	if err != nil {
 		return article.Result{}, stable(err)
 	}
+	var out article.Result
+	err = workflow.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var err error
+		out, err = workflow.CreateInTx(ctx, tx, prepared)
+		return err
+	})
+	if err != nil {
+		return article.Result{}, stable(err)
+	}
+	return out, stable(err)
+}
+
+// CreateInTx commits previously prepared input without Blob I/O.
+func (workflow *ArticleImages) CreateInTx(ctx context.Context, tx *gorm.DB, prepared PreparedCreate) (article.Result, error) {
 	if err := workflow.authorizer.Authorize(ctx, article.ActionCreateArticle, content.Resource{Kind: "article"}); err != nil {
 		return article.Result{}, permission()
 	}
-	if status == article.StatusPublished {
+	if prepared.input.Status == article.ArticleCreationStatusPublished {
 		if err := workflow.authorizer.Authorize(ctx, article.ActionPublishArticle, content.Resource{Kind: "article"}); err != nil {
 			return article.Result{}, permission()
 		}
 	}
-	prepared, err := workflow.prepare(ctx, 0, referenceKeys)
-	if err != nil {
-		return article.Result{}, err
-	}
-	var result article.Result
-	var transactionResult article.Result
-	err = workflow.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var err error
-		transactionResult, err = workflow.articles.CreateInTx(ctx, tx, input)
-		if err != nil {
-			return err
+	if prepared.hasReferences {
+		if err := workflow.authorizer.Authorize(ctx, ActionCommitArticleImages, content.Resource{Kind: "article"}); err != nil {
+			return article.Result{}, permission()
 		}
-		if !referenceKeys.Empty() {
-			return workflow.images.ReplaceReferencesInTx(ctx, tx, transactionResult.ID, prepared, workflow.clock.Now().UTC())
-		}
-		return nil
-	})
-	if err == nil {
-		result = transactionResult
 	}
-	return result, stable(err)
-}
-
-// Patch applies an article content patch and replaces its managed image references.
-func (workflow *ArticleImages) Patch(ctx context.Context, input article.Patch) (article.Result, error) {
-	if err := workflow.articles.ValidatePatch(input); err != nil {
-		return article.Result{}, err
-	}
-	if err := workflow.authorizer.Authorize(ctx, article.ActionReviseArticle, content.Resource{Kind: "article", ID: input.ID}); err != nil {
-		return article.Result{}, permission()
-	}
-	keys, previewErr := workflow.preview(ctx, input)
-	if previewErr != nil {
-		return article.Result{}, previewErr
-	}
-	referenceKeys, err := image.ParseReferenceKeys(keys)
+	out, err := workflow.articles.CreateInTx(ctx, tx, prepared.input)
 	if err != nil {
 		return article.Result{}, stable(err)
 	}
-	prepared, err := workflow.prepare(ctx, input.ID, referenceKeys)
-	if err != nil {
-		return article.Result{}, err
+	if prepared.hasReferences {
+		err = workflow.images.ReplaceReferencesInTx(ctx, tx, out.ID, prepared.references, workflow.clock.Now().UTC())
 	}
-	var result article.Result
-	err = workflow.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var transactionResult article.Result
-		transactionResult, err = workflow.articles.PatchInTx(ctx, tx, input)
-		if err != nil {
-			return err
-		}
-		result = transactionResult
-		return workflow.images.ReplaceReferencesInTx(ctx, tx, transactionResult.ID, prepared, workflow.clock.Now().UTC())
-	})
-	return result, stable(err)
+	return out, stable(err)
 }
 
-// Publish delegates the article lifecycle transition to the article feature.
+// PreparePatch previews the patch and loads images before opening the write transaction.
+func (workflow *ArticleImages) PreparePatch(ctx context.Context, input article.Patch) (PreparedPatch, error) {
+	if err := workflow.articles.ValidatePatch(input); err != nil {
+		return PreparedPatch{}, err
+	}
+	if err := workflow.authorizer.Authorize(ctx, article.ActionReviseArticle, content.Resource{Kind: "article", ID: input.ID}); err != nil {
+		return PreparedPatch{}, permission()
+	}
+	preview, err := workflow.articles.PreviewPatch(ctx, input)
+	if err != nil {
+		return PreparedPatch{}, stable(err)
+	}
+	references, err := image.ParseReferenceKeys(preview.Keys)
+	if err != nil {
+		return PreparedPatch{}, stable(err)
+	}
+	prepared, err := workflow.prepare(ctx, input.ID, references)
+	if err != nil {
+		return PreparedPatch{}, err
+	}
+	return PreparedPatch{preview: preview, references: prepared, hasReferences: !references.Empty()}, nil
+}
+
+// Patch prepares once and atomically persists the preview and references.
+func (workflow *ArticleImages) Patch(ctx context.Context, input article.Patch) (article.Result, error) {
+	prepared, err := workflow.PreparePatch(ctx, input)
+	if err != nil {
+		return article.Result{}, stable(err)
+	}
+	var out article.Result
+	err = workflow.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		var err error
+		out, err = workflow.PatchInTx(ctx, tx, prepared)
+		return err
+	})
+	if err != nil {
+		return article.Result{}, stable(err)
+	}
+	return out, stable(err)
+}
+
+// PatchInTx conditionally saves the prepared version and commits references without Blob I/O.
+func (workflow *ArticleImages) PatchInTx(ctx context.Context, tx *gorm.DB, prepared PreparedPatch) (article.Result, error) {
+	if prepared.preview.Article == nil {
+		return article.Result{}, stable(errors.New("article patch preview is nil"))
+	}
+	if err := workflow.authorizer.Authorize(ctx, article.ActionReviseArticle, content.Resource{Kind: "article", ID: prepared.preview.Article.ID().Int64()}); err != nil {
+		return article.Result{}, permission()
+	}
+	if prepared.hasReferences {
+		if err := workflow.authorizer.Authorize(ctx, ActionCommitArticleImages, content.Resource{Kind: "article", ID: prepared.preview.Article.ID().Int64()}); err != nil {
+			return article.Result{}, permission()
+		}
+	}
+	out, err := workflow.articles.SavePatchPreviewInTx(ctx, tx, prepared.preview)
+	if err != nil {
+		return article.Result{}, stable(err)
+	}
+	err = workflow.images.ReplaceReferencesInTx(ctx, tx, out.ID, prepared.references, workflow.clock.Now().UTC())
+	return out, stable(err)
+}
+
+// Publish delegates the article lifecycle transition.
 func (workflow *ArticleImages) Publish(ctx context.Context, input article.Publish) (article.Result, error) {
 	return workflow.articles.Publish(ctx, input)
 }
 
-// Archive delegates the article lifecycle transition to the article feature.
+// Archive delegates the article lifecycle transition.
 func (workflow *ArticleImages) Archive(ctx context.Context, input article.Archive) (article.Result, error) {
 	return workflow.articles.Archive(ctx, input)
 }
 
-func (workflow *ArticleImages) preview(ctx context.Context, input article.Patch) ([]string, error) {
-	var preview article.PatchPreview
-	err := workflow.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var err error
-		preview, err = workflow.articles.PreviewPatchInTx(ctx, tx, input)
-		if err != nil {
-			return err
-		}
-		_, err = image.ParseReferenceKeys(preview.Keys)
-		return err
-	})
-	if err != nil {
-		return nil, stable(err)
-	}
-	return preview.Keys, nil
+// PublishInTx publishes using the caller-owned transaction.
+func (workflow *ArticleImages) PublishInTx(ctx context.Context, tx *gorm.DB, input article.Publish) (article.Result, error) {
+	return workflow.articles.PublishInTx(ctx, tx, input)
+}
+
+// ArchiveInTx archives using the caller-owned transaction.
+func (workflow *ArticleImages) ArchiveInTx(ctx context.Context, tx *gorm.DB, input article.Archive) (article.Result, error) {
+	return workflow.articles.ArchiveInTx(ctx, tx, input)
 }
 
 func (workflow *ArticleImages) prepare(ctx context.Context, articleID int64, keys image.ReferenceKeys) (image.PreparedReferences, error) {

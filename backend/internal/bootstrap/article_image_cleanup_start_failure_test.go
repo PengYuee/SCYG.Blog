@@ -71,6 +71,8 @@ func (server *cleanupStartFailureServer) Shutdown(context.Context) error {
 	return server.listener.Close()
 }
 
+func (server *cleanupStartFailureServer) Close() error { return server.Shutdown(context.Background()) }
+
 // cleanupInvalidAddressListener 返回不可解析地址但保留真实监听资源。
 type cleanupInvalidAddressListener struct{ net.Listener }
 

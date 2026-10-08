@@ -1,0 +1,172 @@
+name: ${SCYG_COMPOSE_PROJECT_NAME:-scyg-blog-agent}
+
+services:
+  blog-db:
+    image: postgres:17.5@sha256:aadf2c0696f5ef357aa7a68da995137f0cf17bad0bf6e1f17de06ae5c769b302
+    environment:
+      POSTGRES_DB: scyg_blog
+      POSTGRES_USER: scyg_blog
+      POSTGRES_PASSWORD: ${SCYG_BLOG_DB_PASSWORD:?Set Blog database password}
+    volumes:
+      - blog-data:/var/lib/postgresql/data
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U scyg_blog -d scyg_blog]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:17.5@sha256:aadf2c0696f5ef357aa7a68da995137f0cf17bad0bf6e1f17de06ae5c769b302
+    environment:
+      POSTGRES_DB: scyg_agent
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${SCYG_POSTGRES_PASSWORD:?Set Agent database administrator password}
+      SCYG_AGENT_DB_PASSWORD: ${SCYG_AGENT_DB_PASSWORD:?Set Agent application password}
+    volumes:
+      - agent-data:/var/lib/postgresql/data
+      - ./agent/deploy/postgres/init/001_roles.sql:/docker-entrypoint-initdb.d/001_roles.sql:ro
+    healthcheck:
+      test: [CMD-SHELL, pg_isready -U postgres -d scyg_agent]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.4-alpine@sha256:fd2f8954a0f6bb24cd8819c9a1bf7e033efe9969d3b571104abb9a58c61e7068
+    command: [redis-server, --appendonly, "no", --save, ""]
+    healthcheck:
+      test: [CMD, redis-cli, ping]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    restart: unless-stopped
+
+  blog-setup:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    entrypoint: [/migrate, "-config=", up]
+    environment:
+      SCYG_APP_ENV: production
+      SCYG_DATABASE_DSN: ${SCYG_DATABASE_DSN:?Set Blog DSN using host blog-db}
+      SCYG_AUTH_JWT_SECRET: ${SCYG_AUTH_JWT_SECRET:?Set Blog JWT signing secret}
+      SCYG_DOCS_ENABLED: "false"
+    depends_on:
+      blog-db:
+        condition: service_healthy
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: "no"
+
+  blog:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      SCYG_APP_ENV: production
+      SCYG_DATABASE_DSN: ${SCYG_DATABASE_DSN:?Set Blog DSN using host blog-db}
+      SCYG_AUTH_JWT_SECRET: ${SCYG_AUTH_JWT_SECRET:?Set Blog JWT signing secret}
+      SCYG_HTTP_HOST: 0.0.0.0
+      SCYG_HTTP_PORT: "8080"
+      SCYG_DOCS_ENABLED: "false"
+      SCYG_AGENT_ENABLED: "true"
+      SCYG_AGENT_TARGET: agent:9090
+      SCYG_AGENT_BLOG_CONTENT_LISTEN: 0.0.0.0:9091
+      SCYG_AGENT_UNARY_TIMEOUT: 30s
+      SCYG_AGENT_SSE_IDLE_TIMEOUT: 90s
+      SCYG_AGENT_GRPC_SHUTDOWN_TIMEOUT: 10s
+    depends_on:
+      blog-db:
+        condition: service_healthy
+      blog-setup:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:${SCYG_API_PORT:-8080}:8080"
+    read_only: true
+    volumes:
+      - article-images:/app/data/article-images
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: unless-stopped
+
+  agent-setup:
+    build:
+      context: .
+      dockerfile: agent/Dockerfile
+      target: runtime
+    entrypoint: [/opt/venv/bin/python, -m, scyg_agent.deployment]
+    environment:
+      SCYG_DEPLOY_ADMIN_DATABASE_URL: ${SCYG_POSTGRES_ADMIN_DATABASE_URL:?Set Agent administrator DSN using host postgres}
+      SCYG_DEPLOY_ADMIN_DATABASE_PASSWORD: ${SCYG_POSTGRES_PASSWORD:?Set Agent database administrator password}
+      SCYG_DEPLOY_AGENT_DATABASE_URL: ${SCYG_AGENT_DATABASE_URL:?Set Agent application DSN using host postgres}
+      SCYG_DEPLOY_AGENT_DATABASE_PASSWORD: ${SCYG_AGENT_DB_PASSWORD:?Set Agent application password}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+      - /var/tmp/scyg-agent:rw,noexec,nosuid,nodev,size=16m,uid=10001,gid=10001
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    restart: "no"
+
+  agent:
+    build:
+      context: .
+      dockerfile: agent/Dockerfile
+      target: runtime
+    environment:
+      SCYG_AGENT_HTTP_HOST: 0.0.0.0
+      SCYG_AGENT_HTTP_PORT: "8080"
+      SCYG_AGENT_GRPC_HOST: 0.0.0.0
+      SCYG_AGENT_GRPC_PORT: "9090"
+      SCYG_AGENT_DATABASE_URL: ${SCYG_AGENT_DATABASE_URL:?Set Agent application DSN using host postgres}
+      SCYG_AGENT_BLOG_GRPC_TARGET: blog:9091
+      SCYG_AGENT_MODELS__PROTOCOL: ${SCYG_AGENT_MODELS__PROTOCOL:-chat_completions}
+      SCYG_AGENT_MODELS__FAST__MODEL: ${SCYG_AGENT_MODELS__FAST__MODEL:?Set fast model}
+      SCYG_AGENT_MODELS__FAST__BASE_URL: ${SCYG_AGENT_MODELS__FAST__BASE_URL:?Set fast base URL}
+      SCYG_AGENT_MODELS__FAST__API_KEY: ${SCYG_AGENT_MODELS__FAST__API_KEY:?Set fast API key}
+      SCYG_AGENT_MODELS__FAST__TIMEOUT_SECONDS: ${SCYG_AGENT_MODELS__FAST__TIMEOUT_SECONDS:-60}
+      SCYG_AGENT_MODELS__STANDARD__MODEL: ${SCYG_AGENT_MODELS__STANDARD__MODEL:?Set standard model}
+      SCYG_AGENT_MODELS__STANDARD__BASE_URL: ${SCYG_AGENT_MODELS__STANDARD__BASE_URL:?Set standard base URL}
+      SCYG_AGENT_MODELS__STANDARD__API_KEY: ${SCYG_AGENT_MODELS__STANDARD__API_KEY:?Set standard API key}
+      SCYG_AGENT_MODELS__STANDARD__TIMEOUT_SECONDS: ${SCYG_AGENT_MODELS__STANDARD__TIMEOUT_SECONDS:-120}
+      SCYG_AGENT_MODELS__STRONG__MODEL: ${SCYG_AGENT_MODELS__STRONG__MODEL:?Set strong model}
+      SCYG_AGENT_MODELS__STRONG__BASE_URL: ${SCYG_AGENT_MODELS__STRONG__BASE_URL:?Set strong base URL}
+      SCYG_AGENT_MODELS__STRONG__API_KEY: ${SCYG_AGENT_MODELS__STRONG__API_KEY:?Set strong API key}
+      SCYG_AGENT_MODELS__STRONG__TIMEOUT_SECONDS: ${SCYG_AGENT_MODELS__STRONG__TIMEOUT_SECONDS:-180}
+      SCYG_AGENT_WORKER_CONCURRENCY: ${SCYG_AGENT_WORKER_CONCURRENCY:-4}
+      SCYG_AGENT_REDIS_URL: redis://redis:6379/0
+      SCYG_AGENT_REDIS_TTL_SECONDS: "86400"
+      SCYG_AGENT_REDIS_STREAM_MAXLEN: "10000"
+      SCYG_AGENT_REDIS_CONNECT_TIMEOUT_SECONDS: "5"
+      SCYG_AGENT_REDIS_READ_TIMEOUT_SECONDS: "30"
+      SCYG_AGENT_SHUTDOWN_SECONDS: "30"
+    depends_on:
+      agent-setup:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      blog:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${SCYG_AGENT_HTTP_PORT:-8081}:8080"
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m
+      - /var/tmp/scyg-agent:rw,noexec,nosuid,nodev,size=16m,uid=10001,gid=10001
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 40s
+    restart: unless-stopped
+
+volumes:
+  blog-data:
+  agent-data:
+  article-images:

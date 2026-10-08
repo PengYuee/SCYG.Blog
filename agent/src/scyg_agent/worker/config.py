@@ -4,8 +4,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from typing import Final, override
 
-DEFAULT_SIMPLE_CAPACITY: Final = 4
-DEFAULT_DEEP_CAPACITY: Final = 1
+DEFAULT_CAPACITY: Final = 4
 MAX_CAPACITY: Final = 64
 DEFAULT_STREAM_FLUSH_CHARS: Final = 4_096
 MAX_STREAM_FLUSH_CHARS: Final = 32_000
@@ -26,10 +25,9 @@ class InvalidWorkerConfigError(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class WorkerConfig:
-    """保存独立运行时容量及有界生命周期时长."""
+    """保存统一 Recipe 执行容量及有界生命周期时长."""
 
-    simple_capacity: int = DEFAULT_SIMPLE_CAPACITY
-    deep_capacity: int = DEFAULT_DEEP_CAPACITY
+    capacity: int = DEFAULT_CAPACITY
     lease_duration: timedelta = timedelta(seconds=30)
     renewal_fraction: float = 0.4
     poll_interval: timedelta = timedelta(milliseconds=100)
@@ -40,12 +38,9 @@ class WorkerConfig:
 
     def __post_init__(self) -> None:
         """拒绝 bool、非正数、无界容量和不安全续租周期."""
-        for field, value in (
-            ("simple_capacity", self.simple_capacity),
-            ("deep_capacity", self.deep_capacity),
-        ):
-            if type(value) is not int or value < 1 or value > MAX_CAPACITY:
-                raise InvalidWorkerConfigError(field)
+        if type(self.capacity) is not int or not 1 <= self.capacity <= MAX_CAPACITY:
+            field = "capacity"
+            raise InvalidWorkerConfigError(field)
         if type(self.renewal_fraction) is not float or not 0.0 < self.renewal_fraction < 1.0:
             field = "renewal_fraction"
             raise InvalidWorkerConfigError(field)

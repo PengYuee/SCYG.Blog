@@ -2,12 +2,13 @@
 
 import asyncio  # noqa: RUF100  # noqa: ANYIO_OK - grpc.aio 服务任务属于 asyncio 后端。
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Final, final
+from typing import Final, final
 
 import anyio
 from grpc import aio
+from grpc_health.v1 import health, health_pb2, health_pb2_grpc
 
-from scyg_agent.generated.scyg.agent.v1 import agent_control_service_pb2_grpc as service_grpc
+from scyg_agent.generated.proto.scyg.agent.v1 import agent_control_service_pb2_grpc as service_grpc
 from scyg_agent.lifecycle import ComponentDiagnostic
 from scyg_agent.transport.grpc import AgentControlServicer
 
@@ -19,13 +20,6 @@ _GRPC_NAME: Final = "grpc"
 def _raise_start_error() -> None:
     """报告 gRPC 启动失败."""
     raise ServerStartError(_GRPC_NAME)
-
-
-if TYPE_CHECKING:
-
-    def _register(_servicer: AgentControlServicer, _server: aio.Server) -> None: ...
-else:
-    _register = service_grpc.add_AgentControlServiceServicer_to_server
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,6 +45,7 @@ class GrpcServerComponent:
         self._server: aio.Server | None = None
         self._close_lock = asyncio.Lock()
         self._close_task: asyncio.Task[None] | None = None
+        self._health = health.aio.HealthServicer()
 
     @property
     def name(self) -> str:
@@ -74,9 +69,10 @@ class GrpcServerComponent:
         if self._state is not ServerState.NEW:
             _raise_start_error()
         self._state = ServerState.STARTING
-        server = aio.server()
+        server = aio.server(options=(("grpc.max_receive_message_length", -1),))
         self._server = server
-        _register(self._servicer, server)
+        service_grpc.add_AgentControlServiceServicer_to_server(self._servicer, server)
+        health_pb2_grpc.add_HealthServicer_to_server(self._health, server)
         try:
             port = server.add_insecure_port(f"{self._config.host}:{self._config.port}")
             if port == 0:
@@ -84,6 +80,10 @@ class GrpcServerComponent:
             self._endpoint = BoundEndpoint(self._config.host, port)
             with anyio.fail_after(self._config.startup_seconds):
                 await server.start()
+            await self._health.set("", health_pb2.HealthCheckResponse.SERVING)
+            await self._health.set(
+                "scyg.agent.v1.AgentControlService", health_pb2.HealthCheckResponse.SERVING
+            )
             self._state = ServerState.RUNNING
         except (RuntimeError, OSError, TimeoutError, ServerStartError):
             self._state = ServerState.FAILED
@@ -123,6 +123,7 @@ class GrpcServerComponent:
         if self._state is ServerState.STOPPED:
             return
         self._state = ServerState.STOPPING
+        await self._health.enter_graceful_shutdown()
         if self._server is not None:
             with anyio.CancelScope(shield=True):
                 await self._server.stop(self._config.grace_seconds)

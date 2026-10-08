@@ -28,8 +28,8 @@ func Test_ArticleImageMigration_contains_required_schema_contract(t *testing.T) 
 			t.Fatalf("迁移缺少 %q", fragment)
 		}
 	}
-	if CurrentVersion != 4 {
-		t.Fatalf("期望迁移版本 4，实际 %d", CurrentVersion)
+	if CurrentVersion != 5 {
+		t.Fatalf("期望迁移版本 5，实际 %d", CurrentVersion)
 	}
 }
 
@@ -70,8 +70,8 @@ func Test_UserMigration_contains_default_account_contract(t *testing.T) {
 			t.Fatalf("用户迁移缺少 %q", fragment)
 		}
 	}
-	if CurrentVersion != 4 {
-		t.Fatalf("期望迁移版本 4，实际 %d", CurrentVersion)
+	if CurrentVersion != 5 {
+		t.Fatalf("期望迁移版本 5，实际 %d", CurrentVersion)
 	}
 
 	down, err := fs.ReadFile(Files(), "000004_users.down.sql")

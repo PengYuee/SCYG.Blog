@@ -1,11 +1,11 @@
-"""工具意图的短事务租约、RPC 标记和围栏完成。."""
+"""工具意图的短事务租约和围栏完成。."""
 
-from datetime import datetime
+from __future__ import annotations
+
 from hashlib import sha256
-from typing import final
+from typing import TYPE_CHECKING, final
 
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from scyg_agent.domain.ports.audit_store import AuditFact
 from scyg_agent.domain.ports.idempotency import AuditMetadata, RequestDigest, ResultMetadata
@@ -32,6 +32,11 @@ from .audit_append import append_audit_locked
 from .operation_records import ToolCallRecord
 from .run_records import RunRecord
 from .tool_codec import decode_tool_operation
+
+if TYPE_CHECKING:
+    from datetime import datetime
+
+    from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 
 @final
@@ -63,25 +68,6 @@ class ToolExecutionTransactions:
         if record.rpc_started_at is None:
             return _set_claim(record, request, recovered=True)
         return await _mark_unknown(session, record, request.now)
-
-    async def mark_rpc_started(self, fence: ToolFence) -> ToolFenceResult | FirstClaim:
-        """只允许当前 token/version 标记 RPC 开始。."""
-        async with self._sessions.begin() as session:
-            return await self.mark_rpc_started_in_session(session, fence)
-
-    async def mark_rpc_started_in_session(
-        self, session: AsyncSession, fence: ToolFence
-    ) -> ToolFenceResult | FirstClaim:
-        """在调用方短事务中围栏标记 RPC 已开始。."""
-        record = await _lock_record_in_run_order(session, fence.operation_id)
-        if record is None:
-            return ToolDataIntegrity(fence.operation_id)
-        if record.status in _TERMINAL_STATUSES:
-            return _terminal(record)
-        if not _owns(record, fence):
-            return ClaimLost(fence.operation_id)
-        record.rpc_started_at = fence.occurred_at
-        return FirstClaim(fence)
 
     async def complete(self, fence: ToolFence, outcome: ToolOperation) -> ToolFenceResult:
         """验证身份与围栏后原子保存终态和审计。."""

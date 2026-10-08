@@ -1,5 +1,6 @@
 """Decode persisted capability snapshots at the Agent boundary."""
 
+import json
 from dataclasses import dataclass
 from typing import Final, cast
 
@@ -40,7 +41,7 @@ def decode_agent_input(run_input: RunInput, registry: RecipeRegistry) -> AgentIn
     capability = _parse_capability(run_input)
     recipe = _resolve_recipe(run_input, capability, registry)
     value = _parse_value(run_input, capability, recipe)
-    locale = run_input.locale or ""
+    locale = run_input.locale or "und"
     if not locale or len(locale) > MAX_LOCALE_LENGTH:
         raise InvalidAgentInputError
     return AgentInputSnapshot(capability, recipe, value, locale)
@@ -81,7 +82,9 @@ def _parse_value(
     try:
         value = cast(
             "CapabilityInput",
-            recipe.input_schema.model_validate(run_input.input_payload, strict=True),
+            recipe.input_schema.model_validate_json(
+                json.dumps(run_input.input_payload, allow_nan=False), strict=True
+            ),
         )
         _ = validate_capability_input(capability, value)
     except (TypeError, ValueError) as error:

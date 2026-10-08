@@ -36,6 +36,7 @@ internal/modules/content/
 - feature Service 和 application 不依赖 Gin、HTTP 或 generated OpenAPI 类型。
 - feature Repository 只访问所属 feature 的表。
 - 跨 feature 的同事务操作进入 `application/`，由 application 持有事务边界，并调用各 feature 的 `InTx` 方法。
+- 文章 REST 响应由 `application.ArticleResponses` 协调 article/taxonomy；读写快照、摘要装配及失败语义见[当前架构](../architecture/current-state-architecture.zh-CN.md#http-与-openapi)，不在 REST 或 feature Repository 中另建跨表装配。
 - 数据库结构由 migration 管理；不使用 `AutoMigrate`、`gorm.Model` 或 `gorm.DeletedAt`。
 - 运行时对象由 bootstrap 构造；不要在 Handler 或业务模块中自行创建全局数据库连接。
 
@@ -173,6 +174,8 @@ result := repo.db.WithContext(ctx).
 CONFIG      普通运行时 YAML
 QA_CONFIG   严格 QA-only YAML
 ```
+
+本地迁移默认使用 `go run ./cmd/migrate -config <YAML> up`，YAML 模式不接受环境变量覆盖数据库目标。容器初始化复用 `migrate -config= up`：必须显式提供 `SCYG_DATABASE_DSN`，并满足普通运行时配置校验（production 包括非默认 JWT secret）；数据库须已存在。该环境模式不会自动借用管理员身份建库，缺库时改用包含 `qa.postgres_admin_dsn` 的显式 YAML。根集成 Compose 已通过一次性 `blog-setup` 执行该模式，常驻 API 只检查迁移版本。
 
 QA 配置示例：
 

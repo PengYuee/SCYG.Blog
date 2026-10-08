@@ -37,9 +37,6 @@ func validateText(title Title, slug Slug, digest Digest, content Content) error 
 }
 
 func uniqueTags(input []TagID) ([]TagID, error) {
-	if len(input) == 0 {
-		return nil, fmt.Errorf("tags: %w", ErrInvalidValue)
-	}
 	seen := make(map[TagID]struct{}, len(input))
 	result := make([]TagID, 0, len(input))
 	for _, id := range input {

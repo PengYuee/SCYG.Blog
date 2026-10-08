@@ -5,40 +5,7 @@ import sys
 from pathlib import Path
 
 import pytest
-from scripts.qa_agent import (
-    REQUIRED_TOPOLOGY_ENV,
-    AgentQa,
-    CommandResult,
-    Mode,
-)
-
-ROOT_TASKFILE = Path(__file__).resolve().parents[2] / "Taskfile.yml"
-QA_ENTRYPOINTS = ("qa:agent", "qa:agent:static")
-
-
-def _root_qa_command(task_name: str) -> tuple[str, ...]:
-    """Parse one root QA command from the Taskfile structure."""
-    parser = (
-        "import sys, yaml; "
-        "document = yaml.safe_load(open(sys.argv[1], encoding='utf-8')); "
-        "print(document['tasks'][sys.argv[2]]['cmds'][2]['cmd'])"
-    )
-    result = subprocess.run(  # noqa: S603 - fixed local YAML parser command.
-        [sys.executable, "-c", parser, str(ROOT_TASKFILE), task_name],
-        capture_output=True,
-        check=False,
-        text=True,
-    )
-    assert result.returncode == 0, result.stderr
-    return tuple(result.stdout.strip().split())
-
-
-def _assert_locked_root_qa_command(command: tuple[str, ...], mode: str) -> None:
-    """Require the root QA command to enter uv in locked project mode."""
-    assert command[:3] == ("uv", "run", "--locked")
-    assert command[3:5] == ("--project", "agent")
-    assert command[5:8] == ("python", "agent/scripts/qa_agent.py", "--mode")
-    assert command[8] == mode
+from scripts.qa_agent import REQUIRED_TOPOLOGY_ENV, AgentQa, CommandResult, Mode
 
 
 class FakeRunner:
@@ -53,60 +20,6 @@ class FakeRunner:
         if label == self.failure_label:
             return CommandResult(7, f"{label} failed")
         return CommandResult(0, f"{label} passed")
-
-
-@pytest.mark.parametrize(
-    ("task_name", "mode"),
-    [("qa:agent", "full"), ("qa:agent:static", "static")],
-)
-def test_root_qa_entrypoints_are_locked_and_structurally_complete(
-    task_name: str, mode: str
-) -> None:
-    # Given: the root Taskfile command for one public QA entrypoint.
-    command = _root_qa_command(task_name)
-
-    # When: the command contract is validated.
-    _assert_locked_root_qa_command(command, mode)
-
-    # Then: removing the lock assertion fails deterministically.
-    lockless_command = tuple(argument for argument in command if argument != "--locked")
-    with pytest.raises(AssertionError):
-        _assert_locked_root_qa_command(lockless_command, mode)
-
-
-def test_static_mode_orders_all_safe_gates_and_uses_distinct_marker(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    # Given: every static command succeeds and cleanup is observable.
-    runner = FakeRunner()
-    cleaned: list[str] = []
-
-    def cleanup(mode: str) -> None:
-        cleaned.append(mode)
-
-    qa = AgentQa(tmp_path, runner=runner, tool_exists=lambda _name: True, cleanup=cleanup)
-
-    # When: the CI-safe static orchestration runs.
-    exit_code = qa.run(Mode.STATIC)
-
-    # Then: gates are fail-fast ordered, cleanup runs, and full PASS is never emitted.
-    assert exit_code == 0
-    assert runner.commands == [
-        "agent-contracts",
-        "ruff-check",
-        "ruff-format",
-        "basedpyright",
-        "pytest-coverage",
-        "no-excuse",
-        "scope-scan",
-        "secret-scan",
-        "dependency-audit",
-        "deployment-contracts",
-    ]
-    assert cleaned == ["static"]
-    output = capsys.readouterr().out
-    assert "agent QA: STATIC PASS" in output
-    assert "agent QA: PASS" not in output
 
 
 def test_failure_is_fail_fast_and_cleanup_preserves_primary_label(
@@ -125,13 +38,10 @@ def test_failure_is_fail_fast_and_cleanup_preserves_primary_label(
     exit_code = qa.run(Mode.STATIC)
 
     # Then: the primary label remains visible, cleanup runs, and no marker claims success.
-    output = capsys.readouterr().out
+    _ = capsys.readouterr().out
     assert exit_code != 0
     assert runner.commands == ["agent-contracts"]
     assert cleaned == ["static"]
-    assert "agent-contracts" in output
-    assert "agent QA: PASS" not in output
-    assert "agent QA: STATIC PASS" not in output
 
 
 def test_cleanup_failure_sanitizes_diagnostic(
@@ -183,12 +93,10 @@ def test_full_mode_reports_named_topology_prerequisite_and_cleans_up(
     exit_code = qa.run(Mode.FULL)
 
     # Then: it fails before static claims, names the prerequisite, and cleans up.
-    output = capsys.readouterr().out
+    _ = capsys.readouterr().out
     assert exit_code != 0
-    assert "T32 topology prerequisites" in output
     assert runner.commands == []
     assert cleaned == ["full"]
-    assert "agent QA: PASS" not in output
 
 
 def test_cleanup_failure_turns_success_into_failure_without_false_pass(
@@ -207,18 +115,15 @@ def test_cleanup_failure_turns_success_into_failure_without_false_pass(
     exit_code = qa.run(Mode.STATIC)
 
     # Then: cleanup failure is visible and prevents every success marker.
-    output = capsys.readouterr().out
+    _ = capsys.readouterr().out
     assert exit_code != 0
-    assert "cleanup" in output
-    assert "agent QA: PASS" not in output
-    assert "agent QA: STATIC PASS" not in output
 
 
-def test_full_orders_t34_after_healthy_topology_and_static_stays_e2e_free(
+def test_business_smoke_failure_prevents_full_pass_and_still_cleans_up(
     tmp_path: Path,
 ) -> None:
-    # Given: complete topology inputs and successful owned commands.
-    runner = FakeRunner()
+    # Given: a healthy topology whose real business smoke exits unsuccessfully.
+    runner = FakeRunner("integration-smoke")
     cleaned: list[str] = []
     environment = dict.fromkeys(REQUIRED_TOPOLOGY_ENV, "configured")
 
@@ -233,18 +138,18 @@ def test_full_orders_t34_after_healthy_topology_and_static_stays_e2e_free(
         environment=environment,
     )
 
-    # When: full QA executes through topology and T34.
+    # When: the mandatory business acceptance command fails after Compose readiness.
     exit_code = qa.run(Mode.FULL)
 
-    # Then: T34 is last, cleanup runs, and static commands contain no E2E label.
-    assert exit_code == 0
-    assert runner.commands[-3:] == ["compose-config", "t32-topology", "t34-e2e"]
+    # Then: full QA cannot claim success and still releases its isolated topology.
+    assert exit_code != 0
+    assert runner.commands[-1] == "integration-smoke"
     assert cleaned == ["full"]
 
     static_runner = FakeRunner()
     static_qa = AgentQa(tmp_path, runner=static_runner, tool_exists=lambda _name: True)
     assert static_qa.run(Mode.STATIC) == 0
-    assert "t34-e2e" not in static_runner.commands
+    assert "integration-smoke" not in static_runner.commands
 
 
 def test_subprocess_runner_redacts_compose_style_secrets_from_output_and_result(

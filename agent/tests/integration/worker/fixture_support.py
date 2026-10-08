@@ -31,7 +31,8 @@ class WorkerDatabaseFixture:
     def create(cls, database_url: str) -> Self:
         """在资源 owner 内创建共享引擎和 session 工厂."""
         engine = create_async_engine(database_url, pool_size=12, max_overflow=0, pool_timeout=5)
-        return cls(async_sessionmaker(engine, expire_on_commit=False), engine, database_url)
+        listener_dsn = database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+        return cls(async_sessionmaker(engine, expire_on_commit=False), engine, listener_dsn)
 
     def session_factory(self) -> async_sessionmaker[AsyncSession]:
         """借出不携带连接配置表示的 session 工厂."""

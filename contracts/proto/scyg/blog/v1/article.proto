@@ -6,60 +6,38 @@ import "buf/validate/validate.proto";
 import "google/protobuf/timestamp.proto";
 import "scyg/blog/v1/common.proto";
 
-// Compatibility policy: published field numbers are immutable and removals are reserved.
-
-// Tag is the stable public tag projection needed by Agent tools.
+// Tag is the current tag projection with a numeric resource identifier.
 message Tag {
-  // id identifies the tag.
-  TagId id = 1 [(buf.validate.field).required = true];
-  // name is the display label.
-  string name = 2 [(buf.validate.field).string = {
-    min_len: 1
-    max_len: 100
-  }];
+  reserved 1;
+
+  string name = 2 [(buf.validate.field).string.min_len = 1];
+  int64 id = 3 [(buf.validate.field).int64.gt = 0];
 }
 
-// Article is the gRPC-specific article projection, not a REST or database DTO.
+// ArticleType is the read-only article classification projection.
+message ArticleType {
+  int64 id = 1 [(buf.validate.field).int64.gt = 0];
+  string name = 2 [(buf.validate.field).string.min_len = 1];
+}
+
+// Article projects current management content independently of REST bindings.
 message Article {
-  // id identifies the article.
-  ArticleId id = 1 [(buf.validate.field).required = true];
-  // title is the human-readable article title.
-  string title = 2 [(buf.validate.field).string = {
-    min_len: 1
-    max_len: 300
-  }];
-  // body_markdown is application-owned Markdown content.
-  string body_markdown = 3 [(buf.validate.field).string = {max_len: 1000000}];
-  // summary is a bounded article synopsis.
-  string summary = 4 [(buf.validate.field).string = {max_len: 2000}];
-  // status is the externally meaningful article lifecycle state.
-  ArticleStatus status = 5 [(buf.validate.field).enum = {
-    defined_only: true
-    not_in: [0]
-  }];
-  // tags contains the stable tags currently assigned to the article.
-  repeated Tag tags = 6 [(buf.validate.field).repeated = {max_items: 100}];
-  // version is the strong optimistic concurrency token.
-  uint64 version = 7 [(buf.validate.field).uint64 = {gte: 1}];
-  // created_at records creation in UTC.
-  google.protobuf.Timestamp created_at = 8 [(buf.validate.field).required = true];
-  // updated_at records the latest content change in UTC.
-  google.protobuf.Timestamp updated_at = 9 [(buf.validate.field).required = true];
-  // published_at records publication in UTC when status is published.
-  optional google.protobuf.Timestamp published_at = 10;
-}
+  reserved 1, 3, 4;
+  reserved "body_markdown", "summary";
 
-// ArticleSearchHit is a bounded search projection without full draft content.
-message ArticleSearchHit {
-  // id identifies the matched article.
-  ArticleId id = 1 [(buf.validate.field).required = true];
-  // title is the matched article title.
-  string title = 2 [(buf.validate.field).string = {
-    min_len: 1
-    max_len: 300
-  }];
-  // summary is the matched article synopsis.
-  string summary = 3 [(buf.validate.field).string = {max_len: 2000}];
-  // updated_at supports deterministic result presentation.
-  google.protobuf.Timestamp updated_at = 4 [(buf.validate.field).required = true];
+  string title = 2 [(buf.validate.field).string.min_len = 1];
+  ArticleStatus status = 5 [(buf.validate.field).enum = {defined_only: true not_in: [0]}];
+  repeated Tag tags = 6;
+  uint64 version = 7 [(buf.validate.field).uint64.gte = 1];
+  google.protobuf.Timestamp created_at = 8 [(buf.validate.field).required = true];
+  google.protobuf.Timestamp updated_at = 9 [(buf.validate.field).required = true];
+  optional google.protobuf.Timestamp published_at = 10;
+  int64 id = 11 [(buf.validate.field).int64.gt = 0];
+  int64 article_type_id = 12 [(buf.validate.field).int64.gt = 0];
+  string content = 13;
+  string digest = 14;
+  string slug = 15;
+  int64 support = 16;
+  int64 comment = 17;
+  int64 visited = 18;
 }

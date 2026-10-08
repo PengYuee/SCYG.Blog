@@ -1,6 +1,8 @@
 """Deterministic subscription listener lifecycle matrix."""
 
-from collections.abc import AsyncGenerator, Callable
+from collections.abc import Callable
+from dataclasses import replace
+from datetime import UTC, datetime
 from typing import final
 
 import anyio
@@ -9,11 +11,18 @@ from anyio.lowlevel import checkpoint
 
 from scyg_agent.adapters.database.event_subscription import (
     ListenerConnection,
+    SubscriptionCursorError,
     SubscriptionResources,
-    subscribe_events,
+    open_subscription,
 )
-from scyg_agent.domain.ports.event_store import EventCursor, ReplayPage, StoredEvent
-from scyg_agent.domain.runs import RunId
+from scyg_agent.domain.ports.event_store import (
+    CursorTooOld,
+    EventCursor,
+    FutureCursor,
+    ReplayPage,
+    StoredEvent,
+)
+from scyg_agent.domain.runs import CommandId, EventId, RunId, RunSucceeded
 
 RUN_ID = RunId("run_00000001")
 
@@ -103,11 +112,9 @@ async def test_factory_failure_acquires_no_listener_resource() -> None:
     resources = SubscriptionResources(
         10, _empty_replay, "postgresql://unused", "scyg_t11_events", failing_factory, 0.05
     )
-    subscription = subscribe_events(RUN_ID, EventCursor(0), resources)
-
-    # When/Then: the original factory error propagates without cleanup of an unowned resource.
+    # Opening itself reports the factory error before readiness.
     with pytest.raises(RuntimeError, match="factory failed"):
-        _ = await anext(subscription)
+        _ = await open_subscription(RUN_ID, EventCursor(0), resources)
 
 
 @pytest.mark.anyio
@@ -115,18 +122,14 @@ async def test_factory_failure_acquires_no_listener_resource() -> None:
 async def test_add_or_remove_failure_still_closes_acquired_connection(failure: str) -> None:
     # Given: one acquired connection failing during add or remove.
     listener = FakeListener(add_error=failure == "add", remove_error=failure == "remove")
-    subscription = subscribe_events(RUN_ID, EventCursor(0), _resources(listener))
-
-    # When: add fails, or a registered subscription is explicitly closed.
+    # When: add fails, or the ready subscription is explicitly closed.
     if failure == "add":
         with pytest.raises(RuntimeError, match="add failed"):
-            _ = await anext(subscription)
+            _ = await open_subscription(RUN_ID, EventCursor(0), _resources(listener))
     else:
-        async with anyio.create_task_group() as task_group:
-            _ = task_group.start_soon(_advance, subscription)
-            while listener.add_calls == 0:
-                await checkpoint()
-            task_group.cancel_scope.cancel()
+        subscription = await open_subscription(RUN_ID, EventCursor(0), _resources(listener))
+        with pytest.raises(RuntimeError, match="remove_listener"):
+            await subscription.aclose()
 
     # Then: every acquired connection receives exactly one close attempt.
     assert listener.close_calls == 1
@@ -137,13 +140,11 @@ async def test_add_or_remove_failure_still_closes_acquired_connection(failure: s
 async def test_cancellation_while_waiting_closes_connection_once() -> None:
     # Given: subscription waiting after listener registration.
     listener = FakeListener()
-    subscription = subscribe_events(RUN_ID, EventCursor(0), _resources(listener))
-
-    # When: its owner cancels and explicitly closes the async generator.
+    subscription = await open_subscription(RUN_ID, EventCursor(0), _resources(listener))
+    # When: its owner cancels the active wait.
     async with anyio.create_task_group() as task_group:
-        _ = task_group.start_soon(_advance, subscription)
-        while listener.add_calls == 0:
-            await checkpoint()
+        _ = task_group.start_soon(subscription.next_event)
+        await checkpoint()
         task_group.cancel_scope.cancel()
     await subscription.aclose()
 
@@ -157,16 +158,9 @@ async def test_cancellation_while_waiting_closes_connection_once() -> None:
 async def test_close_timeout_terminates_and_confirms_closed_state() -> None:
     # Given: a driver close operation that never returns.
     listener = FakeListener(close_blocks=True)
-    subscription = subscribe_events(
+    subscription = await open_subscription(
         RUN_ID, EventCursor(0), _resources(listener, close_timeout=0.01)
     )
-
-    # When: the registered generator is cancelled and closed.
-    async with anyio.create_task_group() as task_group:
-        _ = task_group.start_soon(_advance, subscription)
-        while listener.add_calls == 0:
-            await checkpoint()
-        task_group.cancel_scope.cancel()
     await subscription.aclose()
 
     # Then: timeout aborts transport and confirms final closure without hanging.
@@ -175,6 +169,122 @@ async def test_close_timeout_terminates_and_confirms_closed_state() -> None:
     assert listener.is_closed()
 
 
-async def _advance(subscription: AsyncGenerator[StoredEvent]) -> None:
-    """Advance an empty subscription until cancellation reaches its listener wait."""
-    _ = await anext(subscription)
+@pytest.mark.anyio
+async def test_open_registers_before_race_replay_and_closes_without_iteration() -> None:
+    listener = FakeListener()
+    calls = 0
+
+    async def replay(_run_id: RunId, _cursor: EventCursor, _limit: int) -> ReplayPage:
+        nonlocal calls
+        calls += 1
+        assert listener.add_calls == (0 if calls == 1 else 1)
+        return ReplayPage((), EventCursor(0), EventCursor(0))
+
+    resources = _resources(listener)
+    subscription = await open_subscription(
+        RUN_ID, EventCursor(0), replace(resources, replay=replay)
+    )
+    assert calls == 2
+    await subscription.aclose()
+    await subscription.aclose()
+    assert listener.remove_calls == listener.close_calls == 1
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("race", [False, True])
+@pytest.mark.parametrize("kind", ["old", "future"])
+async def test_cursor_gaps_are_rejected_before_open_returns(kind: str, *, race: bool) -> None:
+    listener = FakeListener()
+    calls = 0
+
+    async def replay(
+        _run_id: RunId, cursor: EventCursor, _limit: int
+    ) -> ReplayPage | CursorTooOld | FutureCursor:
+        nonlocal calls
+        calls += 1
+        if race and calls == 1:
+            return ReplayPage((), EventCursor(0), EventCursor(0))
+        if kind == "old":
+            return CursorTooOld(cursor, EventCursor(3))
+        return FutureCursor(cursor, EventCursor(0))
+
+    with pytest.raises(SubscriptionCursorError):
+        _ = await open_subscription(
+            RUN_ID, EventCursor(1), replace(_resources(listener), replay=replay)
+        )
+    assert listener.add_calls == int(race)
+    assert listener.close_calls == int(race)
+
+
+@pytest.mark.anyio
+async def test_omitted_cursor_starts_at_retained_floor_and_terminal_head_ends() -> None:
+    listener = FakeListener()
+    calls: list[int] = []
+
+    terminal = StoredEvent(
+        EventCursor(8),
+        RunSucceeded(
+            EventId("evt_00000001"),
+            CommandId("cmd_00000001"),
+            datetime(2026, 1, 1, tzinfo=UTC),
+            RUN_ID,
+            1,
+        ),
+    )
+
+    async def replay(_run_id: RunId, cursor: EventCursor, _limit: int) -> ReplayPage | CursorTooOld:
+        calls.append(cursor.sequence)
+        if cursor.sequence == 0:
+            return CursorTooOld(cursor, EventCursor(8))
+        return ReplayPage((terminal,), EventCursor(8), EventCursor(8), terminal=True)
+
+    subscription = await open_subscription(
+        RUN_ID, None, replace(_resources(listener), replay=replay)
+    )
+    assert calls == [0, 7]
+    assert await subscription.next_event() == terminal
+    with pytest.raises(StopAsyncIteration):
+        _ = await subscription.next_event()
+    assert listener.close_calls == 1
+
+
+@pytest.mark.anyio
+async def test_idle_subscription_returns_heartbeat_timeout() -> None:
+    listener = FakeListener()
+    subscription = await open_subscription(RUN_ID, None, _resources(listener))
+    assert await subscription.next_event(0.01) is None
+    await subscription.aclose()
+
+
+@pytest.mark.anyio
+async def test_race_replay_buffers_commit_during_listener_registration() -> None:
+    listener = FakeListener()
+    stored = StoredEvent(
+        EventCursor(1),
+        RunSucceeded(
+            EventId("evt_00000001"),
+            CommandId("cmd_00000001"),
+            datetime(2026, 1, 1, tzinfo=UTC),
+            RUN_ID,
+            1,
+        ),
+    )
+    calls = 0
+
+    async def replay(_run_id: RunId, _cursor: EventCursor, _limit: int) -> ReplayPage:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            return ReplayPage((), EventCursor(0), EventCursor(0))
+        assert listener.add_calls == 1
+        return ReplayPage((stored,), EventCursor(1), EventCursor(1), terminal=True)
+
+    subscription = await open_subscription(
+        RUN_ID, EventCursor(0), replace(_resources(listener), replay=replay)
+    )
+    assert calls == 2
+    assert await subscription.next_event() == stored
+    with pytest.raises(StopAsyncIteration):
+        _ = await subscription.next_event()
+    assert calls == 2
+    assert listener.close_calls == 1

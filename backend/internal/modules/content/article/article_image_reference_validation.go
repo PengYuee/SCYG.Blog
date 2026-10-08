@@ -3,6 +3,7 @@ package article
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/yuin/goldmark"
@@ -16,7 +17,7 @@ var ErrInvalidImageReference = errors.New("正文图片引用不合法")
 
 const imagePathPrefix = "/media/article-images/"
 
-// ManagedImageReferences extracts controlled image key candidates without image-specific key validation.
+// ManagedImageReferences extracts keys from relative or HTTP(S) managed image URLs; image-specific validation belongs to the image workflow.
 func ManagedImageReferences(source string) ([]string, error) {
 	parserContext := parser.NewContext()
 	document := goldmark.New().Parser().Parse(text.NewReader([]byte(source)), parser.WithContext(parserContext))
@@ -27,11 +28,25 @@ func ManagedImageReferences(source string) ([]string, error) {
 			return ast.WalkContinue, nil
 		}
 		appendKey := func(destination string) error {
-			if !strings.HasPrefix(destination, imagePathPrefix) {
-				return nil
+			path := destination
+			if !strings.HasPrefix(path, imagePathPrefix) {
+				if !strings.Contains(destination, imagePathPrefix) {
+					return nil
+				}
+				parsed, err := url.Parse(destination)
+				if err != nil {
+					return ErrInvalidImageReference
+				}
+				if parsed.Scheme != "http" && parsed.Scheme != "https" {
+					return nil
+				}
+				path = parsed.EscapedPath()
+				if !strings.HasPrefix(path, imagePathPrefix) {
+					return nil
+				}
 			}
-			key := strings.TrimPrefix(destination, imagePathPrefix)
-			if key == "" || strings.Contains(key, "/") || strings.ContainsAny(key, "?#") {
+			key := strings.TrimPrefix(path, imagePathPrefix)
+			if key == "" || strings.Contains(key, "/") || strings.ContainsAny(destination, "?#") {
 				return ErrInvalidImageReference
 			}
 			if _, exists := seen[key]; !exists {

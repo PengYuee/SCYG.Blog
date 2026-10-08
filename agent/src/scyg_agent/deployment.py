@@ -63,10 +63,11 @@ async def _prepare_database(settings: DeploymentSettings) -> None:
                 sql.SQL("CREATE ROLE {} LOGIN").format(sql.Identifier(AGENT_ROLE))
             )
         _ = await connection.execute(
-            sql.SQL("ALTER ROLE {} {} PASSWORD %s").format(
-                sql.Identifier(AGENT_ROLE), sql.SQL(AGENT_ROLE_ATTRIBUTES)
+            sql.SQL("ALTER ROLE {} {} PASSWORD {}").format(
+                sql.Identifier(AGENT_ROLE),
+                sql.SQL(AGENT_ROLE_ATTRIBUTES),
+                sql.Literal(settings.agent_database_password.get_secret_value()),
             ),
-            (settings.agent_database_password.get_secret_value(),),
         )
         _ = await connection.execute(
             sql.SQL("GRANT CONNECT ON DATABASE {} TO {}").format(
@@ -107,8 +108,7 @@ def _run_agent_migrations(settings: DeploymentSettings) -> None:
     previous_url = os.environ.get("SCYG_AGENT_DATABASE_URL")
     os.environ["SCYG_AGENT_DATABASE_URL"] = settings.agent_database_url.get_secret_value()
     try:
-        root = Path(__file__).parents[2]
-        command.upgrade(Config(root / "alembic.ini"), "head")
+        command.upgrade(Config(Path(__file__).with_name("alembic.ini")), "head")
     finally:
         if previous_url is None:
             del os.environ["SCYG_AGENT_DATABASE_URL"]

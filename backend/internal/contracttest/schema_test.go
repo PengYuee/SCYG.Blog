@@ -92,6 +92,20 @@ func Test_OpenAPI_success_shapes_and_headers(t *testing.T) {
 
 	// When / Then
 	for label, operation := range all {
+		switch operation.OperationID {
+		case "agentSearch", "agentWrite", "agentPolish", "agentChat":
+			assertJSONSuccess(t, operation, "202")
+			continue
+		case "agentGet", "agentResume", "agentCancel":
+			assertJSONSuccess(t, operation, "200")
+			continue
+		case "agentEvents":
+			media := response(t, operation, "200").Content.Get("text/event-stream")
+			if media == nil || media.Schema == nil || media.Schema.Value == nil {
+				t.Fatalf("operation %s success 200 is not SSE", operation.OperationID)
+			}
+			continue
+		}
 		if operation.OperationID == "login" {
 			assertJSONSuccess(t, operation, "200")
 			continue

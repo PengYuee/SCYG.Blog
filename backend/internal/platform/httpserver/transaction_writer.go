@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -108,6 +109,24 @@ func (writer *transactionWriter) Flush() {
 		return
 	}
 	writer.delegate.Flush()
+}
+
+// SetWriteDeadline controls the real socket without committing buffered headers.
+func (writer *transactionWriter) SetWriteDeadline(deadline time.Time) error {
+	return http.NewResponseController(writer.delegate).SetWriteDeadline(deadline)
+}
+
+// FlushError commits once and reports socket flush failures to stream handlers.
+func (writer *transactionWriter) FlushError() error {
+	if err := writer.commit(); err != nil {
+		return err
+	}
+	// Gin's void Flush masks errors; commit has already finalized its headers.
+	underlying := http.ResponseWriter(writer.delegate)
+	if unwrapper, ok := writer.delegate.(interface{ Unwrap() http.ResponseWriter }); ok {
+		underlying = unwrapper.Unwrap()
+	}
+	return http.NewResponseController(underlying).Flush()
 }
 
 // Hijack transfers an untouched response connection; buffered HTTP output is rejected.

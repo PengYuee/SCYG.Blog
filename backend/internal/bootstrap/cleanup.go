@@ -54,6 +54,7 @@ func validateDependencies(dependencies Dependencies) error {
 		{"taxonomy feature 构造器", dependencies.NewTaxonomy},
 		{"图片 feature 构造器", dependencies.NewImage},
 		{"文章图片协作构造器", dependencies.NewArticleImages},
+		{"文章响应协作构造器", dependencies.NewArticleResponses},
 		{"图片清理构造器", dependencies.NewImageCleanup},
 		{"图片清理 worker 构造器", dependencies.NewCleanupWorker},
 		{"REST 构造器", dependencies.NewREST},

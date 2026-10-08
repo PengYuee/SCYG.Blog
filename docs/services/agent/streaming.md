@@ -1,48 +1,34 @@
-# Agent HTTP 与流式合同
+# Agent gRPC 与 Blog 流式合同
 
 ## 适用范围
 
-本文描述当前 Agent HTTP 表面，不代表 Blog 或浏览器 AI 入口已接通。服务内部关系见[架构](architecture.md)，路由与编码的权威来源为 [router.py](../../../agent/src/scyg_agent/transport/http/router.py) 和 [sse.py](../../../agent/src/scyg_agent/transport/http/sse.py)。
+本文描述当前浏览器流式边界；Blog 是浏览器 JWT 认证与业务 HTTP 的唯一入口，Agent HTTP 仅提供 health。协议以 [AgentControlService](../../../contracts/proto/scyg/agent/v1/agent_control_service.proto) 为准，帧编码以 [event_subscription.py](../../../agent/src/scyg_agent/application/event_subscription.py) 为准。
 
-## HTTP 表面
+## 当前传输表面
 
-| 方法 | 路径 | 作用 |
-| --- | --- | --- |
-| GET | `/api/runs/{run_id}` | 已授权 Run 快照与持久状态 |
-| GET | `/api/runs/{run_id}/events` | `text/event-stream`，按注入的 stream store 选择事件来源 |
-| POST | `/api/runs/{run_id}/input` | 提交绑定 interaction 的输入 |
-| POST | `/api/runs/{run_id}/commands` | 提交公开命令 |
-| POST | `/api/runs/{run_id}/cancel` | 提交持久化取消请求 |
+Agent 内部 gRPC 提供 `CreateRun`、`GetRun`、`StreamRunEvents`、`ResumeRun`、`CancelRun`。四个 unary RPC 返回同一 `Run` 合同，流 RPC 返回完整 SSE 帧字节。内部网络信任 Blog 传入的 `user_id`，应用门面逐次校验 Run 所有权，不使用 Run JWT 或 service JWT。
 
-Agent 没有 HTTP 创建 Run 入口，控制面合同在根 [contracts](../../../contracts/) 中维护。路由要求 `Authorization: Bearer <run-jwt>`，校验签名、issuer、audience、用户、Run 和 scope；令牌不得进入 URL、查询参数、日志或 SSE data。
+Agent HTTP 只有 `/health/live` 与 `/health/ready`。浏览器从 Blog `/api/v1/ai/{search|write|polish|chat}` 创建 Run，从 `/api/v1/runs/{runId}` 查询快照，并通过该 Run 下的 `/events`、`/resume`、`/cancel` 订阅或操作。浏览器使用 Blog 登录 JWT，不直接连接 Agent 业务端点。
 
-## 生产 Redis 流
+## 透明 SSE 与 opaque cursor
 
-当前[组合根](../../../agent/src/scyg_agent/composition.py)向 HTTP 注入 Redis stream store，SSE 使用 Redis 原生 Stream ID，而不是 PostgreSQL 数值 cursor。
+当前生产订阅读取 PostgreSQL 持久事件；Redis 仍服务 Worker 瞬时流，但不作为浏览器公开 SSE 的事件来源。
 
-- 可从 `Last-Event-ID` 或 `?cursor=` 提供流游标；同时提供时必须一致。重复请求头、冲突值或无效 Redis 游标返回 `400`。
-- 服务先验证 Run 所有权与快照，再读取 Redis 流；不存在的 Run 返回 `404`。
-- 帧 `id:` 保留 Redis Stream ID，data 包含 `run_id`、`attempt`、`sequence`、`occurred_at`、`kind` 与 `payload`。
-- 流过期输出 `stream_expired` 帧，提供持久快照地址与状态提示；Redis 故障输出经过脱敏的 `error` 帧，代码为 `redis_unavailable`。
-- Redis 流属于瞬时数据，保留长度与 TTL 由[配置](../../../agent/src/scyg_agent/config.py)控制。流过期不意味着 Run 被删除，客户端应查询持久快照，不能重跑模型或工具来补事件。
+- 浏览器通过 `Last-Event-ID` 传入 1–256 字节 ASCII opaque cursor；Blog 只校验传输格式并原样传递到 `after_event_id`，不解析、翻译或以 query 参数替代。
+- Agent 先验证 Run 所有权，再校验绑定该 Run 的 cursor 并打开持久订阅；cursor 不是 Redis Stream ID，也不是供浏览器解释的数值序号。
+- 只有订阅完成 listener 注册和竞态回放准备后，Agent 才发送 `scyg-subscription-ready: 1` 初始 metadata。Blog 等待该信号后才提交 HTTP `200 text/event-stream`；就绪前的失败仍返回 HTTP 错误。
+- Agent 编码包含 `id`、`event`、`data` 及帧终止空行的完整 SSE 帧；data 包含稳定 `event_id`、Run、revision、时间、kind 和 payload。Blog 直接写出帧字节，不重命名事件或重排 payload。
+- 空闲时 Agent 每 10 秒发送 `: heartbeat` 注释帧。断线只释放订阅，不取消 Run，也不重新执行模型或工具。
+- 无效 cursor 按参数错误处理，超过持久回放边界的 cursor 按 `FAILED_PRECONDITION` 处理。恢复时读取已授权持久快照；checkpoint 不是 SSE 事件日志。
 
-## 未注入 Redis 的持久事件分支
+Blog 在建立订阅及返回错误期间保持有限 HTTP 写期限，ready 后逐帧设置写期限并检查底层 flush 错误；接收超时或写入失败都会释放上游订阅。可信内部 gRPC 的接收设置不使用默认 4 MiB 上限，合法的大文章查询页、Run 结果和 SSE 帧不应因此被截断；创建及 Resume payload 仍遵守 Proto 的输入限制。
 
-`HTTPDependencies.stream_store` 为 `None` 时，路由使用 PostgreSQL 持久事件与数值 cursor。该分支仍存在，但不是当前生产组合的默认 SSE 路径。
+## 取消、恢复与成功幂等
 
-- cursor 为非负整数，来源同样是 `Last-Event-ID` 或 `?cursor=`；两者同时提供必须相同。
-- 游标格式错误、重复请求头或冲突返回 `400`；持久回放边界冲突返回 `409`。
-- 服务回放数值 cursor 之后的 `agent_events`，再跟随通知唤醒后的查询。通知不是事件真相。
-- 帧 `id:` 为数值序列，data 包含稳定的 `event_id`、Run、revision、时间、事件类型和 payload。
+Create、Resume、Cancel 的 `Idempotency-Key` 为 UUID v4。Agent 在三个 RPC 间共享 `(owner, key)` 成功记录，成功后保留 24 小时；同一用户命中既有 key 时返回原 Run 的当前一致快照，不重新执行业务输入。失败不占 key，不使用旧 HTTP mutation 的 `Idempotency-Replayed` 响应头合同。
 
-**两类 cursor 不可互换。** 快照中的持久事件 cursor 不能直接作为 Redis Stream ID 使用；断线不取消 Run，重连也不应重新执行模型或工具。
-
-## 背压、取消与幂等
-
-SSE 订阅具有有界缓冲、心跳和慢客户端超时。断开连接只关闭当前订阅，不代表任务取消。缓存与代理缓冲响应头在传输层维护。
-
-命令和输入通过持久命令、交互与审计处理。首次 mutation 返回 `Idempotency-Replayed: false`，相同身份与不可变输入重放时返回 `true`；冲突或前置条件失败返回 `409`，不能通过重复请求制造第二次业务副作用。取消请求与业务终态的区别以应用门面和领域状态机为准。
+Resume 绑定当前 interaction，并区分缺失 payload 与显式 JSON null。成功键重放优先于新业务校验；未命中时，无法以当前 JSON/UTF-8 表示落盘的 NUL、孤立 surrogate 或非有限数值返回参数错误，不占用成功键，且保留待处理交互。Cancel 持久建立取消围栏；已启动调用的本地取消不承诺远端未执行，业务终态仍由持久化围栏决定。
 
 ## 验证边界
 
-T34 驱动定义了 SIMPLE 终态 SSE、游标重连与幂等重放场景。它们的存在或历史静态检查结果不能证明当前 Redis/Recipe 路径已通过动态验收。更改事件来源或 cursor 合同后，应在隔离的真实拓扑中验证对应路径，再记录命令、结果和 receipt；本次文档迁移不声称这些场景已执行通过。
+对应代码变化后，应在隔离的真实拓扑验证状态、完整帧及 `Last-Event-ID` 排他回放，入口见[开发指南](development.md#本地拓扑)。旧 HTTP/Redis 数值游标场景不能证明当前 gRPC/Recipe 路径；记录实际命令与结果，未执行或未通过的门禁不能视为验收通过。

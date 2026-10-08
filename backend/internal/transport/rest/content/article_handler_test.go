@@ -93,5 +93,5 @@ func Test_ContentREST_list_with_noncanonical_slug_returns_safe_500(t *testing.T)
 
 func validArticleResultForHTTP() article.Result {
 	now := time.Unix(1, 0).UTC()
-	return article.Result{ID: 1, ArticleTypeID: 1, Title: "Title", Slug: "title", Digest: "Digest", Content: "Body", Status: "published", TagIDs: []int64{1}, Support: 7, Comment: 8, Visited: 9, Version: 1, CreatedAt: now, ModifiedAt: now}
+	return article.Result{ID: 1, ArticleTypeID: 1, ArticleTypeName: "News", Title: "Title", Slug: "title", Digest: "Digest", Content: "Body", Status: "published", TagIDs: []int64{1}, Support: 7, Comment: 8, Visited: 9, Version: 1, CreatedAt: now, ModifiedAt: now}
 }

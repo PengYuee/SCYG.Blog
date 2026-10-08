@@ -232,10 +232,6 @@ class ToolOperationStore(Protocol):
         """竞争或保守恢复一次工具调用租约。."""
         ...  # pragma: no cover
 
-    async def mark_rpc_started(self, fence: ToolFence) -> ToolFenceResult | FirstClaim:
-        """在外部调用前用短事务记录 RPC 已开始。."""
-        ...  # pragma: no cover
-
     async def complete(self, fence: ToolFence, outcome: ToolOperation) -> ToolFenceResult:
         """使用围栏写入终态和唯一审计事实。."""
         ...  # pragma: no cover

@@ -4,7 +4,17 @@ from datetime import datetime
 from typing import Final, final
 from uuid import UUID
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Index, Integer, String, Text, text
+from sqlalchemy import (
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column
@@ -95,7 +105,7 @@ class RunRecord(Base):
     lease_owner: Mapped[str | None] = mapped_column(String(68))
     lease_token: Mapped[UUID | None] = mapped_column(PGUUID(as_uuid=True))
     lease_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    # 取消请求不改变执行所有权, 由当前围栏持有者观察并提交终态.
+    # 持久取消栅栏与 Tool 准入共享 Run 行锁, 取消立即撤销执行租约.
     cancellation_requested_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     pending_interaction_id: Mapped[str | None] = mapped_column(String(68))
     terminal_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -139,6 +149,10 @@ class InteractionRecord(Base):
     response_digest: Mapped[str | None] = mapped_column(String(128))
     resolution_semantic_digest: Mapped[str | None] = mapped_column(String(64))
     result_reference: Mapped[str | None] = mapped_column(String(256))
+    request_payload: Mapped[object | None] = mapped_column(JSONB)
+    decision: Mapped[str | None] = mapped_column(String(32))
+    response_payload: Mapped[object | None] = mapped_column(JSONB)
+    payload_present: Mapped[bool] = mapped_column(Boolean, server_default=text("false"))
 
 
 @final
@@ -174,8 +188,19 @@ class AgentRunResultRecord(Base):
     )
     schema_version: Mapped[str] = mapped_column(String(32))
     capability: Mapped[str] = mapped_column(String(32))
-    result_payload: Mapped[dict[str, object]] = mapped_column(JSONB)
+    result_payload: Mapped[object] = mapped_column(JSONB)
     result_digest: Mapped[str] = mapped_column(String(64))
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("CURRENT_TIMESTAMP")
     )
+
+
+class SuccessfulOperationRecord(Base):
+    """Bind a successful public key to a Run independently of internal operation IDs."""
+
+    __tablename__: str = "agent_successful_operations"
+    user_id: Mapped[str] = mapped_column(String(128), primary_key=True)
+    idempotency_key: Mapped[UUID] = mapped_column(PGUUID(as_uuid=True), primary_key=True)
+    run_id: Mapped[str] = mapped_column(ForeignKey("agent_runs.run_id", ondelete="RESTRICT"))
+    succeeded_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)

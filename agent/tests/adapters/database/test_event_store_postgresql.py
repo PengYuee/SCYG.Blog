@@ -1,6 +1,7 @@
 import asyncio  # noqa: RUF100  # noqa: ANYIO_OK
 from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
+from typing import cast
 
 import anyio
 import asyncpg
@@ -13,9 +14,13 @@ from scyg_agent.adapters.database.event_store import (
     NotificationChannel,
     PostgreSQLEventStore,
 )
-from scyg_agent.adapters.database.event_subscription import open_listener_connection
+from scyg_agent.adapters.database.event_subscription import (
+    SubscriptionCursorError,
+    open_listener_connection,
+)
 from scyg_agent.adapters.database.journal_records import EventRecord
 from scyg_agent.adapters.database.run_repository import PostgreSQLRunRepository
+from scyg_agent.application.event_cursor import decode_event_cursor, encode_event_cursor
 from scyg_agent.domain.ports.event_store import (
     Appended,
     AppendRequest,
@@ -150,6 +155,33 @@ async def test_replay_reports_future_old_and_notification_independent_truth(
 
 
 @pytest.mark.anyio
+async def test_canonical_oversized_cursor_returns_typed_future_without_placeholder(
+    event_environment: tuple[PostgreSQLEventStore, AsyncEngine],
+) -> None:
+    store, engine = event_environment
+    cursor = EventCursor(2**100)
+    decoded = decode_event_cursor(RUN_ID, encode_event_cursor(RUN_ID, cursor))
+    assert decoded == cursor
+    empty = await store.replay(RUN_ID, cursor, 100)
+    assert empty == FutureCursor(cursor, EventCursor(0))
+    _ = await store.append(AppendRequest(RUN_ID, (_event(0),)))
+    populated = await store.replay(RUN_ID, cursor, 100)
+    assert populated == FutureCursor(cursor, EventCursor(1))
+    missing_run = RunId("run_missing00")
+    missing = await store.replay(missing_run, cursor, 100)
+    assert missing == FutureCursor(cursor, EventCursor(0))
+    async with engine.connect() as connection:
+        count = cast(
+            "int",
+            await connection.scalar(
+                text("SELECT count(*) FROM agent_runs WHERE run_id = :run_id"),
+                {"run_id": str(missing_run)},
+            ),
+        )
+    assert count == 0
+
+
+@pytest.mark.anyio
 async def test_live_tail_replays_then_wakes_and_closes_on_cancellation(
     event_environment: tuple[PostgreSQLEventStore, AsyncEngine],
 ) -> None:
@@ -160,13 +192,17 @@ async def test_live_tail_replays_then_wakes_and_closes_on_cancellation(
     replayed = anyio.Event()
 
     async def collect() -> None:
-        """Collect exactly two durable records through the public subscription surface."""
-        async for stored in store.subscribe(RUN_ID, EventCursor(0)):
-            received.append(stored.cursor.sequence)
-            if received == [1]:
-                replayed.set()
-            if len(received) == 2:
-                return
+        """Collect two records from an explicitly opened subscription."""
+        subscription = await store.open_subscription(RUN_ID, EventCursor(0))
+        try:
+            while len(received) < 2:
+                stored = await subscription.next_event()
+                if stored is not None:
+                    received.append(stored.cursor.sequence)
+                    if received == [1]:
+                        replayed.set()
+        finally:
+            await subscription.aclose()
 
     # When: subscription replays existing truth and receives a later transaction wakeup.
     async with anyio.create_task_group() as task_group:
@@ -249,13 +285,13 @@ async def test_cancelled_subscription_aclose_releases_real_listener_and_cancel_t
         replay_limit=20,
     )
     before_cancel_tasks = _pending_cancel_tasks()
-    subscription = store.subscribe(RUN_ID, EventCursor(0))
+    subscription = await store.open_subscription(RUN_ID, EventCursor(0))
     waiting = anyio.Event()
 
     async def wait_for_event() -> None:
         """Enter listener wait and remain cancellable until the owner closes the generator."""
         waiting.set()
-        _ = await anext(subscription)
+        _ = await subscription.next_event()
 
     # When: the owner cancels the waiting task and explicitly closes the generator.
     async with anyio.create_task_group() as task_group:
@@ -314,3 +350,63 @@ def _pending_cancel_tasks() -> int:
         for task in asyncio.all_tasks()
         if not task.done() and "Connection._cancel" in task.get_coro().__qualname__
     )
+
+
+@pytest.mark.anyio
+async def test_open_is_listening_and_replay_checked_before_return(
+    event_environment: tuple[PostgreSQLEventStore, AsyncEngine],
+) -> None:
+    store, engine = event_environment
+    _ = await store.append(AppendRequest(RUN_ID, (_event(0),)))
+    connections: list[asyncpg.Connection] = []
+
+    async def factory(dsn: str) -> asyncpg.Connection:
+        connection = await asyncpg.connect(dsn)
+        connections.append(connection)
+        return connection
+
+    ready_store = PostgreSQLEventStore(
+        async_sessionmaker(engine, expire_on_commit=False),
+        require_test_settings().listener_dsn("normal"),
+        NotificationChannel.parse("scyg_t11_events"),
+        factory,
+    )
+    subscription = await ready_store.open_subscription(RUN_ID, EventCursor(0))
+    try:
+        assert len(connections) == 1
+        channels = await connections[0].fetch("SELECT pg_listening_channels() AS channel")
+        assert [row["channel"] for row in channels] == ["scyg_t11_events"]
+        stored = await subscription.next_event()
+        assert stored is not None
+        assert stored.cursor == EventCursor(1)
+    finally:
+        await subscription.aclose()
+    assert connections[0].is_closed()
+
+
+@pytest.mark.anyio
+async def test_open_rejects_future_and_retention_gap_before_listener_allocation(
+    event_environment: tuple[PostgreSQLEventStore, AsyncEngine],
+) -> None:
+    store, engine = event_environment
+    _ = await store.append(AppendRequest(RUN_ID, tuple(_event(index) for index in range(3))))
+    async with engine.begin() as connection:
+        _ = await connection.execute(
+            delete(EventRecord).where(
+                EventRecord.run_id == str(RUN_ID),
+                EventRecord.seq < 3,
+            )
+        )
+
+    async def forbidden_factory(_dsn: str) -> asyncpg.Connection:
+        pytest.fail("invalid cursor must fail before listener allocation")
+
+    ready_store = PostgreSQLEventStore(
+        async_sessionmaker(engine, expire_on_commit=False),
+        require_test_settings().listener_dsn("normal"),
+        NotificationChannel.parse("scyg_t11_events"),
+        forbidden_factory,
+    )
+    for cursor in (EventCursor(0), EventCursor(4)):
+        with pytest.raises(SubscriptionCursorError):
+            _ = await ready_store.open_subscription(RUN_ID, cursor)

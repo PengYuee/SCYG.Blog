@@ -1,7 +1,6 @@
 # Shared PostgreSQL acceptance configuration.
 # Copy to tests/test-agent.toml and replace the endpoint values locally.
-normal_database_url = "postgresql+asyncpg://scyg_agent:password@localhost:5432/scyg_agent"
+normal_database_url = "postgresql+asyncpg://scyg_agent:password@localhost:5432/scyg_agent_test"
 migration_database_url = "postgresql+asyncpg://scyg_agent:password@localhost:5433/scyg_agent_migration"
-# Optional: required only by checkpoint activity and subprocess acceptance.
-# admin_database_url = "postgresql://postgres:password@localhost:5432/scyg_agent"
-# jwt_public_key_path = "../jwt-public.pem"
+# Optional: required only by checkpoint activity acceptance.
+# admin_database_url = "postgresql://postgres:password@localhost:5432/scyg_agent_test"

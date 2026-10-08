@@ -181,11 +181,10 @@ async def _prepare_database(
 
 
 def _run_migrations(settings: ApplicationSettings) -> None:
-    root = Path(__file__).parents[2]
     previous_url = os.environ.get("SCYG_AGENT_DATABASE_URL")
     os.environ["SCYG_AGENT_DATABASE_URL"] = settings.database_url.get_secret_value()
     try:
-        command.upgrade(Config(root / "alembic.ini"), "head")
+        command.upgrade(Config(Path(__file__).with_name("alembic.ini")), "head")
     finally:
         if previous_url is None:
             del os.environ["SCYG_AGENT_DATABASE_URL"]

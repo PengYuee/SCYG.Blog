@@ -26,6 +26,8 @@ type Options struct {
 	DocsEnabled     bool
 	TokenVerifier   TokenVerifier
 	Login           *identityauth.LoginService
+	// Agent is nil when the integration is disabled.
+	Agent *AgentOptions
 }
 
 // New constructs the REST route mount with explicit health, login, and token capabilities.
@@ -50,6 +52,12 @@ func New(options Options) (func(*gin.Engine) error, error) {
 		generatedRoutes := engine.Group("")
 		if registerErr := handler.Register(generatedRoutes, loginHandler); registerErr != nil {
 			return registerErr
+		}
+		if options.Agent != nil {
+			if options.Agent.Client == nil || options.Agent.ReadyTimeout <= 0 || options.Agent.IdleTimeout <= 0 {
+				return errors.New("agent 配置无效")
+			}
+			agentHandler{*options.Agent}.register(engine)
 		}
 		engine.GET("/live", func(ctx *gin.Context) { ctx.JSON(http.StatusOK, gin.H{"message": "服务存活"}) })
 		engine.GET("/ready", func(ctx *gin.Context) {

@@ -154,5 +154,5 @@ func Test_ContentREST_sort_values_preserve_openapi_camel_case(t *testing.T) {
 
 func validArticleResult() article.Result {
 	now := time.Unix(1, 0).UTC()
-	return article.Result{ID: 1, ArticleTypeID: 2, Title: "Title", Slug: "title", Digest: "Digest", Content: "Body", Status: "published", TagIDs: []int64{3}, Version: 1, CreatedAt: now, ModifiedAt: now}
+	return article.Result{ID: 1, ArticleTypeID: 2, ArticleTypeName: "News", Title: "Title", Slug: "title", Digest: "Digest", Content: "Body", Status: "published", TagIDs: []int64{3}, Version: 1, CreatedAt: now, ModifiedAt: now}
 }

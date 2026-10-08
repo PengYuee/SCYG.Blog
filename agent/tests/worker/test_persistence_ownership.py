@@ -6,16 +6,13 @@ from typing import final
 import anyio
 import pytest
 
-from scyg_agent.domain.runs import ExecutionOwnerId, Run, RunId, RuntimeKind
+from scyg_agent.domain.runs import ExecutionOwnerId, Run, RunId
 from scyg_agent.domain.runs.repository import ClaimRequest, LeaseLost, RenewRequest, RunLease
-from scyg_agent.runtimes.base import AdapterIdentity
-from scyg_agent.runtimes.registry import default_registry
-from scyg_agent.runtimes.router import RuntimeRouter
 from scyg_agent.worker import Worker, WorkerConfig, WorkerDependencies
 from scyg_agent.worker.executor import execute_lease
-from tests.runtimes.fakes import FakeRuntimeAdapter
 
-from .test_executor import NOW, BlockingAdapter, RecordingCommitter, lease, running_run
+from .test_executor import NOW, RecordingCommitter, StructuredRunner, lease, running_run
+from .test_executor_recovery import BlockingRunner
 
 
 @final
@@ -85,12 +82,11 @@ async def test_worker_cancellation_does_not_close_external_persistence() -> None
     """Given 外部共享持久化, When Worker 停止, Then 活动事务先清理再取消."""
     run = running_run()
     repository = CancellationTrackingRepository(run)
-    dependencies = WorkerDependencies(repository, RecordingCommitter(run), lambda: NOW)
-    runtime_router = RuntimeRouter(
-        default_registry(
-            BlockingAdapter(),
-            FakeRuntimeAdapter(AdapterIdentity("deep-external-db", RuntimeKind.DEEP)),
-        )
+    dependencies = WorkerDependencies(
+        repository,
+        RecordingCommitter(run),
+        lambda: NOW,
+        BlockingRunner(),
     )
 
     async with anyio.create_task_group() as tasks:
@@ -98,7 +94,6 @@ async def test_worker_cancellation_does_not_close_external_persistence() -> None
             execute_lease,
             lease(),
             dependencies,
-            runtime_router,
             WorkerConfig(lease_duration=timedelta(milliseconds=10), renewal_fraction=0.1),
         )
         await repository.renew_entered.wait()
@@ -114,16 +109,9 @@ async def test_worker_cancellation_waits_for_claim_transaction_cleanup() -> None
     """Given 活动 claim, When Worker 被取消, Then 仓储清理后仍可读取."""
     run = running_run()
     repository = ClaimCancellationRepository(run)
-    runtime_router = RuntimeRouter(
-        default_registry(
-            FakeRuntimeAdapter(AdapterIdentity("simple-claim-owner", RuntimeKind.SIMPLE)),
-            FakeRuntimeAdapter(AdapterIdentity("deep-claim-owner", RuntimeKind.DEEP)),
-        )
-    )
     worker = Worker(
         ExecutionOwnerId("worker_claimowner01"),
-        WorkerDependencies(repository, RecordingCommitter(run), lambda: NOW),
-        runtime_router,
+        WorkerDependencies(repository, RecordingCommitter(run), lambda: NOW, StructuredRunner()),
         WorkerConfig(poll_interval=timedelta(milliseconds=1)),
     )
 

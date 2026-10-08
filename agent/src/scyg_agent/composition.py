@@ -10,18 +10,27 @@ from pydantic import BaseModel, ConfigDict, SecretStr
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from scyg_agent.adapters.database.config import AsyncDatabaseConfig
+from scyg_agent.adapters.database.event_store import NotificationChannel, PostgreSQLEventStore
+from scyg_agent.adapters.database.event_subscription import open_listener_connection
 from scyg_agent.adapters.database.run_repository import PostgreSQLRunRepository
 from scyg_agent.adapters.database.terminal_commit import PostgreSQLTerminalCommitter
 from scyg_agent.adapters.langgraph.checkpointer import CheckpointStore
 from scyg_agent.adapters.langgraph.values import CheckpointerConfig
 from scyg_agent.adapters.redis import RedisSettings, RedisStreamClient, RedisStreamStore
+from scyg_agent.application.control import ControlApplication
+from scyg_agent.application.event_subscription import EventSubscriptionService
 from scyg_agent.composition_redis import RedisResource
 from scyg_agent.composition_resources import (
     CheckpointResource,
     DatabaseResource,
     MigrationHeadResource,
 )
-from scyg_agent.composition_runtime import NOTIFICATION_CHANNEL, RuntimeFacadeResource, utc_now
+from scyg_agent.composition_runtime import (
+    NOTIFICATION_CHANNEL,
+    AgentRunnerResource,
+    listener_dsn,
+    utc_now,
+)
 from scyg_agent.composition_services import DeferredComponent, WorkerResource
 from scyg_agent.config import ApplicationSettings
 from scyg_agent.domain.runs import ExecutionOwnerId
@@ -33,7 +42,7 @@ from scyg_agent.servers import (
     HttpServerConfig,
 )
 from scyg_agent.transport.grpc import AgentControlServicer
-from scyg_agent.transport.http import HTTPDependencies, create_http_app
+from scyg_agent.transport.http import create_http_app
 from scyg_agent.worker import Worker, WorkerConfig, WorkerDependencies
 
 
@@ -108,18 +117,18 @@ class ProductionApplicationFactory:
                 )
             )
         )
-        runtime = RuntimeFacadeResource(self.settings, sessions, checkpoint.store)
+        runner = AgentRunnerResource(self.settings, sessions, checkpoint.store)
         lifecycle_slot: list[AgentApplication] = []
         components: list[LifecycleComponent] = [
             self.decorate(database),
             self.decorate(
-                MigrationHeadResource(database.engine, Path(__file__).parents[2] / "alembic.ini")
+                MigrationHeadResource(database.engine, Path(__file__).with_name("alembic.ini"))
             ),
             self.decorate(checkpoint),
             self.decorate(redis),
-            self.decorate(runtime),
+            self.decorate(runner),
         ]
-        self._append_surfaces(components, sessions, runtime, redis, lifecycle_slot)
+        self._append_surfaces(components, sessions, runner, redis, lifecycle_slot)
         lifecycle = AgentApplication(
             LifecycleComponents(tuple(components)), float(self.settings.shutdown_seconds)
         )
@@ -130,26 +139,31 @@ class ProductionApplicationFactory:
         self,
         components: list[LifecycleComponent],
         sessions: async_sessionmaker[AsyncSession],
-        runtime: RuntimeFacadeResource,
+        runner: AgentRunnerResource,
         redis: RedisResource,
         lifecycle_slot: list[AgentApplication],
     ) -> None:
         """按 gRPC、Worker、HTTP 顺序追加已启用表面."""
         if self.settings.feature_flags.grpc:
-            components.append(self.decorate(self._grpc(runtime, redis.client)))
+            components.append(self.decorate(self._grpc(sessions)))
         if self.settings.feature_flags.worker:
-            components.append(self.decorate(self._worker(sessions, runtime, redis.client)))
+            components.append(self.decorate(self._worker(sessions, runner, redis.client)))
         if self.settings.feature_flags.http:
-            components.append(self.decorate(self._http(runtime, lifecycle_slot, redis.client)))
+            components.append(self.decorate(self._http(lifecycle_slot)))
 
-    def _grpc(
-        self, runtime: RuntimeFacadeResource, stream_store: RedisStreamStore
-    ) -> LifecycleComponent:
+    def _grpc(self, sessions: async_sessionmaker[AsyncSession]) -> LifecycleComponent:
         def build() -> LifecycleComponent:
+            events = PostgreSQLEventStore(
+                sessions,
+                listener_dsn(self.settings),
+                NotificationChannel.parse(NOTIFICATION_CHANNEL),
+                open_listener_connection,
+            )
+            control = ControlApplication(
+                sessions, NOTIFICATION_CHANNEL, EventSubscriptionService(events)
+            )
             return GrpcServerComponent(
-                AgentControlServicer(
-                    runtime.require_facade(), runtime.require_verifier(), stream_store=stream_store
-                ),
+                AgentControlServicer(control),
                 GrpcServerConfig(
                     self.settings.grpc_host,
                     self.settings.grpc_port,
@@ -163,7 +177,7 @@ class ProductionApplicationFactory:
     def _worker(
         self,
         sessions: async_sessionmaker[AsyncSession],
-        runtime: RuntimeFacadeResource,
+        runner: AgentRunnerResource,
         stream_store: RedisStreamStore,
     ) -> LifecycleComponent:
         def build() -> Worker:
@@ -173,13 +187,11 @@ class ProductionApplicationFactory:
                     PostgreSQLRunRepository(sessions),
                     PostgreSQLTerminalCommitter(sessions, NOTIFICATION_CHANNEL),
                     utc_now,
-                    runtime.require_agent_runner(),
+                    runner.require_agent_runner(),
                     stream_store,
                 ),
-                runtime.require_router(),
                 WorkerConfig(
-                    simple_capacity=self.settings.simple_concurrency,
-                    deep_capacity=self.settings.deep_concurrency,
+                    capacity=self.settings.worker_concurrency,
                     lease_duration=timedelta(seconds=self.settings.lease_seconds),
                     poll_interval=timedelta(milliseconds=self.settings.worker_poll_milliseconds),
                     error_backoff=timedelta(seconds=self.settings.worker_error_backoff_seconds),
@@ -193,18 +205,9 @@ class ProductionApplicationFactory:
 
         return WorkerResource(build, float(self.settings.heartbeat_seconds))
 
-    def _http(
-        self,
-        runtime: RuntimeFacadeResource,
-        lifecycle_slot: list[AgentApplication],
-        stream_store: RedisStreamStore,
-    ) -> LifecycleComponent:
+    def _http(self, lifecycle_slot: list[AgentApplication]) -> LifecycleComponent:
         def build() -> LifecycleComponent:
-            app = create_http_app(
-                HTTPDependencies(
-                    runtime.require_facade(), runtime.require_verifier(), stream_store=stream_store
-                )
-            )
+            app = create_http_app()
             self.mount_health(app, lifecycle_slot)
             return HttpServerComponent(
                 app,

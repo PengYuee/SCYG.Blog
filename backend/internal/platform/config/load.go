@@ -25,6 +25,7 @@ type rawConfig struct {
 	Docs          rawDocs          `mapstructure:"docs"`
 	Auth          rawAuth          `mapstructure:"auth"`
 	ArticleImages rawArticleImages `mapstructure:"article_images"`
+	Agent         rawAgent         `mapstructure:"agent"`
 }
 
 type rawApp struct {
@@ -90,6 +91,7 @@ func Load(options Options) (Config, error) {
 		"auth.jwt_secret", "auth.issuer", "auth.access_token_ttl",
 		"article_images.directory", "article_images.pending_ttl", "article_images.orphan_grace", "article_images.cleanup_interval",
 		"article_images.upload_request_bytes", "article_images.max_file_bytes", "article_images.max_pixels", "article_images.max_dimension", "article_images.development_author_id",
+		"agent.enabled", "agent.target", "agent.blog_content_listen", "agent.unary_timeout", "agent.sse_idle_timeout", "agent.grpc_shutdown_timeout",
 	}
 	if !options.DisableEnvironment {
 		for _, key := range keys {
@@ -131,6 +133,7 @@ func setDefaults(instance *viper.Viper) {
 		"article_images.directory": "data/article-images", "article_images.pending_ttl": "24h", "article_images.orphan_grace": "24h", "article_images.cleanup_interval": "1h",
 		"article_images.upload_request_bytes": int64(6 << 20), "article_images.max_file_bytes": int64(5 << 20), "article_images.max_pixels": int64(25_000_000),
 		"article_images.max_dimension": 8192, "article_images.development_author_id": "",
+		"agent.enabled": false, "agent.target": "127.0.0.1:9090", "agent.blog_content_listen": "127.0.0.1:50051", "agent.unary_timeout": "5s", "agent.sse_idle_timeout": "30s", "agent.grpc_shutdown_timeout": "10s",
 	}
 	for key, value := range defaults {
 		instance.SetDefault(key, value)

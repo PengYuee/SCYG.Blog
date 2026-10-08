@@ -2,7 +2,7 @@ name: ${SCYG_COMPOSE_PROJECT_NAME:-scyg-agent-local}
 
 services:
   redis:
-    image: redis:7.4-alpine
+    image: redis:7.4-alpine@sha256:fd2f8954a0f6bb24cd8819c9a1bf7e033efe9969d3b571104abb9a58c61e7068
     command: ["redis-server", "--appendonly", "no", "--save", ""]
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -44,8 +44,8 @@ services:
 
   agent-setup:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: agent/Dockerfile
       target: runtime
     entrypoint: ["/opt/venv/bin/python", "-m", "scyg_agent.deployment"]
     environment:
@@ -72,8 +72,8 @@ services:
 
   agent:
     build:
-      context: .
-      dockerfile: Dockerfile
+      context: ..
+      dockerfile: agent/Dockerfile
       target: runtime
     environment:
       SCYG_AGENT_HTTP_HOST: 0.0.0.0
@@ -81,13 +81,20 @@ services:
       SCYG_AGENT_GRPC_HOST: 0.0.0.0
       SCYG_AGENT_GRPC_PORT: "9090"
       SCYG_AGENT_DATABASE_URL: ${SCYG_AGENT_DATABASE_URL:?请设置 Agent 数据库 DSN}
-      SCYG_AGENT_JWT_PUBLIC_KEY_PATH: /run/secrets/jwt-public.pem
-      SCYG_AGENT_JWT_ISSUER: ${SCYG_AGENT_JWT_ISSUER:?请设置 JWT 签发方}
-      SCYG_AGENT_JWT_AUDIENCE: ${SCYG_AGENT_JWT_AUDIENCE:?请设置 JWT 受众}
-      SCYG_AGENT_JWT_SERVICE_SUBJECT: ${SCYG_AGENT_JWT_SERVICE_SUBJECT:?请设置 Blog 服务主体}
-      SCYG_AGENT_PROVIDER_BASE_URL: ${SCYG_AGENT_PROVIDER_BASE_URL:?请设置提供方基础 URL}
-      SCYG_AGENT_PROVIDER_API_KEY: ${SCYG_AGENT_PROVIDER_API_KEY:?请设置提供方 API 密钥}
-      SCYG_AGENT_PROVIDER_MODEL: ${SCYG_AGENT_PROVIDER_MODEL:?请设置提供方模型}
+      SCYG_AGENT_MODELS__PROTOCOL: ${SCYG_AGENT_MODELS__PROTOCOL:-chat_completions}
+      SCYG_AGENT_MODELS__FAST__MODEL: ${SCYG_AGENT_MODELS__FAST__MODEL:?Set fast model}
+      SCYG_AGENT_MODELS__FAST__BASE_URL: ${SCYG_AGENT_MODELS__FAST__BASE_URL:?Set fast base URL}
+      SCYG_AGENT_MODELS__FAST__API_KEY: ${SCYG_AGENT_MODELS__FAST__API_KEY:?Set fast API key}
+      SCYG_AGENT_MODELS__FAST__TIMEOUT_SECONDS: ${SCYG_AGENT_MODELS__FAST__TIMEOUT_SECONDS:-60}
+      SCYG_AGENT_MODELS__STANDARD__MODEL: ${SCYG_AGENT_MODELS__STANDARD__MODEL:?Set standard model}
+      SCYG_AGENT_MODELS__STANDARD__BASE_URL: ${SCYG_AGENT_MODELS__STANDARD__BASE_URL:?Set standard base URL}
+      SCYG_AGENT_MODELS__STANDARD__API_KEY: ${SCYG_AGENT_MODELS__STANDARD__API_KEY:?Set standard API key}
+      SCYG_AGENT_MODELS__STANDARD__TIMEOUT_SECONDS: ${SCYG_AGENT_MODELS__STANDARD__TIMEOUT_SECONDS:-120}
+      SCYG_AGENT_MODELS__STRONG__MODEL: ${SCYG_AGENT_MODELS__STRONG__MODEL:?Set strong model}
+      SCYG_AGENT_MODELS__STRONG__BASE_URL: ${SCYG_AGENT_MODELS__STRONG__BASE_URL:?Set strong base URL}
+      SCYG_AGENT_MODELS__STRONG__API_KEY: ${SCYG_AGENT_MODELS__STRONG__API_KEY:?Set strong API key}
+      SCYG_AGENT_MODELS__STRONG__TIMEOUT_SECONDS: ${SCYG_AGENT_MODELS__STRONG__TIMEOUT_SECONDS:-180}
+      SCYG_AGENT_WORKER_CONCURRENCY: ${SCYG_AGENT_WORKER_CONCURRENCY:-4}
       SCYG_AGENT_BLOG_GRPC_TARGET: ${SCYG_AGENT_BLOG_GRPC_TARGET:?请设置 Blog gRPC 地址}
       SCYG_AGENT_REDIS_URL: redis://redis:6379/0
       SCYG_AGENT_REDIS_TTL_SECONDS: "86400"
@@ -112,9 +119,6 @@ services:
       start_period: 30s
     ports:
       - "127.0.0.1:${SCYG_AGENT_HTTP_PORT:-8080}:8080"
-      - "127.0.0.1:${SCYG_AGENT_GRPC_PORT:-9090}:9090"
-    volumes:
-      - ${SCYG_AGENT_JWT_PUBLIC_KEY_PATH:?请设置 JWT RSA 公钥路径}:/run/secrets/jwt-public.pem:ro
     networks:
       - scyg_agent_local
     read_only: true

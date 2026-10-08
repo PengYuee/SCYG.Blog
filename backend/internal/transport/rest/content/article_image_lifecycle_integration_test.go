@@ -78,7 +78,11 @@ func integrationRouter(t *testing.T, db *database.Database, store *blobstorage.F
 	if err != nil {
 		t.Fatal(err)
 	}
-	handler, err := restcontent.NewHandler(articleService, articleImages, articleService, taxonomyService, imageService, policy)
+	articleResponses, err := application.NewArticleResponses(db.GORM(), articleService, taxonomyService, articleImages)
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler, err := restcontent.NewHandler(articleResponses, articleResponses, articleService, taxonomyService, imageService, policy)
 	if err != nil {
 		t.Fatal(err)
 	}

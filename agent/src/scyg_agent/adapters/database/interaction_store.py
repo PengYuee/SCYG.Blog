@@ -147,14 +147,35 @@ class PostgreSQLInteractionStore:
         ).scalar_one_or_none()
         if run is None or intent.approval_interaction_id != request.interaction_id:
             return DecisionConflict(intent.operation_id)
-        resolved = await self.resolve_in_session(session, request)
-        if not isinstance(resolved, (CommandApplied, AlreadyResolved)):
-            return resolved
-        resolution_digest = interaction_resolution_digest(
-            request.response_digest,
-            request.result_reference.value,
-            command_semantic_digest(request.command),
-        )
+        interaction = (
+            await session.execute(
+                select(InteractionRecord)
+                .where(
+                    InteractionRecord.interaction_id == str(request.interaction_id),
+                    InteractionRecord.run_id == str(intent.run_id),
+                )
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if (
+            interaction is not None
+            and interaction.status == "resolved"
+            and interaction.decision is not None
+        ):
+            if interaction.decision != "approve" or interaction.resolution_semantic_digest is None:
+                return DecisionConflict(intent.operation_id)
+            resolution_digest = interaction.resolution_semantic_digest
+        else:
+            resolved = await self.resolve_in_session(session, request)
+            if not isinstance(resolved, (CommandApplied, AlreadyResolved)):
+                return resolved
+            resolution_digest = str(
+                interaction_resolution_digest(
+                    request.response_digest,
+                    request.result_reference.value,
+                    command_semantic_digest(request.command),
+                )
+            )
         inserted = (
             await session.execute(
                 insert(ToolCallRecord)
@@ -197,15 +218,26 @@ class PostgreSQLInteractionStore:
         if existing is None or existing.intent_semantic_digest != str(
             tool_intent_semantic_digest(intent)
         ):
-            return SemanticIdentityConflict(intent.operation_id)
-        if existing.approval_resolution_digest != str(resolution_digest):
-            return DecisionConflict(intent.operation_id)
-        return ToolIntentPrepared(intent.operation_id, replayed=True)
+            prepared: ResolveAndPrepareResult = SemanticIdentityConflict(intent.operation_id)
+        elif existing.approval_resolution_digest != str(resolution_digest):
+            prepared = DecisionConflict(intent.operation_id)
+        else:
+            prepared = ToolIntentPrepared(intent.operation_id, replayed=True)
+        return prepared
 
     async def resolve_in_session(
         self, session: AsyncSession, request: InteractionResolution
     ) -> InteractionResolveResult:
         """在调用方会话中选择解析赢家并应用命令。."""
+        run = (
+            await session.execute(
+                select(RunRecord)
+                .where(RunRecord.run_id == str(request.command.run_id))
+                .with_for_update()
+            )
+        ).scalar_one_or_none()
+        if run is None:
+            return InteractionNotFound(request.interaction_id)
         interaction = (
             await session.execute(
                 select(InteractionRecord)

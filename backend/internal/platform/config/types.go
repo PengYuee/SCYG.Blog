@@ -135,6 +135,7 @@ type Config struct {
 	docs          Docs
 	auth          Auth
 	articleImages ArticleImages
+	agent         Agent
 }
 
 // App returns immutable application settings.

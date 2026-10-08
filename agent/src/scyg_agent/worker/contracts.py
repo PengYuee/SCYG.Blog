@@ -49,5 +49,5 @@ class WorkerDependencies:
     repository: WorkerRunRepository
     terminal_committer: TerminalCommitter
     clock: Callable[[], datetime]
-    agent_runner: AgentRunner | None = None
+    agent_runner: AgentRunner
     stream_store: RedisStreamStore | None = None

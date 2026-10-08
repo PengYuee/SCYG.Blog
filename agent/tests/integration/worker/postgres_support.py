@@ -1,17 +1,28 @@
 """双生产 Worker 测试的 PostgreSQL 装配与断言."""
 
 from datetime import UTC, datetime, timedelta
-from hashlib import sha256
+from uuid import uuid4
 
 import anyio
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from scyg_agent.adapters.database.journal_records import CommandRecord, EventRecord
+from scyg_agent.adapters.database.journal_records import EventRecord
 from scyg_agent.adapters.database.operation_records import AuditEventRecord
-from scyg_agent.adapters.database.run_records import RunRecord
+from scyg_agent.adapters.database.run_records import AgentRunResultRecord, RunRecord
 from scyg_agent.adapters.database.run_repository import PostgreSQLRunRepository
+from scyg_agent.adapters.database.run_request_source import PostgreSQLRunInputSource
 from scyg_agent.adapters.database.terminal_commit import PostgreSQLTerminalCommitter
+from scyg_agent.agents.contracts import (
+    Capability,
+    ChatInput,
+    SearchInput,
+    input_digest,
+    input_payload,
+)
+from scyg_agent.agents.runner import AgentRunner
+from scyg_agent.application.control import ControlApplication
+from scyg_agent.application.event_subscription import EventSubscriptionService
 from scyg_agent.domain.runs import (
     ExecutionOwnerId,
     OperationId,
@@ -24,14 +35,12 @@ from scyg_agent.domain.runs import (
     UserId,
 )
 from scyg_agent.domain.runs.input import RunInput
-from scyg_agent.domain.runs.repository import CancellationRequest, CreateRunRequest
-from scyg_agent.runtimes.registry import default_registry
-from scyg_agent.runtimes.router import RuntimeRouter
+from scyg_agent.domain.runs.repository import CreateRunRequest
 from scyg_agent.worker import Worker, WorkerConfig, WorkerDependencies, WorkerState
 
 from .diagnostics import wait_for_completion
 from .fixture_support import WorkerDatabaseFixture
-from .runtime_support import DeepFailureAdapter, RuntimeProbe, SimpleBarrierAdapter
+from .runtime_support import BarrierAgentRunner, RunnerProbe
 
 RUN_COUNT_SIMPLE = 8
 RUN_COUNT_DEEP = 3
@@ -44,34 +53,35 @@ async def exercise_two_workers(database: WorkerDatabaseFixture) -> None:
     await seed_runs(sessions)
     first_repository = PostgreSQLRunRepository(sessions)
     second_repository = PostgreSQLRunRepository(sessions)
-    probe = RuntimeProbe()
-    router = RuntimeRouter(default_registry(SimpleBarrierAdapter(probe), DeepFailureAdapter(probe)))
+    probe = RunnerProbe()
+    runner = BarrierAgentRunner(probe, PostgreSQLRunInputSource(sessions))
     config = WorkerConfig(
-        simple_capacity=4,
-        deep_capacity=1,
+        capacity=5,
         lease_duration=timedelta(milliseconds=500),
         renewal_fraction=0.2,
         poll_interval=timedelta(milliseconds=5),
         error_backoff=timedelta(milliseconds=100),
         drain_timeout=timedelta(milliseconds=50),
     )
-    first = build_worker("worker_postgres01", first_repository, sessions, router, config)
-    second = build_worker("worker_postgres02", second_repository, sessions, router, config)
+    first = build_worker("worker_postgres01", first_repository, sessions, runner, config)
+    second = build_worker("worker_postgres02", second_repository, sessions, runner, config)
     cancelled_runs: list[RunId] = []
     async with anyio.create_task_group() as tasks:
         _ = tasks.start_soon(first.start)
         _ = tasks.start_soon(second.start)
         try:
-            await probe.started.wait()
+            with anyio.fail_after(5):
+                await probe.both_started.wait()
             before = await active_expiries(sessions)
             await anyio.sleep(0.15)
             after = await active_expiries(sessions)
             assert any(after[key] > expiry for key, expiry in before.items() if key in after)
             cancel_run = await leased_by(sessions, "worker_postgres02")
             cancelled_runs.append(cancel_run)
-            _ = await first_repository.request_cancellation(
-                CancellationRequest(cancel_run, clock())
+            control = ControlApplication(
+                sessions, "agent_events", EventSubscriptionService(database.event_store())
             )
+            _ = await control.cancel("user-worker-pg", str(uuid4()), str(cancel_run))
             await first.stop()
             probe.gate.set()
             await wait_for_completion(sessions, probe, first, second)
@@ -92,7 +102,7 @@ def build_worker(
     owner: str,
     repository: PostgreSQLRunRepository,
     sessions: async_sessionmaker[AsyncSession],
-    router: RuntimeRouter,
+    runner: AgentRunner,
     config: WorkerConfig,
 ) -> Worker:
     """使用两个生产持久化适配器构造 Worker."""
@@ -102,8 +112,8 @@ def build_worker(
             repository,
             PostgreSQLTerminalCommitter(sessions, "agent_events"),
             clock,
+            runner,
         ),
-        router,
         config,
     )
 
@@ -114,14 +124,19 @@ def clock() -> datetime:
 
 
 async def seed_runs(sessions: async_sessionmaker[AsyncSession]) -> None:
-    """通过生产仓储创建混合 Run, 并插入审计命令父事实."""
+    """通过生产仓储创建混合 Run, 不伪造自主 Worker 的命令父记录."""
     repository = PostgreSQLRunRepository(sessions)
-    specs = tuple((RuntimeKind.SIMPLE, TaskType.SUMMARY, i) for i in range(8)) + tuple(
+    specs = tuple((RuntimeKind.SIMPLE, TaskType.QUESTION, i) for i in range(8)) + tuple(
         (RuntimeKind.DEEP, TaskType.RESEARCH, 8 + i) for i in range(3)
     )
     now = clock()
     for kind, task_type, index in specs:
         run_id = RunId(f"run_workerpg{index:03d}")
+        value = (
+            ChatInput(message="测试输入")
+            if kind is RuntimeKind.SIMPLE
+            else SearchInput(query="测试输入")
+        )
         run = Run(
             run_id,
             UserId("user-worker-pg"),
@@ -140,35 +155,22 @@ async def seed_runs(sessions: async_sessionmaker[AsyncSession]) -> None:
                 run,
                 OperationId(f"worker-pg:{index}"),
                 now,
-                RunInput("测试输入", f"article-{index}"),
+                RunInput(
+                    "测试输入",
+                    f"article-{index}",
+                    "chat" if kind is RuntimeKind.SIMPLE else "search",
+                    "chat-v1" if kind is RuntimeKind.SIMPLE else "search-v1",
+                    "v1",
+                    "v1",
+                    input_payload(value),
+                    input_digest(value),
+                    None,
+                    str(run_id),
+                    "standard",
+                    "v1",
+                ),
             )
         )
-        await seed_command_parents(sessions, run_id, now)
-
-
-async def seed_command_parents(
-    sessions: async_sessionmaker[AsyncSession], run_id: RunId, now: datetime
-) -> None:
-    """按父行优先顺序建立首次执行和一次恢复的命令事实."""
-    async with sessions.begin() as session:
-        for attempt in (1, 2):
-            digest = sha256(f"{run_id}:{attempt}:worker".encode()).hexdigest()[:24]
-            session.add(
-                CommandRecord(
-                    command_id=f"cmd_{digest}",
-                    run_id=str(run_id),
-                    expected_revision=attempt + 1,
-                    sequence=attempt - 1,
-                    kind="worker_terminal",
-                    request_digest="a" * 64,
-                    semantic_digest="b" * 64,
-                    result_status="pending",
-                    result_reference=None,
-                    created_at=now,
-                    completed_at=None,
-                )
-            )
-        await session.flush()
 
 
 async def active_expiries(
@@ -187,14 +189,13 @@ async def active_expiries(
 
 
 async def leased_by(sessions: async_sessionmaker[AsyncSession], owner: str) -> RunId:
-    """返回指定 Worker 当前拥有的一个 SIMPLE Run."""
+    """Return a Run currently owned by the specified Worker."""
     async with sessions() as session:
         run_id = (
             await session.execute(
                 select(RunRecord.run_id)
                 .where(
                     RunRecord.lease_owner == owner,
-                    RunRecord.runtime_kind == RuntimeKind.SIMPLE.value,
                 )
                 .limit(1)
             )
@@ -204,16 +205,15 @@ async def leased_by(sessions: async_sessionmaker[AsyncSession], owner: str) -> R
 
 async def assert_results(
     database: WorkerDatabaseFixture,
-    probe: RuntimeProbe,
+    probe: RunnerProbe,
     cancelled_run: RunId,
 ) -> None:
     """验证并发、围栏、终态、事件和审计唯一性."""
     sessions = database.session_factory()
     for owner in (ExecutionOwnerId("worker_postgres01"), ExecutionOwnerId("worker_postgres02")):
-        assert probe.maxima.get((owner, RuntimeKind.SIMPLE), 0) <= 4
-        assert probe.maxima.get((owner, RuntimeKind.DEEP), 0) <= 1
+        assert 1 <= probe.maxima.get(owner, 0) <= 5
     assert len({(visit.run_id, visit.attempt) for visit in probe.visits}) == len(probe.visits)
-    assert {visit.kind for visit in probe.visits} == {RuntimeKind.SIMPLE, RuntimeKind.DEEP}
+    assert {visit.capability for visit in probe.visits} == {Capability.CHAT, Capability.SEARCH}
     assert any(
         visit.attempt == 2 and visit.owner == ExecutionOwnerId("worker_postgres02")
         for visit in probe.visits
@@ -242,6 +242,7 @@ async def assert_results(
             .tuples()
             .all()
         )
+        result_rows = tuple((await session.execute(select(AgentRunResultRecord))).scalars())
     terminal_counts = dict(event_rows)
     audit_counts = dict(audit_rows)
     assert len(final_rows) == RUN_COUNT_SIMPLE + RUN_COUNT_DEEP
@@ -250,8 +251,25 @@ async def assert_results(
         next(row for row in final_rows if persisted_run_matches(row.run_id, cancelled_run)).status
         == "cancelled"
     )
+    for row in final_rows:
+        assert row.lease_owner is None
+        assert row.lease_token is None
+        assert row.lease_expires_at is None
+        if row.run_id != str(cancelled_run):
+            assert row.status == ("succeeded" if row.capability == "chat" else "failed")
+    assert {row.run_id for row in result_rows} == {
+        row.run_id for row in final_rows if row.status == "succeeded"
+    }
+    assert all(row.capability == "chat" for row in result_rows)
+    assert all(
+        row.result_payload == {"response": "Persisted worker result", "source_article_ids": []}
+        for row in result_rows
+    )
     assert all(terminal_counts.get(row.run_id) == 1 for row in final_rows)
-    assert all(audit_counts.get(row.run_id) == 1 for row in final_rows)
+    assert audit_counts.get(str(cancelled_run), 0) == 0
+    assert all(
+        audit_counts.get(row.run_id) == 1 for row in final_rows if row.run_id != str(cancelled_run)
+    )
     store = database.event_store()
     snapshots = [await store.terminal_snapshot(RunId(row.run_id)) for row in final_rows]
     assert all(snapshot is not None for snapshot in snapshots)

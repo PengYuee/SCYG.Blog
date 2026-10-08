@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
 	"log/slog"
 	"os"
 	"testing"
@@ -112,7 +113,7 @@ func Test_MigrationRoundTrip_up_down_up(t *testing.T) {
 func Test_ExactSchema_catalog(t *testing.T) {
 	d := open(t)
 	up(t, d)
-	for _, name := range []string{"article_types", "tags", "articles", "article_tags", "users"} {
+	for _, name := range []string{"article_types", "tags", "articles", "article_tags", "users", "article_operations"} {
 		var n int64
 		e := d.GORM().Raw(`SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name=?`, name).Scan(&n).Error
 		if e != nil || n != 1 {
@@ -228,22 +229,23 @@ func Test_InvalidMigration_dirty_force_recovery(t *testing.T) {
 	if e := base.Close(); e != nil {
 		t.Fatal(e)
 	}
-	v1u, _ := os.ReadFile("../../../migrations/000001_initial.up.sql")
-	v1d, _ := os.ReadFile("../../../migrations/000001_initial.down.sql")
-	v2u, _ := os.ReadFile("../../../migrations/000002_article_images.up.sql")
-	v2d, _ := os.ReadFile("../../../migrations/000002_article_images.down.sql")
-	v3u, _ := os.ReadFile("../../../migrations/000003_article_image_cleanup_claims.up.sql")
-	v3d, _ := os.ReadFile("../../../migrations/000003_article_image_cleanup_claims.down.sql")
-	bad := fstest.MapFS{
-		"000001_initial.up.sql":                        {Data: v1u},
-		"000001_initial.down.sql":                      {Data: v1d},
-		"000002_article_images.up.sql":                 {Data: v2u},
-		"000002_article_images.down.sql":               {Data: v2d},
-		"000003_article_image_cleanup_claims.up.sql":   {Data: v3u},
-		"000003_article_image_cleanup_claims.down.sql": {Data: v3d},
-		"000004_bad.up.sql":                            {Data: []byte(`CREATE TABLE broken(id bigint); INVALID SQL;`)},
-		"000004_bad.down.sql":                          {Data: []byte(`DROP TABLE broken;`)},
+	bad := fstest.MapFS{}
+	entries, readErr := migrations.FS.ReadDir(".")
+	if readErr != nil {
+		t.Fatal(readErr)
 	}
+	for _, entry := range entries {
+		data, readErr := migrations.FS.ReadFile(entry.Name())
+		if readErr != nil {
+			t.Fatal(readErr)
+		}
+		bad[entry.Name()] = &fstest.MapFile{Data: data}
+	}
+	nextVersion := migrations.CurrentVersion + 1
+	badUp := fmt.Sprintf("%06d_bad.up.sql", nextVersion)
+	badDown := fmt.Sprintf("%06d_bad.down.sql", nextVersion)
+	bad[badUp] = &fstest.MapFile{Data: []byte(`CREATE TABLE broken(id bigint); INVALID SQL;`)}
+	bad[badDown] = &fstest.MapFile{Data: []byte(`DROP TABLE broken;`)}
 	badPool, e := sql.Open("pgx", d.dsn)
 	if e != nil {
 		t.Fatal(e)
@@ -261,27 +263,25 @@ func Test_InvalidMigration_dirty_force_recovery(t *testing.T) {
 		t.Fatal("expected failure")
 	}
 	version, dirty, e := r.Version()
-	if e != nil || version != 4 || !dirty {
+	if e != nil || version != nextVersion || !dirty {
 		t.Fatalf("%d %v %v", version, dirty, e)
 	}
 	var n int64
-	d.GORM().Raw(`SELECT count(*) FROM information_schema.tables WHERE table_name='Broken'`).Scan(&n)
+	d.GORM().Raw(`SELECT count(*) FROM information_schema.tables WHERE table_schema='public' AND table_name='broken'`).Scan(&n)
 	if n != 0 {
 		t.Fatal("schema not rolled back")
 	}
-	if e = r.Force(3); e != nil {
+	if e = r.Force(int(migrations.CurrentVersion)); e != nil {
 		t.Fatal(e)
 	}
-	good := fstest.MapFS{
-		"000001_initial.up.sql":                        {Data: v1u},
-		"000001_initial.down.sql":                      {Data: v1d},
-		"000002_article_images.up.sql":                 {Data: v2u},
-		"000002_article_images.down.sql":               {Data: v2d},
-		"000003_article_image_cleanup_claims.up.sql":   {Data: v3u},
-		"000003_article_image_cleanup_claims.down.sql": {Data: v3d},
-		"000004_good.up.sql":                           {Data: []byte(`CREATE TABLE recovery_proof (id bigint PRIMARY KEY);`)},
-		"000004_good.down.sql":                         {Data: []byte(`DROP TABLE recovery_proof;`)},
+	good := fstest.MapFS{}
+	for name, file := range bad {
+		if name != badUp && name != badDown {
+			good[name] = file
+		}
 	}
+	good[fmt.Sprintf("%06d_good.up.sql", nextVersion)] = &fstest.MapFile{Data: []byte(`CREATE TABLE recovery_proof (id bigint PRIMARY KEY);`)}
+	good[fmt.Sprintf("%06d_good.down.sql", nextVersion)] = &fstest.MapFile{Data: []byte(`DROP TABLE recovery_proof;`)}
 	if e = r.Close(); e != nil {
 		t.Fatal(e)
 	}
@@ -294,6 +294,13 @@ func Test_InvalidMigration_dirty_force_recovery(t *testing.T) {
 		t.Fatal(e)
 	}
 	if e = r.Up(); e != nil {
+		t.Fatal(e)
+	}
+	version, dirty, e = r.Version()
+	if e != nil || version != nextVersion || dirty {
+		t.Fatalf("recovered migration: version=%d dirty=%t error=%v", version, dirty, e)
+	}
+	if e := d.GORM().Exec(`INSERT INTO recovery_proof (id) VALUES (42)`).Error; e != nil {
 		t.Fatal(e)
 	}
 }

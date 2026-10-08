@@ -17,15 +17,12 @@ from scyg_agent.worker import (
 def test_capacity_rejects_non_positive_boolean_and_unbounded_values(value: int) -> None:
     """Given 非法容量, When 构造配置, Then 在边界拒绝."""
     with pytest.raises(InvalidWorkerConfigError):
-        _ = WorkerConfig(simple_capacity=value)
+        _ = WorkerConfig(capacity=value)
 
 
-def test_default_capacities_are_independent_and_bounded() -> None:
-    """Given 默认配置, When 读取容量, Then SIMPLE 与 DEEP 分别为 4 和 1."""
-    config = WorkerConfig()
-
-    assert config.simple_capacity == 4
-    assert config.deep_capacity == 1
+def test_default_capacity_is_shared_and_bounded() -> None:
+    """Recipes share one configured execution capacity."""
+    assert WorkerConfig().capacity == 4
 
 
 @pytest.mark.parametrize(
@@ -50,7 +47,7 @@ def test_every_capacity_and_duration_field_uses_the_same_strict_boundary() -> No
     """Given 其余容量与时长字段, When 置零, Then 全部拒绝."""
     config = WorkerConfig()
     with pytest.raises(InvalidWorkerConfigError):
-        _ = replace(config, deep_capacity=0)
+        _ = replace(config, capacity=0)
     with pytest.raises(InvalidWorkerConfigError):
         _ = replace(config, lease_duration=timedelta(0))
     with pytest.raises(InvalidWorkerConfigError):

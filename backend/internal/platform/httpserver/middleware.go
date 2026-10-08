@@ -120,7 +120,7 @@ func cors(origins []string) gin.HandlerFunc {
 			ctx.Header("Access-Control-Allow-Origin", origin)
 			ctx.Header("Vary", "Origin")
 			ctx.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
-			ctx.Header("Access-Control-Allow-Headers", "Authorization, Content-Type, If-Match, X-Request-ID")
+			ctx.Header("Access-Control-Allow-Headers", "Authorization, Content-Type, If-Match, X-Request-ID, Idempotency-Key, Last-Event-ID")
 		}
 		if ctx.Request.Method == http.MethodOptions {
 			if _, ok := allowed[origin]; ok {
@@ -135,9 +135,13 @@ func cors(origins []string) gin.HandlerFunc {
 }
 
 // requestLimit 按精确方法与路径选择流式请求上限，其他请求保持安全默认值。
-func requestLimit(defaultLimit, uploadLimit int64) gin.HandlerFunc {
+func requestLimit(defaultLimit, uploadLimit int64, agentWriters ...func(*gin.Context)) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		limit := defaultLimit
+		var writeTooLarge func(*gin.Context)
+		if len(agentWriters) > 0 && agentWriters[0] != nil && isAgentPath(ctx.FullPath()) {
+			writeTooLarge = agentWriters[0]
+		}
 		if ctx.Request.Method == http.MethodPost && ctx.Request.URL.Path == "/api/v1/manage/article-images" && ctx.Request.URL.RawQuery == "" && !ctx.Request.URL.ForceQuery {
 			limit = uploadLimit
 		}
@@ -146,11 +150,15 @@ func requestLimit(defaultLimit, uploadLimit int64) gin.HandlerFunc {
 			return
 		}
 		if ctx.Request.ContentLength > limit {
-			ctx.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, gin.H{"error": "request_too_large"})
+			if writeTooLarge != nil {
+				writeTooLarge(ctx)
+			} else {
+				ctx.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, gin.H{"error": "request_too_large"})
+			}
 			return
 		}
 		limited := http.MaxBytesReader(ctx.Writer, ctx.Request.Body, limit)
-		ctx.Request.Body = &requestBody{ReadCloser: limited, context: ctx}
+		ctx.Request.Body = &requestBody{ReadCloser: limited, context: ctx, writeTooLarge: writeTooLarge}
 		ctx.Next()
 	}
 }
@@ -160,7 +168,8 @@ type requestBody struct {
 	// ReadCloser 是标准库提供的流式限制读取器。
 	io.ReadCloser
 	// context 用于在读取越界时终止当前 Gin 请求。
-	context *gin.Context
+	context       *gin.Context
+	writeTooLarge func(*gin.Context)
 }
 
 // Read 转发流式读取，并把 MaxBytesError 映射为稳定的 413 JSON 响应。
@@ -168,7 +177,18 @@ func (body *requestBody) Read(buffer []byte) (int, error) {
 	read, err := body.ReadCloser.Read(buffer)
 	var maxBytesError *http.MaxBytesError
 	if errors.As(err, &maxBytesError) && !body.context.IsAborted() {
-		body.context.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, gin.H{"error": "request_too_large"})
+		if body.writeTooLarge != nil {
+			body.writeTooLarge(body.context)
+		} else {
+			body.context.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, gin.H{"error": "request_too_large"})
+		}
 	}
 	return read, err
+}
+
+func isAgentPath(path string) bool {
+	if path == "/api/v1/ai/search" || path == "/api/v1/ai/write" || path == "/api/v1/ai/polish" || path == "/api/v1/ai/chat" {
+		return true
+	}
+	return path == "/api/v1/runs/:runId" || path == "/api/v1/runs/:runId/events" || path == "/api/v1/runs/:runId/resume" || path == "/api/v1/runs/:runId/cancel"
 }

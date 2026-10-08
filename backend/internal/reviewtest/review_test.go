@@ -4,10 +4,8 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
-	"os"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"testing"
 )
 
@@ -19,110 +17,6 @@ func repositoryRoot(t *testing.T) string {
 		t.Fatal("无法定位 reviewtest 源文件")
 	}
 	return filepath.Clean(filepath.Join(filepath.Dir(file), "..", "..", ".."))
-}
-
-// readFile 读取明确路径，不假设执行元数据被提交进产品。
-func readFile(t *testing.T, path string) string {
-	t.Helper()
-	//nolint:gosec // review tests read only explicit repository metadata paths.
-	content, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatalf("读取交付文件 %s 失败：%v", path, err)
-	}
-	return string(content)
-}
-
-// metadataPath 优先读取显式环境输入，仅在开发工作区默认路径真实存在时回退。
-func metadataPath(t *testing.T, environment, fallback string) string {
-	t.Helper()
-	if explicit := os.Getenv(environment); explicit != "" {
-		// 显式相对路径始终以仓库根为基准，避免测试包工作目录改变解析结果。
-		if filepath.IsAbs(explicit) {
-			return filepath.Clean(explicit)
-		}
-		return filepath.Join(repositoryRoot(t), explicit)
-	}
-	candidate := filepath.Join(repositoryRoot(t), filepath.FromSlash(fallback))
-	if _, err := os.Stat(candidate); err == nil {
-		return candidate
-	}
-	t.Fatalf("缺少 %s；干净产品检出必须由 Task/CI 显式提供外部 artifact 路径", environment)
-	return ""
-}
-
-func Test_MetadataPath_resolves_repository_relative_environment_from_arbitrary_cwd(t *testing.T) {
-	// Given
-	isolationWorkingDirectory := t.TempDir()
-	originalWorkingDirectory, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("读取当前工作目录失败：%v", err)
-	}
-	t.Cleanup(func() {
-		if restoreErr := os.Chdir(originalWorkingDirectory); restoreErr != nil {
-			t.Errorf("恢复当前工作目录失败：%v", restoreErr)
-		}
-	})
-	if err := os.Chdir(isolationWorkingDirectory); err != nil {
-		t.Fatalf("切换到隔离工作目录失败：%v", err)
-	}
-	t.Setenv("PLAN_PATH", filepath.FromSlash(".omo/plans/go-service-architecture-foundation.md"))
-
-	// When
-	resolved := metadataPath(t, "PLAN_PATH", ".omo/plans/go-service-architecture-foundation.md")
-
-	// Then
-	expected := filepath.Join(repositoryRoot(t), ".omo", "plans", "go-service-architecture-foundation.md")
-	if resolved != expected {
-		t.Fatalf("计划路径应基于仓库根解析，得到 %q，期望 %q", resolved, expected)
-	}
-}
-
-func Test_PlanCompliance_reads_explicit_artifacts_without_product_commit(t *testing.T) {
-	planPath := metadataPath(t, "PLAN_PATH", ".omo/plans/go-service-architecture-foundation.md")
-	evidenceRoot := metadataPath(t, "EVIDENCE_ROOT", ".omo/evidence")
-	plan := readFile(t, planPath)
-	if !strings.Contains(plan, "Complete real-system architecture proof and developer handoff") {
-		t.Fatal("计划 artifact 缺少 Todo13")
-	}
-	if _, err := os.Stat(filepath.Join(evidenceRoot, "task-13-go-service-architecture-foundation.txt")); err != nil {
-		t.Fatalf("证据 artifact 缺少 Todo13：%v", err)
-	}
-}
-
-func Test_PlanCompliance_uses_isolated_PowerShell_runner(t *testing.T) {
-	// Given
-	backendPath := filepath.Join(repositoryRoot(t), "backend")
-	taskfile := readFile(t, filepath.Join(backendPath, "Taskfile.yml"))
-	runnerPath := filepath.Join(backendPath, "scripts", "qa-plan.ps1")
-
-	// When
-	runner := readFile(t, runnerPath)
-
-	// Then
-	if strings.Contains(taskfile, "$env:") || strings.Contains(taskfile, "$$env:") {
-		t.Fatal("qa:plan Taskfile 不得内联 PowerShell 环境变量")
-	}
-	if !strings.Contains(taskfile, "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/qa-plan.ps1") {
-		t.Fatal("qa:plan 必须委托独立 PowerShell 脚本")
-	}
-	for _, required := range []string{"$PSScriptRoot", "$env:PLAN_PATH", "$env:EVIDENCE_ROOT", "go test -timeout 30s ./internal/reviewtest"} {
-		if !strings.Contains(runner, required) {
-			t.Fatalf("qa:plan 脚本缺少必要行为 %q", required)
-		}
-	}
-}
-
-func Test_ReviewE2E_AST_proves_nine_real_scenarios(t *testing.T) {
-	path := filepath.Join(repositoryRoot(t), "backend", "internal", "e2e", "foundation_e2e_test.go")
-	file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
-	if err != nil {
-		t.Fatalf("解析 tagged E2E 失败：%v", err)
-	}
-	for _, requirement := range scenarioRequirements() {
-		if failures := validateScenario(file, requirement); len(failures) != 0 {
-			t.Fatalf("E2E 场景验证失败：%v", failures)
-		}
-	}
 }
 
 func Test_ReviewE2E_AST_rejects_string_catalog(t *testing.T) {

@@ -4,8 +4,17 @@ generate:
   gin-server: true
   strict-server: true
   models: true
-  embedded-spec: true
+  embedded-spec: false
 output-options:
   skip-prune: true
   name-normalizer: ToCamelCaseWithInitialisms
+  exclude-operation-ids:
+    - agentSearch
+    - agentWrite
+    - agentPolish
+    - agentChat
+    - agentGet
+    - agentEvents
+    - agentResume
+    - agentCancel
 output: internal/generated/openapi/openapi.gen.go

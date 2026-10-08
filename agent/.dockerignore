@@ -19,10 +19,11 @@ dist
 tests
 backend
 frontend
-contracts
 *.pem
 *.key
 *.crt
 *.p12
 *.pfx
 *.log
+.scratch
+src/scyg_agent/generated/proto

@@ -43,6 +43,8 @@ func (server *startupServer) Shutdown(context.Context) error {
 	return server.listener.Close()
 }
 
+func (server *startupServer) Close() error { return server.Shutdown(context.Background()) }
+
 // startupTelemetry 提供无副作用的测试遥测资源。
 type startupTelemetry struct{}
 
@@ -115,6 +117,8 @@ func (server *startupFailureServer) Shutdown(context.Context) error {
 	server.closed = true
 	return server.listener.Close()
 }
+
+func (server *startupFailureServer) Close() error { return server.Shutdown(context.Background()) }
 
 // invalidAddressListener 保留真实监听器资源但返回不可解析地址。
 type invalidAddressListener struct{ net.Listener }

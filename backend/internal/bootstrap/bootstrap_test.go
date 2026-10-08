@@ -67,6 +67,7 @@ type fakeServer struct {
 
 func (fake *fakeServer) Start() (net.Listener, <-chan error, error) { return nil, nil, fake.startErr }
 func (fake *fakeServer) Shutdown(context.Context) error             { fake.closes++; return nil }
+func (fake *fakeServer) Close() error                               { fake.closes++; return nil }
 
 // withConfig 为 bootstrap 单元测试提供显式文件，避免依赖入口默认路径。
 func withConfig(t *testing.T, options bootstrap.Options) bootstrap.Options {
@@ -99,6 +100,9 @@ func validDependencies(telemetry *fakeTelemetry, db *fakeDatabase, migration *fa
 		},
 		NewArticleImages: func(bootstrap.Database, module.Authorizer, module.CurrentAuthorProvider, module.Clock, *article.Service, *image.Service) (*application.ArticleImages, error) {
 			return &application.ArticleImages{}, nil
+		},
+		NewArticleResponses: func(bootstrap.Database, *article.Service, *taxonomy.Service, *application.ArticleImages) (*application.ArticleResponses, error) {
+			return &application.ArticleResponses{}, nil
 		},
 		NewImageCleanup: func(bootstrap.Database, *blobstorage.Filesystem, image.Policy, module.Clock) (bootstrap.CleanupRunner, error) {
 			return fakeCleanupRunner{}, nil

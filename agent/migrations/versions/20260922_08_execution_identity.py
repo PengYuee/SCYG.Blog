@@ -26,6 +26,7 @@ def _inspector() -> Inspector:
 
 def _create_binding_table() -> None:
     metadata = MetaData()
+    _ = Table("agent_runs", metadata, autoload_with=op.get_bind())
     table = Table(
         "agent_checkpoint_bindings",
         metadata,

@@ -2,7 +2,7 @@
 
 from collections import deque
 from collections.abc import Mapping
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from hashlib import sha256
 from typing import Final
@@ -27,18 +27,12 @@ from scyg_agent.domain.ports.audit_store import AuditFact
 from scyg_agent.domain.ports.event_store import AppendRequest
 from scyg_agent.domain.ports.idempotency import AuditMetadata
 from scyg_agent.domain.ports.terminal_commit import (
-    TerminalCancellationRequested,
     TerminalCommitRequest,
     TerminalCommitted,
-    TerminalEventConflict,
-    TerminalLeaseLost,
-    TerminalReplay,
     TerminalResult,
-    TerminalStateConflict,
 )
 from scyg_agent.domain.runs import (
     ApprovalRequiredEvent,
-    CommandId,
     DomainEvent,
     InteractionId,
     Run,
@@ -56,31 +50,12 @@ from scyg_agent.domain.runs.repository import (
     RenewRequest,
     RunLease,
 )
-from scyg_agent.runtimes.base import AdapterIdentityDriftError
-from scyg_agent.runtimes.deep.models import (
-    ApprovalRequired,
-    DeepRuntimeError,
-    ExecutionInFlight,
-    ExternalOutcomeUnknownResult,
-    Rejected,
-    ToolFinished,
-)
-from scyg_agent.runtimes.normalization import (
-    DeepFailureState,
-    NormalizationContext,
-    NormalizationError,
-    normalize_runtime,
-)
-from scyg_agent.runtimes.outputs import DeepRuntimeOutput, RuntimeNativeOutput, SimpleRuntimeOutput
-from scyg_agent.runtimes.router import RuntimeRouter, RuntimeSelectionMismatch
-from scyg_agent.runtimes.simple.results import CompletionFinished, ProviderDelta, ProviderFailure
 
 from .config import DEFAULT_STREAM_FLUSH_CHARS, DEFAULT_STREAM_FLUSH_INTERVAL, WorkerConfig
 from .contracts import WorkerDependencies
 from .identity import command_id as make_command_id
 from .identity import event_id
 from .persistence import finish_persistence
-from .terminal_events import cancel_events, completion_status
 
 REDIS_FAILURE_CODE: Final = "redis_failure"
 REDIS_FAILURE_MESSAGE: Final = "Redis 流存储不可用"
@@ -196,81 +171,6 @@ async def _publish_control(
     await publisher.publish(kind, payload, occurred_at)
 
 
-async def _publish_native_output(  # noqa: C901, PLR0912
-    publisher: _RunStreamPublisher | None,
-    output: RuntimeNativeOutput,
-    occurred_at: datetime,
-) -> None:
-    """Map the legacy runtime closed output set to transient stream envelopes."""
-    if publisher is None:
-        return
-    match output:
-        case SimpleRuntimeOutput(outcome=ProviderDelta(content=content)):
-            await publisher.publish_text(content, occurred_at)
-        case SimpleRuntimeOutput(
-            outcome=CompletionFinished(
-                reason=reason,
-                prompt_tokens=prompt,
-                completion_tokens=completion,
-                total_tokens=total,
-            )
-        ):
-            payload = {"status": "succeeded", "reason": reason}
-            if prompt is not None:
-                payload["prompt_tokens"] = str(prompt)
-            if completion is not None:
-                payload["completion_tokens"] = str(completion)
-            if total is not None:
-                payload["total_tokens"] = str(total)
-            await _publish_control(publisher, RedisStreamKind.TERMINAL, payload, occurred_at)
-        case SimpleRuntimeOutput(outcome=ProviderFailure(kind=kind, status_code=status_code)):
-            payload = {"status": "failed", "error_code": kind.value}
-            if status_code is not None:
-                payload["status_code"] = str(status_code)
-            await _publish_control(publisher, RedisStreamKind.TERMINAL, payload, occurred_at)
-        case DeepRuntimeOutput(proposal=proposal, result=ApprovalRequired()):
-            await _publish_control(
-                publisher,
-                RedisStreamKind.APPROVAL_REQUIRED,
-                {"interaction_id": str(proposal.intent.approval_interaction_id)},
-                occurred_at,
-            )
-        case DeepRuntimeOutput(result=DeepFailureState(kind=kind)):
-            await _publish_control(
-                publisher,
-                RedisStreamKind.TERMINAL,
-                {"status": "failed", "error_code": kind.value},
-                occurred_at,
-            )
-        case DeepRuntimeOutput(result=Rejected()):
-            await _publish_control(
-                publisher,
-                RedisStreamKind.TERMINAL,
-                {"status": "failed", "error_code": "rejected"},
-                occurred_at,
-            )
-        case DeepRuntimeOutput(result=ToolFinished(outcome=outcome)):
-            await _publish_control(
-                publisher,
-                RedisStreamKind.TERMINAL,
-                {"status": outcome.status.value},
-                occurred_at,
-            )
-        case DeepRuntimeOutput(result=ExternalOutcomeUnknownResult()):
-            await _publish_control(
-                publisher,
-                RedisStreamKind.TERMINAL,
-                {"status": "failed", "error_code": "external_outcome_unknown"},
-                occurred_at,
-            )
-        case DeepRuntimeOutput(result=ExecutionInFlight()):
-            await _publish_control(
-                publisher, RedisStreamKind.ERROR, {"code": "execution_in_flight"}, occurred_at
-            )
-        case _:
-            return
-
-
 async def _publish_agent_outcome(
     publisher: _RunStreamPublisher | None,
     outcome: AgentRunOutcome,
@@ -312,24 +212,37 @@ async def _publish_agent_outcome(
             )
 
 
-async def execute_lease(  # noqa: C901, PLR0911, PLR0912
+async def execute_lease(
     lease: RunLease,
     dependencies: WorkerDependencies,
-    router: RuntimeRouter,
     config: WorkerConfig,
 ) -> None:
-    """并行执行和续租, 丢租后不提交."""
+    """Execute only the frozen Recipe runner under an authoritative lease."""
     loaded = await finish_persistence(dependencies.repository.get(lease.run_id))
-    if not isinstance(loaded, Run):
+    now = dependencies.clock()
+    if (
+        not isinstance(loaded, Run)
+        or loaded.status is not RunStatus.RUNNING
+        or loaded.id != lease.run_id
+        or loaded.execution_owner != lease.owner
+        or loaded.revision != lease.revision
+        or loaded.attempt != lease.attempt
+        or lease.expires_at <= now
+        or lease.cancellation_requested_at is not None
+    ):
         return
-    route = router.resolve_for_resume(loaded)
-    if isinstance(route, RuntimeSelectionMismatch):
-        await _commit_failure(loaded, lease, dependencies)
+    admitted = await finish_persistence(
+        dependencies.repository.renew(
+            RenewRequest(
+                LeaseGuard(lease.run_id, lease.owner, lease.token, lease.revision, now),
+                config.lease_duration,
+            )
+        )
+    )
+    if not isinstance(admitted, Renewed):
         return
-    ownership: dict[str, bool] = {
-        "active": True,
-        "cancelled": lease.cancellation_requested_at is not None,
-    }
+    lease = admitted.lease
+    ownership = {"active": True}
     publisher = _stream_publisher(dependencies, loaded, lease, config)
     try:
         if publisher is not None:
@@ -346,110 +259,7 @@ async def execute_lease(  # noqa: C901, PLR0911, PLR0912
                 error_message=REDIS_FAILURE_MESSAGE,
             )
         return
-    if dependencies.agent_runner is not None:
-        await _execute_agent(loaded, lease, dependencies, config, ownership, publisher)
-        return
-    outputs: list[RuntimeNativeOutput] = []
-    runtime_failed = False
-    failure_code: str | None = None
-    if not ownership["cancelled"]:
-        with anyio.CancelScope() as execution_scope:
-            async with anyio.create_task_group() as tasks:
-                _ = tasks.start_soon(
-                    _renew, lease, dependencies, config, ownership, execution_scope
-                )
-                stream = route.execute(loaded) if lease.attempt == 1 else route.resume(loaded)
-                try:
-                    async for output in stream:
-                        outputs.append(output)
-                        await _publish_native_output(publisher, output, dependencies.clock())
-                except StaleAttemptError:
-                    return
-                except RedisUnavailableError:
-                    runtime_failed = True
-                    failure_code = REDIS_FAILURE_CODE
-                except (
-                    AdapterIdentityDriftError,
-                    DeepRuntimeError,
-                    NormalizationError,
-                    TimeoutError,
-                ):
-                    runtime_failed = True
-                finally:
-                    tasks.cancel_scope.cancel()
-    if runtime_failed:
-        if ownership["active"]:
-            await _commit_failure(
-                loaded,
-                lease,
-                dependencies,
-                error_code=failure_code,
-                error_message=REDIS_FAILURE_MESSAGE if failure_code else None,
-            )
-        return
-    if not ownership["active"]:
-        return
-    try:
-        await _commit(
-            loaded,
-            lease,
-            dependencies,
-            outputs,
-            cancelled=ownership["cancelled"],
-        )
-    except NormalizationError:
-        await _commit_failure(loaded, lease, dependencies)
-
-
-async def _commit(
-    run: Run,
-    lease: RunLease,
-    dependencies: WorkerDependencies,
-    outputs: list[RuntimeNativeOutput],
-    *,
-    cancelled: bool,
-) -> None:
-    """规范化一次并处理取消优先竞态."""
-    now = dependencies.clock()
-    command_id = make_command_id(run, lease.attempt)
-    if cancelled:
-        status = RunStatus.CANCELLED
-        events = cancel_events(run, lease, command_id, now)
-    else:
-        normalized_run = replace(run, revision=lease.revision + 1, updated_at=now)
-        events = normalize_runtime(
-            normalized_run, NormalizationContext(command_id, now), tuple(outputs)
-        )
-        status = completion_status(events[-1])
-        if status is None:
-            return
-    guard = LeaseGuard(run.id, lease.owner, lease.token, lease.revision, now)
-    result = await finish_persistence(
-        dependencies.terminal_committer.commit(
-            _commit_request(run, guard, status, events, command_id)
-        )
-    )
-    match result:  # noqa: RUF100  # noqa: MATCH_OK - TerminalCommitResult 静态闭集已完整处理。
-        case TerminalCancellationRequested():
-            _ = await finish_persistence(
-                dependencies.terminal_committer.commit(
-                    _commit_request(
-                        run,
-                        guard,
-                        RunStatus.CANCELLED,
-                        cancel_events(run, lease, command_id, now),
-                        command_id,
-                    )
-                )
-            )
-        case (
-            TerminalLeaseLost()
-            | TerminalCommitted()
-            | TerminalReplay()
-            | TerminalStateConflict()
-            | TerminalEventConflict()
-        ):
-            return
+    await _execute_agent(loaded, lease, dependencies, config, ownership, publisher)
 
 
 async def _execute_agent(  # noqa: PLR0913
@@ -462,15 +272,12 @@ async def _execute_agent(  # noqa: PLR0913
 ) -> None:
     """Run the structured AgentRunner while retaining the lease fence."""
     runner = dependencies.agent_runner
-    if runner is None:
-        return
     outcome: AgentRunOutcome | None = None
     with anyio.CancelScope() as execution_scope:
         async with anyio.create_task_group() as tasks:
             _ = tasks.start_soon(_renew, lease, dependencies, config, ownership, execution_scope)
             try:
-                if not ownership["cancelled"]:
-                    outcome = await runner.execute(run, lease)
+                outcome = await runner.execute(run, lease)
             except (RuntimeError, ValueError):
                 outcome = AgentFailed(_internal_agent_failure())
             finally:
@@ -479,19 +286,14 @@ async def _execute_agent(  # noqa: PLR0913
         return
     if outcome is None:
         outcome = AgentFailed(_internal_agent_failure())
+    accepted = await _commit_agent(run, lease, dependencies, outcome)
+    if not accepted:
+        return
     try:
         await _publish_agent_outcome(publisher, outcome, dependencies.clock())
-    except StaleAttemptError:
+    except (StaleAttemptError, RedisUnavailableError):
+        # PostgreSQL already owns the accepted outcome; transient failure cannot rewrite it.
         return
-    except RedisUnavailableError:
-        outcome = AgentFailed(
-            AgentFailure(
-                kind=FailureKind.REDIS_FAILURE,
-                message=REDIS_FAILURE_MESSAGE,
-                retryable=True,
-            )
-        )
-    await _commit_agent(run, lease, dependencies, outcome, cancelled=ownership["cancelled"])
 
 
 def _internal_agent_failure() -> AgentFailure:
@@ -504,20 +306,13 @@ async def _commit_agent(
     lease: RunLease,
     dependencies: WorkerDependencies,
     outcome: AgentRunOutcome,
-    *,
-    cancelled: bool,
-) -> None:
-    """Map a closed AgentRunner outcome to one fenced terminal commit."""
+) -> bool:
+    """Commit the fenced outcome before allowing any transient terminal publication."""
     now = dependencies.clock()
     command_id = make_command_id(run, lease.attempt)
     result: TerminalResult | None = None
-    failure: AgentFailure | None = (
-        outcome.failure if not cancelled and isinstance(outcome, AgentFailed) else None
-    )
-    if cancelled:
-        status = RunStatus.CANCELLED
-        events = cancel_events(run, lease, command_id, now)
-    elif isinstance(outcome, AgentSucceeded):
+    failure = outcome.failure if isinstance(outcome, AgentFailed) else None
+    if isinstance(outcome, AgentSucceeded):
         status = RunStatus.SUCCEEDED
         events = (
             RunSucceeded(
@@ -544,20 +339,30 @@ async def _commit_agent(
             RunFailed(event_id(run, "agent_failed"), command_id, now, run.id, lease.revision + 1),
         )
     guard = LeaseGuard(run.id, lease.owner, lease.token, lease.revision, now)
-    _ = await finish_persistence(
+    committed = await finish_persistence(
         dependencies.terminal_committer.commit(
             _commit_request(
                 run,
                 guard,
                 status,
                 events,
-                command_id,
                 result=result,
                 error_code=failure.kind.value if failure is not None else None,
                 error_message=failure.message if failure is not None else None,
+                interaction_payload=(
+                    outcome.request.model_dump(mode="json")
+                    if isinstance(outcome, AgentWaitingForApproval)
+                    else None
+                ),
+                interaction_kind=(
+                    outcome.request.kind
+                    if isinstance(outcome, AgentWaitingForApproval)
+                    else "confirmation"
+                ),
             )
         )
     )
+    return isinstance(committed, TerminalCommitted)
 
 
 async def _renew(
@@ -581,7 +386,7 @@ async def _renew(
             case Renewed(lease=renewed):
                 current = renewed
             case CancellationRequested():
-                ownership["cancelled"] = True
+                ownership["active"] = False
                 execution_scope.cancel()
                 return
             case LeaseLost():
@@ -595,11 +400,12 @@ def _commit_request(  # noqa: PLR0913 - terminal request fields mirror the atomi
     guard: LeaseGuard,
     status: RunStatus,
     events: tuple[DomainEvent, ...],
-    command_id: CommandId,
     *,
     result: TerminalResult | None = None,
     error_code: str | None = None,
     error_message: str | None = None,
+    interaction_payload: dict[str, object] | None = None,
+    interaction_kind: str = "confirmation",
 ) -> TerminalCommitRequest:
     """构造同 Run 的终态、事件与清洗审计事实."""
     material = f"{run.id}:{run.attempt}:{status.value}"
@@ -607,7 +413,8 @@ def _commit_request(  # noqa: PLR0913 - terminal request fields mirror the atomi
         f"audit-worker-{sha256(material.encode()).hexdigest()[:20]}",
         run.id,
         run.owner_user_id,
-        command_id,
+        # Worker event correlation is synthetic, not a persisted user command FK.
+        None,
         None,
         "worker_terminal",
         status.value,
@@ -623,6 +430,8 @@ def _commit_request(  # noqa: PLR0913 - terminal request fields mirror the atomi
         result,
         error_code,
         error_message,
+        interaction_payload,
+        interaction_kind,
     )
 
 
@@ -647,28 +456,15 @@ async def _commit_failure(
         ),
     )
     guard = LeaseGuard(run.id, lease.owner, lease.token, lease.revision, now)
-    result = await finish_persistence(
+    _ = await finish_persistence(
         dependencies.terminal_committer.commit(
             _commit_request(
                 run,
                 guard,
                 RunStatus.FAILED,
                 events,
-                command_id,
                 error_code=error_code,
                 error_message=error_message,
             )
         )
     )
-    if isinstance(result, TerminalCancellationRequested):
-        _ = await finish_persistence(
-            dependencies.terminal_committer.commit(
-                _commit_request(
-                    run,
-                    guard,
-                    RunStatus.CANCELLED,
-                    cancel_events(run, lease, command_id, now),
-                    command_id,
-                )
-            )
-        )

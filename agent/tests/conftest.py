@@ -13,10 +13,12 @@ def configured_environment(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> N
         "SCYG_AGENT_DATABASE_URL",
         "postgresql+asyncpg://agent:database-secret@localhost:5432/scyg_agent",
     )
-    monkeypatch.setenv("SCYG_AGENT_JWT_PUBLIC_KEY_PATH", "tests/fixtures/public.pem")
-    monkeypatch.setenv("SCYG_AGENT_PROVIDER_BASE_URL", "https://provider.example/v1")
-    monkeypatch.setenv("SCYG_AGENT_PROVIDER_API_KEY", "provider-secret")
-    monkeypatch.setenv("SCYG_AGENT_PROVIDER_MODEL", "test-model")
+    for tier in ("FAST", "STANDARD", "STRONG"):
+        prefix = f"SCYG_AGENT_MODELS__{tier}__"
+        monkeypatch.setenv(f"{prefix}BASE_URL", "https://provider.example/v1")
+        monkeypatch.setenv(f"{prefix}API_KEY", "provider-secret")
+        monkeypatch.setenv(f"{prefix}MODEL", "test-model")
+        monkeypatch.setenv(f"{prefix}TIMEOUT_SECONDS", "60")
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:

@@ -59,6 +59,9 @@ func (service *Service) ValidatePatch(input Patch) error {
 	if _, _, err := parseIdentity(input.ID, input.Version); err != nil {
 		return validation(err)
 	}
+	if input.ArticleTypeID == nil && input.Title == nil && input.Slug == nil && input.Digest == nil && input.Content == nil && input.TagIDs == nil {
+		return validation(ErrInvalidValue)
+	}
 	return nil
 }
 
@@ -116,16 +119,13 @@ func (service *Service) CreateInTx(ctx context.Context, db *gorm.DB, input Creat
 	return result(value), nil
 }
 
-// PreviewPatchInTx replays a patch and extracts its managed image references.
-func (service *Service) PreviewPatchInTx(ctx context.Context, db *gorm.DB, input Patch) (PatchPreview, error) {
-	if db == nil {
-		return PatchPreview{}, internal(errors.New("article transaction is nil"))
-	}
+// PreviewPatch computes a version-checked patch before image preparation and the write transaction.
+func (service *Service) PreviewPatch(ctx context.Context, input Patch) (PatchPreview, error) {
 	id, version, err := parseIdentity(input.ID, input.Version)
 	if err != nil {
 		return PatchPreview{}, validation(err)
 	}
-	repo := &Repository{db: db}
+	repo := service.repo
 	value, err := repo.Find(ctx, id)
 	if err != nil {
 		return PatchPreview{}, err
@@ -138,29 +138,6 @@ func (service *Service) PreviewPatchInTx(ctx context.Context, db *gorm.DB, input
 		return PatchPreview{}, validation(err)
 	}
 	return PatchPreview{Article: value, Keys: keys}, nil
-}
-
-// PatchInTx applies a patch using the caller-owned transaction.
-func (service *Service) PatchInTx(ctx context.Context, db *gorm.DB, input Patch) (Result, error) {
-	if db == nil {
-		return Result{}, internal(errors.New("article transaction is nil"))
-	}
-	id, version, err := parseIdentity(input.ID, input.Version)
-	if err != nil {
-		return Result{}, validation(err)
-	}
-	repo := &Repository{db: db}
-	value, err := repo.Find(ctx, id)
-	if err != nil {
-		return Result{}, err
-	}
-	if err := applyPatch(value, version, input, service.clock); err != nil {
-		return Result{}, err
-	}
-	if err := repo.Save(ctx, value); err != nil {
-		return Result{}, err
-	}
-	return result(value), nil
 }
 
 // Revise replaces editable article fields after version and authorization checks.

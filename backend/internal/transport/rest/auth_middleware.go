@@ -61,6 +61,10 @@ func RequireAuthenticatedRoute() gin.HandlerFunc {
 }
 
 func isPublicRoute(ctx *gin.Context) bool {
+	// Disabled Agent endpoints are unregistered and must retain the router's 404.
+	if ctx.FullPath() == "" && (strings.HasPrefix(ctx.Request.URL.Path, "/api/v1/ai/") || strings.HasPrefix(ctx.Request.URL.Path, "/api/v1/runs/")) {
+		return true
+	}
 	if ctx.Request.Method == http.MethodPost && ctx.FullPath() == "/api/v1/auth/login" {
 		return true
 	}

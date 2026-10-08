@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"path/filepath"
 	"sort"
+	"strings"
 )
 
 const modulePath = "github.com/PengYuee/SCYG.Blog/backend"
@@ -35,7 +36,13 @@ type sourceFile struct {
 	relative string
 }
 
+func (file sourceFile) isExternalTest() bool {
+	return strings.HasSuffix(file.relative, "_test.go") && strings.HasSuffix(file.parsed.Name.Name, "_test")
+}
+
 // Scan parses every Go source below root and returns deterministic violations.
+// External test harnesses are not production layers but must respect module privacy.
+// Only standard generated markers exempt compiler-owned initialization.
 func Scan(root string) ([]Violation, error) {
 	files, err := loadSources(root)
 	if err != nil {

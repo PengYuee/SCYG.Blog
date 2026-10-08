@@ -17,10 +17,15 @@ def settings(database_url: str) -> ApplicationSettings:
     return ApplicationSettings.model_validate(
         {
             "database_url": SecretStr(database_url),
-            "jwt_public_key_path": "jwt-public.pem",
-            "provider_base_url": "https://provider.example/v1",
-            "provider_api_key": SecretStr("provider-secret"),
-            "provider_model": "model",
+            "models": {
+                tier: {
+                    "base_url": "https://provider.example/v1",
+                    "api_key": SecretStr("provider-secret"),
+                    "model": "model",
+                    "timeout_seconds": 60,
+                }
+                for tier in ("fast", "standard", "strong")
+            },
         }
     )
 

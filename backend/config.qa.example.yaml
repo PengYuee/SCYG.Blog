@@ -2,3 +2,11 @@ qa:
   postgres_admin_dsn: postgres://postgres:<password>@127.0.0.1:5432/postgres?sslmode=disable
   database_prefix: scyg_qa_
   command_timeout: 2m
+
+agent:
+  enabled: false
+  target: 127.0.0.1:9090
+  blog_content_listen: 127.0.0.1:50051
+  unary_timeout: 5s
+  sse_idle_timeout: 30s
+  grpc_shutdown_timeout: 10s

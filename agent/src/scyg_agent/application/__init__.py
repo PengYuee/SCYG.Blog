@@ -1,41 +1,5 @@
-"""共享类型化应用门面的公共 API."""
+"""Owner-authorized Agent control application and explicit event subscriptions."""
 
-from .facade import ApplicationFacade
-from .models import (
-    CancelRequest,
-    CreateRunInput,
-    FacadeCancelled,
-    FacadeConflict,
-    FacadeInternal,
-    FacadeNotFound,
-    FacadePrecondition,
-    FacadeSuccess,
-    FacadeValidation,
-    FollowOpened,
-    InvalidFacadeInputError,
-    OwnedCommand,
-    OwnerContext,
-    ReplaySuccess,
-    SnapshotSuccess,
-    SubmitInputRequest,
-)
+from .control import ControlApplication, ControlError, ControlSnapshot, PendingSnapshot
 
-__all__ = (
-    "ApplicationFacade",
-    "CancelRequest",
-    "CreateRunInput",
-    "FacadeCancelled",
-    "FacadeConflict",
-    "FacadeInternal",
-    "FacadeNotFound",
-    "FacadePrecondition",
-    "FacadeSuccess",
-    "FacadeValidation",
-    "FollowOpened",
-    "InvalidFacadeInputError",
-    "OwnedCommand",
-    "OwnerContext",
-    "ReplaySuccess",
-    "SnapshotSuccess",
-    "SubmitInputRequest",
-)
+__all__ = ["ControlApplication", "ControlError", "ControlSnapshot", "PendingSnapshot"]

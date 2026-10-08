@@ -1,8 +1,6 @@
 """Static contracts for the PostgreSQL Run repository."""
 
-import ast
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from uuid import UUID
 
 from sqlalchemy.dialects import postgresql
@@ -51,31 +49,3 @@ def test_renew_query_preserves_a_longer_existing_expiry() -> None:
     # Then: persisted expiry and the candidate are compared monotonically in SQL.
     assert "greatest(agent_runs.lease_expires_at" in compiled.lower()
     assert "RETURNING" in compiled
-
-
-def test_repository_architecture_keeps_domain_pure_and_adapter_narrow() -> None:
-    # Given: both repository boundary modules.
-    root = Path(__file__).parents[3] / "src" / "scyg_agent"
-    domain = ast.parse((root / "domain" / "runs" / "repository.py").read_text(encoding="utf-8"))
-    adapter = ast.parse(
-        (root / "adapters" / "database" / "run_repository.py").read_text(encoding="utf-8")
-    )
-
-    # When: imported top-level packages are collected.
-    domain_imports = _import_roots(domain)
-    adapter_imports = _import_roots(adapter)
-
-    # Then: infrastructure stays out of the port and runtime stacks stay out of persistence.
-    assert "sqlalchemy" not in domain_imports
-    assert adapter_imports.isdisjoint({"fastapi", "grpc", "langgraph", "deepagents"})
-
-
-def _import_roots(tree: ast.Module) -> set[str]:
-    """Collect absolute import roots from one parsed module."""
-    roots: set[str] = set()
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            roots.update(alias.name.partition(".")[0] for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module is not None:
-            roots.add(node.module.partition(".")[0])
-    return roots

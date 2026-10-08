@@ -1,6 +1,7 @@
 """Atomic fenced commit of Run terminal state, events, and audit."""
 
 from enum import StrEnum
+from hashlib import sha256
 from typing import Protocol, final
 
 from sqlalchemy import func, select
@@ -31,7 +32,7 @@ from .event_codec import record_matches_event
 from .journal_records import EventRecord
 from .run_fencing import TERMINAL_STATUSES
 from .run_mapper import map_run
-from .run_records import AgentRunResultRecord, RunRecord
+from .run_records import AgentRunResultRecord, InteractionRecord, RunRecord
 
 
 class TerminalStage(StrEnum):
@@ -111,6 +112,7 @@ class PostgreSQLTerminalCommitter:
         await self._failpoint.reach(TerminalStage.AUDIT_APPENDED)
         await _append_result_locked(session, request)
         _apply_terminal(record, request)
+        await _ensure_pending_interaction(session, record, request)
         await session.flush()
         await self._failpoint.reach(TerminalStage.RUN_UPDATED)
         committed = map_run(record)
@@ -118,6 +120,52 @@ class PostgreSQLTerminalCommitter:
             reason = "终态 Run 映射失败"
             raise TerminalCommitInvariantError(reason)
         return TerminalCommitted(committed, appended.events, audit)
+
+
+async def _ensure_pending_interaction(
+    session: AsyncSession, record: RunRecord, request: TerminalCommitRequest
+) -> None:
+    """Persist approval facts while the caller still owns the Run row lock."""
+    if request.completion.status is not RunStatus.WAITING_INPUT:
+        return
+    interaction_id = request.completion.pending_interaction_id
+    if interaction_id is None:
+        reason = "待处理交互缺少身份"
+        raise TerminalCommitInvariantError(reason)
+    interaction = (
+        await session.execute(
+            select(InteractionRecord)
+            .where(InteractionRecord.interaction_id == str(interaction_id))
+            .with_for_update()
+        )
+    ).scalar_one_or_none()
+    if interaction is None:
+        session.add(
+            InteractionRecord(
+                interaction_id=str(interaction_id),
+                run_id=record.run_id,
+                kind=request.interaction_kind,
+                status="pending",
+                requested_at=request.completion.guard.now,
+                request_semantic_digest=sha256(str(interaction_id).encode()).hexdigest(),
+                request_payload=request.interaction_payload,
+            )
+        )
+    elif (
+        interaction.run_id != record.run_id
+        or interaction.status != "pending"
+        or interaction.kind != request.interaction_kind
+    ):
+        reason = "待处理交互事实冲突"
+        raise TerminalCommitInvariantError(reason)
+    elif request.interaction_payload is not None:
+        if (
+            interaction.request_payload is not None
+            and interaction.request_payload != request.interaction_payload
+        ):
+            reason = "交互请求内容冲突"
+            raise TerminalCommitInvariantError(reason)
+        interaction.request_payload = request.interaction_payload
 
 
 async def _append_result_locked(session: AsyncSession, request: TerminalCommitRequest) -> None:

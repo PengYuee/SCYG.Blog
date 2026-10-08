@@ -73,6 +73,8 @@ func (server *orderedHTTPServer) Shutdown(context.Context) error {
 	return server.listener.Close()
 }
 
+func (server *orderedHTTPServer) Close() error { return server.listener.Close() }
+
 type cleanupOrderedDatabase struct {
 	fakeDatabase
 	events *lifecycleEvents

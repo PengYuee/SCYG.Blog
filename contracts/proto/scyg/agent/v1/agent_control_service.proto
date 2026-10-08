@@ -5,80 +5,60 @@ package scyg.agent.v1;
 import "buf/validate/validate.proto";
 import "scyg/agent/v1/common.proto";
 
-// Compatibility policy: RPC names and published field numbers are immutable.
-// Removed fields are reserved and responses remain RPC-specific.
-
-// AgentControlService exposes the Blog API control-plane operations.
+// AgentControlService is the internal, owner-authorized Blog control plane.
 service AgentControlService {
-  // CreateRun creates one idempotent durable run.
-  rpc CreateRun(CreateRunRequest) returns (CreateRunResponse);
-  // CreateAgentRun creates a capability-selected idempotent run.
-  rpc CreateAgentRun(CreateAgentRunRequest) returns (CreateAgentRunResponse);
-  // GetRun returns the latest durable run snapshot.
-  rpc GetRun(GetRunRequest) returns (GetRunResponse);
+  rpc CreateRun(CreateRunRequest) returns (Run);
+  rpc GetRun(GetRunRequest) returns (Run);
+  rpc StreamRunEvents(StreamRunEventsRequest) returns (stream RunEventFrame);
+  rpc ResumeRun(ResumeRunRequest) returns (Run);
+  rpc CancelRun(CancelRunRequest) returns (Run);
 }
 
-// CreateRunRequest carries validated task intent from the Blog API.
+// CreateRunRequest carries raw JSON, not runtime or recipe selections.
 message CreateRunRequest {
-  // metadata carries request tracing semantics.
-  RequestMetadata metadata = 1 [(buf.validate.field).required = true];
-  // operation_id makes run creation idempotent across retries.
-  string operation_id = 2 [(buf.validate.field).string = {pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"}];
-  // owner_user_id identifies the authenticated run owner.
-  UserId owner_user_id = 3 [(buf.validate.field).required = true];
-  // task_type selects a static task catalog entry.
-  TaskType task_type = 4 [(buf.validate.field).enum = {
-    defined_only: true
-    not_in: [0]
-  }];
-  // runtime freezes the runtime profile selected by the Blog API.
-  RuntimeSelection runtime = 5 [(buf.validate.field).required = true];
-  // initial_message is the bounded user instruction for the task.
-  string initial_message = 6 [(buf.validate.field).string = {
-    min_len: 1
-    max_len: 16000
-  }];
-  // article_id provides optional Blog article context.
-  optional ArticleId article_id = 7;
+  reserved 1 to 7;
+  reserved "metadata", "operation_id", "owner_user_id", "task_type", "runtime", "initial_message", "article_id";
+
+  string user_id = 8 [(buf.validate.field).string = {min_bytes: 1 max_bytes: 128}];
+  string idempotency_key = 9 [(buf.validate.field).string.pattern = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"];
+  AgentCapability capability = 10 [(buf.validate.field).enum = {defined_only: true not_in: [0]}];
+  bytes json_payload = 11 [(buf.validate.field).bytes = {min_len: 1 max_len: 1048576}];
 }
 
-// CreateRunResponse returns the created or idempotently replayed run.
-message CreateRunResponse {
-  // run is the authoritative control-plane snapshot.
-  Run run = 1 [(buf.validate.field).required = true];
-}
-
-// CreateAgentRunRequest intentionally excludes recipe, model, tool, and runtime choices.
-message CreateAgentRunRequest {
-  RequestMetadata metadata = 1 [(buf.validate.field).required = true];
-  string idempotency_key = 2 [(buf.validate.field).string = {min_len: 1 max_len: 128}];
-  UserId user_id = 3 [(buf.validate.field).required = true];
-  AgentCapability capability = 4 [(buf.validate.field).enum = {defined_only: true not_in: [0]}];
-  string locale = 5 [(buf.validate.field).string = {min_len: 1 max_len: 32}];
-  oneof input {
-    SearchInput search = 10;
-    WritingInput writing = 11;
-    PolishInput polish = 12;
-    ChatInput chat = 13;
-  }
-}
-
-message CreateAgentRunResponse {
-  Run run = 1 [(buf.validate.field).required = true];
-}
-
-// GetRunRequest identifies a run and its expected owner.
+// GetRunRequest addresses an opaque URL-safe run owned by user_id.
 message GetRunRequest {
-  // metadata carries request tracing semantics.
-  RequestMetadata metadata = 1 [(buf.validate.field).required = true];
-  // run_id identifies the requested run.
-  RunId run_id = 2 [(buf.validate.field).required = true];
-  // owner_user_id prevents accidental cross-owner lookup.
-  UserId owner_user_id = 3 [(buf.validate.field).required = true];
+  reserved 1 to 3;
+  reserved "metadata", "owner_user_id";
+
+  string user_id = 4 [(buf.validate.field).string = {min_bytes: 1 max_bytes: 128}];
+  string run_id = 5 [(buf.validate.field).string = {pattern: "^[A-Za-z0-9._~-]{1,128}$" not_in: [".", ".."]}];
 }
 
-// GetRunResponse returns one authoritative run snapshot.
-message GetRunResponse {
-  // run is the current durable state.
-  Run run = 1 [(buf.validate.field).required = true];
+// StreamRunEventsRequest forwards the browser cursor without interpretation by Blog.
+message StreamRunEventsRequest {
+  string user_id = 1 [(buf.validate.field).string = {min_bytes: 1 max_bytes: 128}];
+  string run_id = 2 [(buf.validate.field).string = {pattern: "^[A-Za-z0-9._~-]{1,128}$" not_in: [".", ".."]}];
+  optional string after_event_id = 3 [(buf.validate.field).string = {pattern: "^[\\x00-\\x7F]{1,256}$"}];
+}
+
+// RunEventFrame contains one complete SSE frame, including its terminating newline.
+message RunEventFrame {
+  bytes frame = 1 [(buf.validate.field).bytes.min_len = 1];
+}
+
+// ResumeRunRequest preserves missing payload separately from explicit JSON null.
+message ResumeRunRequest {
+  string user_id = 1 [(buf.validate.field).string = {min_bytes: 1 max_bytes: 128}];
+  string run_id = 2 [(buf.validate.field).string = {pattern: "^[A-Za-z0-9._~-]{1,128}$" not_in: [".", ".."]}];
+  string idempotency_key = 3 [(buf.validate.field).string.pattern = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"];
+  string interaction_id = 4 [(buf.validate.field).string = {min_bytes: 1 max_bytes: 128}];
+  string decision = 5 [(buf.validate.field).string.min_len = 1];
+  optional bytes payload_json = 6 [(buf.validate.field).bytes = {min_len: 1 max_len: 1048576}];
+}
+
+// CancelRunRequest establishes a durable cancellation fence.
+message CancelRunRequest {
+  string user_id = 1 [(buf.validate.field).string = {min_bytes: 1 max_bytes: 128}];
+  string run_id = 2 [(buf.validate.field).string = {pattern: "^[A-Za-z0-9._~-]{1,128}$" not_in: [".", ".."]}];
+  string idempotency_key = 3 [(buf.validate.field).string.pattern = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"];
 }

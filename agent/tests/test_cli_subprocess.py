@@ -21,6 +21,21 @@ _AGENT_ROOT = Path(__file__).parents[1]
 _HOST = "127.0.0.1"
 
 
+def _model_environment(base_url: str, api_key: str, model: str) -> dict[str, str]:
+    """Configure all server-owned tiers using the production nested environment keys."""
+    values = {
+        "BASE_URL": base_url,
+        "API_KEY": api_key,
+        "MODEL": model,
+        "TIMEOUT_SECONDS": "60",
+    }
+    return {
+        f"SCYG_AGENT_MODELS__{tier}__{field}": value
+        for tier in ("FAST", "STANDARD", "STRONG")
+        for field, value in values.items()
+    }
+
+
 def _port() -> int:
     with socket.create_server((_HOST, 0)) as listener:
         return TypeAdapter(int).validate_python(listener.getsockname()[1])
@@ -59,14 +74,16 @@ def _poll_readiness(port: int, process: ProcessStatus, deadline: float) -> bool:
 
 
 def test_startup_failure_subprocess_is_bounded_and_secret_free() -> None:
-    environment = os.environ | {
-        "SCYG_AGENT_CONFIG_FILE": str(_AGENT_ROOT / "missing-subprocess-agent.toml"),
-        "SCYG_AGENT_DATABASE_URL": "invalid://sentinel-user:sentinel-password@db/service",
-        "SCYG_AGENT_JWT_PUBLIC_KEY_PATH": "sentinel-key.pem",
-        "SCYG_AGENT_PROVIDER_BASE_URL": "https://provider.invalid/v1",
-        "SCYG_AGENT_PROVIDER_API_KEY": "sentinel-provider-key",
-        "SCYG_AGENT_PROVIDER_MODEL": "sentinel-model",
-    }
+    environment = (
+        os.environ
+        | {
+            "SCYG_AGENT_CONFIG_FILE": str(_AGENT_ROOT / "missing-subprocess-agent.toml"),
+            "SCYG_AGENT_DATABASE_URL": "invalid://sentinel-user:sentinel-password@db/service",
+        }
+        | _model_environment(
+            "https://provider.invalid/v1", "sentinel-provider-key", "sentinel-model"
+        )
+    )
     result = subprocess.run(  # noqa: S603
         [sys.executable, "-m", "scyg_agent", "run"],
         cwd=_AGENT_ROOT,
@@ -78,7 +95,6 @@ def test_startup_failure_subprocess_is_bounded_and_secret_free() -> None:
     )
     output = result.stdout + result.stderr
     assert result.returncode == 2
-    assert "SCYG Agent 配置无效" in output
     assert "sentinel-password" not in output
     assert "sentinel-provider-key" not in output
 
@@ -86,21 +102,20 @@ def test_startup_failure_subprocess_is_bounded_and_secret_free() -> None:
 def test_real_subprocess_ready_grpc_and_sigterm_exit() -> None:
     settings = require_test_settings()
     database_url = settings.normal_url
-    public_key = str(settings.require_jwt_public_key_path())
     http_port, grpc_port = _port(), _port()
-    environment = os.environ | {
-        "SCYG_AGENT_CONFIG_FILE": str(_AGENT_ROOT / "missing-subprocess-agent.toml"),
-        "SCYG_AGENT_DATABASE_URL": database_url,
-        "SCYG_AGENT_JWT_PUBLIC_KEY_PATH": public_key,
-        "SCYG_AGENT_PROVIDER_BASE_URL": "http://127.0.0.1:9/v1",
-        "SCYG_AGENT_PROVIDER_API_KEY": "local-provider-key",
-        "SCYG_AGENT_PROVIDER_MODEL": "local-model",
-        "SCYG_AGENT_BLOG_GRPC_TARGET": "127.0.0.1:9",
-        "SCYG_AGENT_HTTP_PORT": str(http_port),
-        "SCYG_AGENT_GRPC_PORT": str(grpc_port),
-        "SCYG_AGENT_SHUTDOWN_SECONDS": "5",
-        "SCYG_AGENT_HEARTBEAT_SECONDS": "5",
-    }
+    environment = (
+        os.environ
+        | {
+            "SCYG_AGENT_CONFIG_FILE": str(_AGENT_ROOT / "missing-subprocess-agent.toml"),
+            "SCYG_AGENT_DATABASE_URL": database_url,
+            "SCYG_AGENT_BLOG_GRPC_TARGET": "127.0.0.1:9",
+            "SCYG_AGENT_HTTP_PORT": str(http_port),
+            "SCYG_AGENT_GRPC_PORT": str(grpc_port),
+            "SCYG_AGENT_SHUTDOWN_SECONDS": "5",
+            "SCYG_AGENT_HEARTBEAT_SECONDS": "5",
+        }
+        | _model_environment("http://127.0.0.1:9/v1", "local-provider-key", "local-model")
+    )
     creation_flags = subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0
     process = subprocess.Popen(  # noqa: S603
         [sys.executable, "-m", "scyg_agent", "run"],

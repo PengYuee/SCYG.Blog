@@ -8,9 +8,10 @@ import (
 )
 
 func articleDTO(item article.Result) (generated.Article, error) {
+	summary := generated.PublicArticleTypeSummary{ID: item.ArticleTypeID, Name: item.ArticleTypeName, Image: item.ArticleTypeImage}
 	// 响应离开应用边界前必须重新校验，防止持久化异常数据突破 OpenAPI 契约。
 	version, err := generatedVersion(item.Version)
-	if err != nil || articleResponseTextInvalid(item) || item.ID <= 0 || item.ArticleTypeID <= 0 || invalidTimes(item.CreatedAt, item.ModifiedAt) || item.Support < 0 || item.Comment < 0 || item.Visited < 0 {
+	if err != nil || articleResponseTextInvalid(item) || item.ID <= 0 || item.ArticleTypeID <= 0 || summary.Name == "" || len([]rune(summary.Name)) > 60 || invalidTimes(item.CreatedAt, item.ModifiedAt) || item.Support < 0 || item.Comment < 0 || item.Visited < 0 {
 		return generated.Article{}, responseMappingError()
 	}
 	tags := make([]generated.PositiveID, len(item.TagIDs))
@@ -36,7 +37,19 @@ func articleDTO(item article.Result) (generated.Article, error) {
 	default:
 		return generated.Article{}, responseMappingError()
 	}
-	return generated.Article{ID: item.ID, ArticleTypeID: item.ArticleTypeID, Title: item.Title, Slug: item.Slug, Digest: item.Digest, Content: item.Content, Status: status, TagIds: tags, Support: item.Support, Comment: item.Comment, Visited: item.Visited, Version: version, CreatedAt: item.CreatedAt, UpdatedAt: updated}, nil
+	return generated.Article{ID: item.ID, ArticleTypeID: item.ArticleTypeID, ArticleType: summary, Title: item.Title, Slug: item.Slug, Digest: item.Digest, Content: item.Content, Status: status, TagIds: tags, Support: item.Support, Comment: item.Comment, Visited: item.Visited, Version: version, CreatedAt: item.CreatedAt, UpdatedAt: updated}, nil
+}
+
+func articleListDTO(values []article.Result) ([]generated.Article, error) {
+	items := make([]generated.Article, len(values))
+	for index, item := range values {
+		mapped, err := articleDTO(item)
+		if err != nil {
+			return nil, err
+		}
+		items[index] = mapped
+	}
+	return items, nil
 }
 
 func articleResponseTextInvalid(item article.Result) bool {

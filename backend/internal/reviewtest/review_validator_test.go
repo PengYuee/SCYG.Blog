@@ -17,7 +17,7 @@ type scenarioRequirement struct {
 	RequiredSymbols []string
 }
 
-// validateScenario 是生产审查与 mutation fixtures 共用的纯 AST validator。
+// validateScenario checks required AST symbols; fixture tests exercise the validator itself.
 func validateScenario(file *ast.File, requirement scenarioRequirement) []error {
 	var target *ast.FuncDecl
 	for _, declaration := range file.Decls {
@@ -38,20 +38,6 @@ func validateScenario(file *ast.File, requirement scenarioRequirement) []error {
 		}
 	}
 	return failures
-}
-
-func scenarioRequirements() []scenarioRequirement {
-	return []scenarioRequirement{
-		{Name: "Test_E2E_migrations_roundtrip", RequiredSymbols: []string{"newHarness", "Shutdown", "migrateDown", "migrateUp", "QueryRowContext", "Scan", "Fatalf"}},
-		{Name: "Test_E2E_scalar_is_offline_and_self_hosted", RequiredSymbols: []string{"newHarness", "request", "assertLocalReferences", "StatusOK", "Fatalf"}},
-		{Name: "Test_E2E_public_reads_hide_drafts", RequiredSymbols: []string{"newHarness", "restartPerRequest", "createContent", "createArticle", "request", "StatusNotFound", "StatusOK", "Fatalf"}},
-		{Name: "Test_E2E_allow_all_performs_real_crud", RequiredSymbols: []string{"newHarness", "createContent", "createArticle", "MethodDelete", "StatusNoContent", "Fatalf"}},
-		{Name: "Test_E2E_production_denies_writes", RequiredSymbols: []string{"newHarness", "newHarnessWithDatabase", "resourceSeed", "deniedWrites", "snapshotDatabase", "assertForbiddenProblem", "DeepEqual", "StatusForbidden", "Fatalf"}},
-		{Name: "Test_E2E_stale_etag_is_rejected", RequiredSymbols: []string{"newHarness", "snapshotTag", "request", "DeepEqual", "StatusPreconditionFailed", "Fatalf"}},
-		{Name: "Test_E2E_readiness_fails_during_database_outage", RequiredSymbols: []string{"newHarness", "setDatabaseConnectionsAllowed", "waitHTTPStatus", "StatusServiceUnavailable", "StatusOK", "Fatalf"}},
-		{Name: "Test_E2E_restart_preserves_committed_data", RequiredSymbols: []string{"newHarness", "Shutdown", "start", "Contains", "Fatalf"}},
-		{Name: "Test_E2E_sigterm_closes_runtime", RequiredSymbols: []string{"assertSignalSubprocessShutdown"}},
-	}
 }
 
 func criticalScenarioRequirements() []scenarioRequirement {
@@ -91,5 +77,21 @@ func Test_ReviewE2E_validator_rejects_each_mutated_semantic(t *testing.T) {
 				}
 			})
 		}
+	}
+}
+
+func Test_ReviewE2E_validator_accepts_required_symbols(t *testing.T) {
+	file := parseFixture(t, `package fixture
+func Test_scenario(){ snapshot(); _ = http.StatusForbidden; reflect.DeepEqual() }`)
+	requirement := scenarioRequirement{Name: "Test_scenario", RequiredSymbols: []string{"snapshot", "StatusForbidden", "DeepEqual"}}
+	if failures := validateScenario(file, requirement); len(failures) != 0 {
+		t.Fatalf("完整符号集合被错误拒绝：%v", failures)
+	}
+}
+
+func Test_ReviewE2E_validator_rejects_missing_scenario(t *testing.T) {
+	file := parseFixture(t, "package fixture\nfunc Test_other(){}")
+	if failures := validateScenario(file, scenarioRequirement{Name: "Test_scenario"}); len(failures) == 0 {
+		t.Fatal("缺少目标场景被错误放行")
 	}
 }

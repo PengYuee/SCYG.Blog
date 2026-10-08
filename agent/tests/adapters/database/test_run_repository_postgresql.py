@@ -271,7 +271,7 @@ async def test_create_is_idempotent_and_waiting_input_releases_ownership(
             original,
             OperationId("t10:00000000"),
             NOW,
-            RunInput("测试输入", "article-1"),
+            RunInput("测试输入", "article-00000000"),
         )
     )
     lease = (

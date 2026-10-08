@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
+import os
 import shutil
 import subprocess
 import sys
@@ -10,17 +12,167 @@ import tempfile
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Final
+from typing import TYPE_CHECKING, Final, final, override
 
 if TYPE_CHECKING:
     from collections.abc import Mapping, Sequence
 
 BUF_PACKAGE: Final = "@bufbuild/buf@1.47.2"
 PACKAGE_IMPORT: Final = "from scyg."
-OWNED_PACKAGE_IMPORT: Final = "from scyg_agent.generated.scyg."
+OWNED_PACKAGE_IMPORT: Final = "from scyg_agent.generated.proto.scyg."
 VALIDATE_IMPORT: Final = "from buf."
-OWNED_VALIDATE_IMPORT: Final = "from scyg_agent.generated.buf."
+OWNED_VALIDATE_IMPORT: Final = "from scyg_agent.generated.proto.buf."
 PACKAGE_INITIALIZER: Final = '"""Generated protobuf package."""\n'
+_GRPC_CALLABLES: Final = {
+    "unary_unary": "UnaryUnaryMultiCallable",
+    "unary_stream": "UnaryStreamMultiCallable",
+}
+
+
+@final
+class ContractRepositoryNotFoundError(FileNotFoundError):
+    """Require repository inputs while preserving the filesystem error category."""
+
+    @override
+    def __str__(self) -> str:
+        """Return the stable generation prerequisite diagnostic."""
+        return "run contract generation inside the SCYG repository"
+
+
+@final
+class UnsupportedGrpcBindingError(ValueError):
+    """Reject generated binding shapes outside the owned unary RPC contract."""
+
+    @override
+    def __str__(self) -> str:
+        """Report a generator incompatibility without inventing message types."""
+        return "unsupported generated gRPC binding shape"
+
+
+@dataclass(frozen=True, slots=True)
+class _GrpcMethod:
+    name: str
+    channel_method: str
+    request: str
+    response: str
+
+
+def _message_type(serializer: ast.expr) -> str:
+    if not isinstance(serializer, ast.Attribute) or not isinstance(serializer.value, ast.Attribute):
+        raise UnsupportedGrpcBindingError
+    return ast.unparse(serializer.value)
+
+
+def _rpc_assignment(statement: ast.stmt) -> _GrpcMethod | None:
+    if not isinstance(statement, ast.Assign) or len(statement.targets) != 1:
+        return None
+    target, call = statement.targets[0], statement.value
+    if not isinstance(target, ast.Attribute) or not isinstance(call, ast.Call):
+        raise UnsupportedGrpcBindingError
+    if not isinstance(call.func, ast.Attribute) or call.func.attr not in _GRPC_CALLABLES:
+        raise UnsupportedGrpcBindingError
+    parameters = {keyword.arg: keyword.value for keyword in call.keywords}
+    request = parameters.get("request_serializer")
+    response = parameters.get("response_deserializer")
+    if request is None or response is None:
+        raise UnsupportedGrpcBindingError
+    return _GrpcMethod(target.attr, call.func.attr, _message_type(request), _message_type(response))
+
+
+def _rpc_methods(stub: ast.ClassDef) -> tuple[_GrpcMethod, ...]:
+    initializer = next(
+        (
+            statement
+            for statement in stub.body
+            if isinstance(statement, ast.FunctionDef) and statement.name == "__init__"
+        ),
+        None,
+    )
+    if initializer is None:
+        raise UnsupportedGrpcBindingError
+    methods = tuple(
+        method
+        for statement in initializer.body
+        if (method := _rpc_assignment(statement)) is not None
+    )
+    if not methods:
+        raise UnsupportedGrpcBindingError
+    return methods
+
+
+def _grpc_declarations(source: str) -> str:
+    """Derive aio service typing from protoc's actual serializer bindings."""
+    tree = ast.parse(source)
+    services = tuple(
+        (node.name.removesuffix("Stub"), _rpc_methods(node))
+        for node in tree.body
+        if isinstance(node, ast.ClassDef) and node.name.endswith("Stub")
+    )
+    if not services:
+        return "# Generated from service-less protoc gRPC bindings; do not edit.\n"
+    asynchronous_types = sorted(
+        {
+            kind
+            for _, methods in services
+            for method in methods
+            for kind in (
+                ("AsyncIterator", "Iterator")
+                if method.channel_method == "unary_stream"
+                else ("Awaitable",)
+            )
+        }
+    )
+    lines = [
+        "# Generated from protoc gRPC bindings; do not edit.",
+        "from collections.abc import " + ", ".join(asynchronous_types),
+        "from typing import Protocol",
+        "",
+        "from grpc import aio",
+        "",
+    ]
+    lines.extend(
+        ast.unparse(node)
+        for node in tree.body
+        if isinstance(node, ast.ImportFrom)
+        and node.module is not None
+        and node.module.startswith("scyg_agent.generated.proto.")
+    )
+    for service, methods in services:
+        lines.extend(
+            (
+                "",
+                f"class {service}Stub:",
+                "    def __init__(self, channel: aio.Channel) -> None: ...",
+            )
+        )
+        for method in methods:
+            callable_name = _GRPC_CALLABLES[method.channel_method]
+            call_type = f"aio.{callable_name}[{method.request}, {method.response}]"
+            lines.append(f"    {method.name}: {call_type}")
+        lines.extend(("", f"class {service}Servicer(Protocol):"))
+        for method in methods:
+            response = (
+                f"Iterator[{method.response}] | AsyncIterator[{method.response}]"
+                if method.channel_method == "unary_stream"
+                else f"{method.response} | Awaitable[{method.response}]"
+            )
+            lines.extend(
+                (
+                    f"    def {method.name}(",
+                    f"        self, request: {method.request},",
+                    f"        context: aio.ServicerContext[{method.request}, {method.response}],",
+                    f"    ) -> {response}: ...",
+                )
+            )
+        lines.extend(
+            (
+                "",
+                f"def add_{service}Servicer_to_server(",
+                f"    servicer: {service}Servicer, server: aio.Server",
+                ") -> None: ...",
+            )
+        )
+    return "\n".join(lines) + "\n"
 
 
 class GeneratedTreeRollbackError(OSError):
@@ -51,22 +203,28 @@ class GeneratedTrees:
 
 
 def repository_root() -> Path:
-    """Return the repository root from the installed Agent source tree."""
-    return Path(__file__).resolve().parents[3]
+    """Locate repository inputs without relying on an editable installation."""
+    for start in (Path.cwd().resolve(), Path(__file__).resolve().parent):
+        for candidate in (start, *start.parents):
+            if (candidate / "contracts" / "buf.yaml").is_file() and (
+                candidate / "agent" / "pyproject.toml"
+            ).is_file():
+                return candidate
+    raise ContractRepositoryNotFoundError
 
 
 def generate_contracts(destination: Path) -> None:
     """Generate and package Python bindings in an isolated destination."""
     repository = repository_root()
     contracts = repository / "contracts"
-    npx = shutil.which("npx")
-    if npx is None:
-        _ = sys.stderr.write("npx is required for pinned Buf generation\n")
+    executable = os.environ.get("SCYG_BUF_BIN")
+    npx = shutil.which("npx") if executable is None else None
+    if executable is None and npx is None:
+        _ = sys.stderr.write("npx or SCYG_BUF_BIN is required for pinned Buf generation\n")
         raise SystemExit(2)
+    prefix = (executable,) if executable is not None else (str(npx), "--yes", BUF_PACKAGE)
     command = (
-        npx,
-        "--yes",
-        BUF_PACKAGE,
+        *prefix,
         "generate",
         "--template",
         "buf.gen.yaml",
@@ -81,13 +239,14 @@ def generate_contracts(destination: Path) -> None:
 
     for path in sorted(path for path in destination.rglob("*") if path.suffix in {".py", ".pyi"}):
         source = path.read_text(encoding="utf-8")
-        _ = path.write_text(
-            source.replace(PACKAGE_IMPORT, OWNED_PACKAGE_IMPORT).replace(
-                VALIDATE_IMPORT, OWNED_VALIDATE_IMPORT
-            ),
-            encoding="utf-8",
-            newline="\n",
+        rewritten = source.replace(PACKAGE_IMPORT, OWNED_PACKAGE_IMPORT).replace(
+            VALIDATE_IMPORT, OWNED_VALIDATE_IMPORT
         )
+        _ = path.write_text(rewritten, encoding="utf-8", newline="\n")
+        if path.name.endswith("_pb2_grpc.py"):
+            _ = path.with_suffix(".pyi").write_text(
+                _grpc_declarations(rewritten), encoding="utf-8", newline="\n"
+            )
     packages = (destination, *sorted(path for path in destination.rglob("*") if path.is_dir()))
     for package in packages:
         _ = (package / "__init__.py").write_text(
@@ -111,7 +270,7 @@ def _trees(temporary_root: Path) -> GeneratedTrees:
     repository = repository_root()
     return GeneratedTrees(
         repository=repository,
-        expected=repository / "agent" / "src" / "scyg_agent" / "generated",
+        expected=repository / "agent" / "src" / "scyg_agent" / "generated" / "proto",
         generated=temporary_root,
     )
 
@@ -135,7 +294,7 @@ def report_drift(expected: Mapping[str, bytes], actual: Mapping[str, bytes]) -> 
 
 
 def _check() -> int:
-    """Generate fresh bindings and byte-compare them with the committed tree."""
+    """Generate fresh bindings and byte-compare them with the local generated tree."""
     with tempfile.TemporaryDirectory(prefix="scyg-contract-check-") as temporary:
         trees = _trees(Path(temporary))
         generate_contracts(Path(temporary))
@@ -148,6 +307,7 @@ def write_contracts() -> int:
         trees = _trees(Path(temporary))
         target = trees.expected
         generate_contracts(Path(temporary))
+        target.parent.mkdir(parents=True, exist_ok=True)
         transaction_id = uuid.uuid4().hex
         staged = target.parent / f".generated-staged-{transaction_id}"
         backup = target.parent / f".generated-backup-{transaction_id}"
@@ -181,6 +341,9 @@ def write_contracts() -> int:
             if backup.exists() and (commit_succeeded or rollback_succeeded):
                 shutil.rmtree(backup)
         manifest = _file_bytes(target)
+        for obsolete in (target.parent / "scyg", target.parent / "buf"):
+            if obsolete.exists():
+                shutil.rmtree(obsolete)
         aggregate = hashlib.sha256(
             b"".join(path.encode() + b"\0" + manifest[path] for path in sorted(manifest))
         ).hexdigest()
@@ -202,3 +365,7 @@ def run(arguments: Sequence[str]) -> int:
 def main() -> None:
     """Run contract generation using process arguments."""
     raise SystemExit(run(sys.argv[1:]))
+
+
+if __name__ == "__main__":
+    main()

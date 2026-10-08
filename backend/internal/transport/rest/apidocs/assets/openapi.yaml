@@ -18,6 +18,8 @@ tags:
     description: "文章正文图片上传、取消与媒体读取。"
   - name: Auth
     description: "身份认证。"
+  - name: Agent
+    description: "JWT 保护的 Agent Run 创建、查询、交互、取消和 SSE 订阅。"
 paths:
   /api/v1/auth/login:
     post:
@@ -800,6 +802,319 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
+  /api/v1/ai/search:
+    post:
+      operationId: agentSearch
+      tags: [Agent]
+      summary: "创建搜索 Run"
+      description: "使用 Blog Bearer JWT 创建 Run，路径固定 capability 为 `search`，请求内容不能覆盖该值。请求体可为任意 JSON 值（包括 null），原始 JSON 字节透传给 Agent；Blog 不解释业务字段，也不提供 Recipe、模型、Tool、Skill、Runtime 或 HITL 的独立选择参数。成功返回 202 和统一 Run 快照，不表示执行完成。Agent 集成关闭时返回 404。"
+      parameters:
+        - $ref: '#/components/parameters/AgentIdempotencyKey'
+      requestBody:
+        required: true
+        description: "必须携带 application/json（允许 charset 参数）；请求体须为合法 UTF-8 JSON，最大 1 MiB，空请求体或非法 JSON 返回 400，超限返回 413，媒体类型缺失或不支持返回 415。顶层允许任意 JSON 值（包括 null），Blog 保留原始字节。"
+        content:
+          application/json:
+            schema:
+              description: "Agent 定义的任意 JSON 请求值，包含显式 null。"
+              nullable: true
+      responses:
+        '202':
+          description: "创建请求已接受，返回统一 Run 快照。"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentRun'
+        '400':
+          $ref: '#/components/responses/AgentError'
+        '401':
+          $ref: '#/components/responses/AgentError'
+        '404':
+          $ref: '#/components/responses/AgentError'
+        '409':
+          $ref: '#/components/responses/AgentError'
+        '429':
+          $ref: '#/components/responses/AgentError'
+        '503':
+          $ref: '#/components/responses/AgentError'
+        '500':
+          $ref: '#/components/responses/AgentError'
+        '413':
+          $ref: '#/components/responses/AgentError'
+        '415':
+          $ref: '#/components/responses/AgentError'
+        default:
+          $ref: '#/components/responses/AgentError'
+  /api/v1/ai/write:
+    post:
+      operationId: agentWrite
+      tags: [Agent]
+      summary: "创建写作 Run"
+      description: "使用 Blog Bearer JWT 创建 Run，路径固定 capability 为 `write`，请求内容不能覆盖该值。请求体可为任意 JSON 值（包括 null），原始 JSON 字节透传给 Agent；Blog 不解释业务字段，也不提供 Recipe、模型、Tool、Skill、Runtime 或 HITL 的独立选择参数。成功返回 202 和统一 Run 快照，不表示执行完成。Agent 集成关闭时返回 404。"
+      parameters:
+        - $ref: '#/components/parameters/AgentIdempotencyKey'
+      requestBody:
+        required: true
+        description: "必须携带 application/json（允许 charset 参数）；请求体须为合法 UTF-8 JSON，最大 1 MiB，空请求体或非法 JSON 返回 400，超限返回 413，媒体类型缺失或不支持返回 415。顶层允许任意 JSON 值（包括 null），Blog 保留原始字节。"
+        content:
+          application/json:
+            schema:
+              description: "Agent 定义的任意 JSON 请求值，包含显式 null。"
+              nullable: true
+      responses:
+        '202':
+          description: "创建请求已接受，返回统一 Run 快照。"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentRun'
+        '400':
+          $ref: '#/components/responses/AgentError'
+        '401':
+          $ref: '#/components/responses/AgentError'
+        '404':
+          $ref: '#/components/responses/AgentError'
+        '409':
+          $ref: '#/components/responses/AgentError'
+        '429':
+          $ref: '#/components/responses/AgentError'
+        '503':
+          $ref: '#/components/responses/AgentError'
+        '500':
+          $ref: '#/components/responses/AgentError'
+        '413':
+          $ref: '#/components/responses/AgentError'
+        '415':
+          $ref: '#/components/responses/AgentError'
+        default:
+          $ref: '#/components/responses/AgentError'
+  /api/v1/ai/polish:
+    post:
+      operationId: agentPolish
+      tags: [Agent]
+      summary: "创建润色 Run"
+      description: "使用 Blog Bearer JWT 创建 Run，路径固定 capability 为 `polish`，请求内容不能覆盖该值。请求体可为任意 JSON 值（包括 null），原始 JSON 字节透传给 Agent；Blog 不解释业务字段，也不提供 Recipe、模型、Tool、Skill、Runtime 或 HITL 的独立选择参数。成功返回 202 和统一 Run 快照，不表示执行完成。Agent 集成关闭时返回 404。"
+      parameters:
+        - $ref: '#/components/parameters/AgentIdempotencyKey'
+      requestBody:
+        required: true
+        description: "必须携带 application/json（允许 charset 参数）；请求体须为合法 UTF-8 JSON，最大 1 MiB，空请求体或非法 JSON 返回 400，超限返回 413，媒体类型缺失或不支持返回 415。顶层允许任意 JSON 值（包括 null），Blog 保留原始字节。"
+        content:
+          application/json:
+            schema:
+              description: "Agent 定义的任意 JSON 请求值，包含显式 null。"
+              nullable: true
+      responses:
+        '202':
+          description: "创建请求已接受，返回统一 Run 快照。"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentRun'
+        '400':
+          $ref: '#/components/responses/AgentError'
+        '401':
+          $ref: '#/components/responses/AgentError'
+        '404':
+          $ref: '#/components/responses/AgentError'
+        '409':
+          $ref: '#/components/responses/AgentError'
+        '429':
+          $ref: '#/components/responses/AgentError'
+        '503':
+          $ref: '#/components/responses/AgentError'
+        '500':
+          $ref: '#/components/responses/AgentError'
+        '413':
+          $ref: '#/components/responses/AgentError'
+        '415':
+          $ref: '#/components/responses/AgentError'
+        default:
+          $ref: '#/components/responses/AgentError'
+  /api/v1/ai/chat:
+    post:
+      operationId: agentChat
+      tags: [Agent]
+      summary: "创建对话 Run"
+      description: "使用 Blog Bearer JWT 创建 Run，路径固定 capability 为 `chat`，请求内容不能覆盖该值。请求体可为任意 JSON 值（包括 null），原始 JSON 字节透传给 Agent；Blog 不解释业务字段，也不提供 Recipe、模型、Tool、Skill、Runtime 或 HITL 的独立选择参数。成功返回 202 和统一 Run 快照，不表示执行完成。Agent 集成关闭时返回 404。"
+      parameters:
+        - $ref: '#/components/parameters/AgentIdempotencyKey'
+      requestBody:
+        required: true
+        description: "必须携带 application/json（允许 charset 参数）；请求体须为合法 UTF-8 JSON，最大 1 MiB，空请求体或非法 JSON 返回 400，超限返回 413，媒体类型缺失或不支持返回 415。顶层允许任意 JSON 值（包括 null），Blog 保留原始字节。"
+        content:
+          application/json:
+            schema:
+              description: "Agent 定义的任意 JSON 请求值，包含显式 null。"
+              nullable: true
+      responses:
+        '202':
+          description: "创建请求已接受，返回统一 Run 快照。"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentRun'
+        '400':
+          $ref: '#/components/responses/AgentError'
+        '401':
+          $ref: '#/components/responses/AgentError'
+        '404':
+          $ref: '#/components/responses/AgentError'
+        '409':
+          $ref: '#/components/responses/AgentError'
+        '429':
+          $ref: '#/components/responses/AgentError'
+        '503':
+          $ref: '#/components/responses/AgentError'
+        '500':
+          $ref: '#/components/responses/AgentError'
+        '413':
+          $ref: '#/components/responses/AgentError'
+        '415':
+          $ref: '#/components/responses/AgentError'
+        default:
+          $ref: '#/components/responses/AgentError'
+  /api/v1/runs/{runId}:
+    get:
+      operationId: agentGet
+      tags: [Agent]
+      summary: "查询 Run 和最终结果"
+      description: "使用 Blog Bearer JWT 查询当前 Run；Agent 校验 owner，Run 不存在和非 owner 均返回 404。最终结果在此响应中读取，不提供独立 result 接口。Agent 集成关闭时返回 404。"
+      parameters:
+        - $ref: '#/components/parameters/AgentRunID'
+      responses:
+        '200':
+          description: "查询成功，返回统一 Run 快照和已有结果。"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentRun'
+        '400':
+          $ref: '#/components/responses/AgentError'
+        '401':
+          $ref: '#/components/responses/AgentError'
+        '404':
+          $ref: '#/components/responses/AgentError'
+        '409':
+          $ref: '#/components/responses/AgentError'
+        '429':
+          $ref: '#/components/responses/AgentError'
+        '503':
+          $ref: '#/components/responses/AgentError'
+        '500':
+          $ref: '#/components/responses/AgentError'
+        default:
+          $ref: '#/components/responses/AgentError'
+  /api/v1/runs/{runId}/events:
+    get:
+      operationId: agentEvents
+      tags: [Agent]
+      summary: "订阅 Run 事件流"
+      description: "使用 fetch 和 ReadableStream 携带 Blog Bearer JWT 读取 SSE，不使用 Cookie、URL token 或原生 EventSource。先查询 Run 完成授权，再订阅；Agent 确认订阅建立后才提交 HTTP 200，不等待首条业务事件，建立前失败返回 Problem Details。Agent 的完整 SSE frame（含 event、id、data、注释和 heartbeat）原样转发并逐条 flush；Blog 不重建事件、不生成序号或 heartbeat，不把 gRPC metadata/trailers 转为 HTTP headers。订阅建立后连续未收到任何 frame 达 idle timeout、流结束或异常时直接关闭，不生成 stream_error。断线后查询 Run：非终态重新订阅，终态停止订阅。Agent 集成关闭时返回 404。"
+      parameters:
+        - $ref: '#/components/parameters/AgentRunID'
+        - $ref: '#/components/parameters/AgentEventCursor'
+      responses:
+        '200':
+          description: "订阅建立成功，持续返回原始 SSE frame。"
+          content:
+            text/event-stream:
+              schema:
+                description: "Agent 编码的完整 SSE frame 字节流。"
+                type: string
+        '400':
+          $ref: '#/components/responses/AgentError'
+        '401':
+          $ref: '#/components/responses/AgentError'
+        '404':
+          $ref: '#/components/responses/AgentError'
+        '409':
+          $ref: '#/components/responses/AgentError'
+        '429':
+          $ref: '#/components/responses/AgentError'
+        '503':
+          $ref: '#/components/responses/AgentError'
+        '500':
+          $ref: '#/components/responses/AgentError'
+        default:
+          $ref: '#/components/responses/AgentError'
+  /api/v1/runs/{runId}/resume:
+    post:
+      operationId: agentResume
+      tags: [Agent]
+      summary: "恢复待交互 Run"
+      description: "使用 Blog Bearer JWT 提交交互决定，Agent 校验 owner、交互类型、决定内容和恢复条件，Blog 不解释 decision 或 payload。payload 省略与显式 null 分别透传；同 key 重试按成功记录重放。交互已处理后以新 key 再提交返回 409，不覆盖原决定。Run 不存在和非 owner 均返回 404。Agent 集成关闭时返回 404。"
+      parameters:
+        - $ref: '#/components/parameters/AgentRunID'
+        - $ref: '#/components/parameters/AgentIdempotencyKey'
+      requestBody:
+        required: true
+        description: "必须携带 application/json（允许 charset 参数）；请求体须为合法 UTF-8 JSON，最大 1 MiB，空请求体或非法 JSON 返回 400，超限返回 413，媒体类型缺失或不支持返回 415。顶层必须为 object，含非空 interactionId 和 decision。"
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AgentResumeRequest'
+      responses:
+        '200':
+          description: "恢复操作成功，返回最新统一 Run 快照。"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentRun'
+        '400':
+          $ref: '#/components/responses/AgentError'
+        '401':
+          $ref: '#/components/responses/AgentError'
+        '404':
+          $ref: '#/components/responses/AgentError'
+        '409':
+          $ref: '#/components/responses/AgentError'
+        '429':
+          $ref: '#/components/responses/AgentError'
+        '503':
+          $ref: '#/components/responses/AgentError'
+        '500':
+          $ref: '#/components/responses/AgentError'
+        '413':
+          $ref: '#/components/responses/AgentError'
+        '415':
+          $ref: '#/components/responses/AgentError'
+        default:
+          $ref: '#/components/responses/AgentError'
+  /api/v1/runs/{runId}/cancel:
+    post:
+      operationId: agentCancel
+      tags: [Agent]
+      summary: "取消 Run"
+      description: "使用 Blog Bearer JWT，请求不得包含 body。Agent 设置取消栅栏后立即返回 cancelled，不再发起新的 Tool 调用；在途 Blog 写入可以完成且结果保留，但不再将 Run 推进为成功。已 cancelled 的 Run 使用新 key 再取消返回当前 Run；已 succeeded 或 failed 的 Run 返回 409。Run 不存在和非 owner 均返回 404。Agent 集成关闭时返回 404。"
+      parameters:
+        - $ref: '#/components/parameters/AgentRunID'
+        - $ref: '#/components/parameters/AgentIdempotencyKey'
+      responses:
+        '200':
+          description: "取消操作成功，返回最新统一 Run 快照。"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentRun'
+        '400':
+          $ref: '#/components/responses/AgentError'
+        '401':
+          $ref: '#/components/responses/AgentError'
+        '404':
+          $ref: '#/components/responses/AgentError'
+        '409':
+          $ref: '#/components/responses/AgentError'
+        '429':
+          $ref: '#/components/responses/AgentError'
+        '503':
+          $ref: '#/components/responses/AgentError'
+        '500':
+          $ref: '#/components/responses/AgentError'
+        '413':
+          $ref: '#/components/responses/AgentError'
+        default:
+          $ref: '#/components/responses/AgentError'
 components:
   securitySchemes:
     bearerAuth:
@@ -807,6 +1122,31 @@ components:
       scheme: bearer
       bearerFormat: JWT
   parameters:
+    AgentRunID:
+      description: "Agent 生成的不透明 URL-safe ASCII 标识，长度 1–128；只允许 A–Z、a–z、0–9、点、下划线、波浪号、连字符，不能等于 . 或 ..。"
+      name: runId
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/AgentRunID'
+    AgentIdempotencyKey:
+      description: "必填 UUID v4。每个新的逻辑操作生成新 key，仅重试同一操作沿用原 key，不得跨 capability、RPC、Run 或 interaction 复用。Create、Resume、Cancel 共用 user_id + key 作用域；仅成功操作持久化，自成功提交起保留 24 小时。有效期内重试返回绑定 Run 的当前状态，不重复执行，也不比较请求摘要或操作类型；重放仍校验 owner。到期后可能作为新请求处理，仍受交互和终态约束。"
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+        pattern: '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$'
+    AgentEventCursor:
+      description: "可选的不透明事件游标；提供时必须为 1–256 个 ASCII 字节。Blog 不解析、不比较、不持久化，作为 after_event_id 原样传给 Agent；省略时由 Agent 使用默认订阅位置。"
+      name: Last-Event-ID
+      in: header
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 256
+        pattern: '^[\x00-\x7F]+$'
     ArticleImageID:
       description: "32 位小写十六进制正文图片标识。"
       name: imageId
@@ -944,6 +1284,12 @@ components:
         type: string
         format: uri-reference
   responses:
+    AgentError:
+      description: "RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：JWT 无效或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED；503：UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。"
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
     BadRequest:
       description: "HTTP `400`，请求参数或请求体校验失败。"
       content:
@@ -993,6 +1339,102 @@ components:
           schema:
             $ref: '#/components/schemas/Problem'
   schemas:
+    AgentRunID:
+      description: "Agent 生成的不透明 URL-safe ASCII Run 标识，长度 1–128，不能等于 . 或 ..。"
+      type: string
+      minLength: 1
+      maxLength: 128
+      pattern: '^[A-Za-z0-9._~-]+$'
+      not:
+        enum: ['.', '..']
+    AgentRun:
+      description: "Create、Get、Resume、Cancel 共用的 owner 授权 Run 快照，字段始终存在；无结果、失败或待处理交互时对应值为 null。result 与 failure 可以同时存在，Blog 不实现 Run 状态机。"
+      type: object
+      required: [runId, status, capability, recipeId, recipeVersion, createdAt, updatedAt, failure, result, pendingInteraction, streamUrl]
+      properties:
+        runId:
+          $ref: '#/components/schemas/AgentRunID'
+        status:
+          description: "Run 状态：`queued` 排队，`running` 执行中，`waitingForApproval` 等待交互，`succeeded` 成功，`failed` 失败，`cancelled` 已取消；后三者为终态。"
+          type: string
+          enum: [queued, running, waitingForApproval, succeeded, failed, cancelled]
+        capability:
+          description: "路由固定能力：`search` 搜索，`write` 写作，`polish` 润色，`chat` 对话。"
+          type: string
+          enum: [search, write, polish, chat]
+        recipeId:
+          description: "Agent 选定的 Recipe 标识，创建成功起非空，客户端只读。"
+          type: string
+          minLength: 1
+          readOnly: true
+        recipeVersion:
+          description: "Agent 选定的 Recipe 版本，创建成功起非空，客户端只读。"
+          type: string
+          minLength: 1
+          readOnly: true
+        createdAt:
+          description: "Run 创建时间，RFC 3339 UTC 字符串。"
+          type: string
+          format: date-time
+          pattern: 'Z$'
+        updatedAt:
+          description: "Run 最近更新时间，RFC 3339 UTC 字符串。"
+          type: string
+          format: date-time
+          pattern: 'Z$'
+        streamUrl:
+          description: "Blog 根据 runId 生成的相对 SSE 订阅路径，例如 /api/v1/runs/run-safe-id/events。"
+          type: string
+          format: uri-reference
+          pattern: '^/api/v1/runs/[A-Za-z0-9._~-]{1,128}/events$'
+        result:
+          description: "Agent 提供的任意 JSON 结果；无结果时为 null，可以与 failure 同时存在。"
+          nullable: true
+        failure:
+          description: "Agent 提供的公开失败对象，无失败时为 null；Blog 不翻译或解释 code 和 message。"
+          type: object
+          nullable: true
+          required: [code, message]
+          properties:
+            code:
+              description: "Agent 提供的失败代码。"
+              type: string
+            message:
+              description: "Agent 提供的已脱敏失败说明。"
+              type: string
+        pendingInteraction:
+          description: "当前待处理交互，无待处理交互时为 null。"
+          type: object
+          nullable: true
+          required: [interactionId, type, payload]
+          properties:
+            interactionId:
+              description: "Agent 提供的不透明交互标识，Resume 时原样提交。"
+              type: string
+            type:
+              description: "交互类型：`confirmation` 确认，`selection` 选择，`textInput` 文本输入。"
+              type: string
+              enum: [confirmation, selection, textInput]
+            payload:
+              description: "Agent 定义的任意 JSON 交互内容，可以为 null。"
+              nullable: true
+    AgentResumeRequest:
+      description: "提交交互决定的 JSON object；Blog 不解释 decision 或 payload，payload 省略与显式 null 由 Agent 区分。"
+      type: object
+      required: [interactionId, decision]
+      properties:
+        interactionId:
+          description: "非空不透明交互标识，长度 1–128 个 UTF-8 字节（不是字符数）。"
+          type: string
+          minLength: 1
+          x-max-bytes: 128
+        decision:
+          description: "非空决定字符串，由 Agent 校验，Blog 不限制枚举值。"
+          type: string
+          minLength: 1
+        payload:
+          description: "可选的任意 JSON 决定内容；省略与显式 null 含义不同，Blog 保留该区别。"
+          nullable: true
     LoginRequest:
       description: "用户名和密码登录凭据。"
       type: object
@@ -1155,6 +1597,10 @@ components:
       additionalProperties: false
       required: [type, title, status, detail, instance, requestId, errors]
       properties:
+        code:
+          description: "可选的 Agent 公开错误代码；提供时必须非空，缺失时不返回该字段。"
+          type: string
+          minLength: 1
         type:
           description: "问题类型 URI。"
           type: string

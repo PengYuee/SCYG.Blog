@@ -89,6 +89,7 @@ class PostgreSQLRunRepository:
             task_type=run.task_type.value,
             runtime_kind=run.runtime.kind.value,
             runtime_version=run.runtime.version,
+            revision=run.revision,
             status=run.status.value,
             created_at=run.created_at,
             updated_at=run.updated_at,
@@ -162,6 +163,52 @@ class PostgreSQLRunRepository:
             ):
                 return CreateConflict(request.operation_id)
             return duplicate_result(record)
+
+    async def create_in_session(self, session: AsyncSession, request: CreateRunRequest) -> Created:
+        """Create an internally unique Run and checkpoint binding without committing."""
+        run, value = request.run, request.input
+        session.add(
+            RunRecord(
+                run_id=str(run.id),
+                owner_user_id=str(run.owner_user_id),
+                operation_id=str(request.operation_id),
+                initial_message=value.initial_message,
+                article_id=value.article_id,
+                capability=value.capability,
+                recipe_id=value.recipe_id,
+                recipe_version=value.recipe_version,
+                thread_id=value.thread_id or str(run.id),
+                quality=value.quality,
+                state_schema_version=value.state_schema_version,
+                result_reference=None,
+                input_schema_version=value.input_schema_version,
+                input_payload=value.input_payload,
+                input_digest=value.input_digest,
+                locale=value.locale,
+                task_type=run.task_type.value,
+                runtime_kind=run.runtime.kind.value,
+                runtime_version=run.runtime.version,
+                revision=run.revision,
+                status=run.status.value,
+                created_at=run.created_at,
+                updated_at=run.updated_at,
+                attempt=run.attempt,
+                next_attempt_at=request.next_attempt_at,
+            )
+        )
+        await session.flush()
+        if value.recipe_id is not None and value.recipe_version is not None:
+            session.add(
+                CheckpointBindingRecord(
+                    thread_id=value.thread_id or str(run.id),
+                    run_id=str(run.id),
+                    state_schema_version=value.state_schema_version or "v1",
+                    recipe_id=value.recipe_id,
+                    recipe_version=value.recipe_version,
+                )
+            )
+        await session.flush()
+        return Created(run)
 
     async def get(self, run_id: RunId) -> GetResult:
         """Load and validate one persisted aggregate."""

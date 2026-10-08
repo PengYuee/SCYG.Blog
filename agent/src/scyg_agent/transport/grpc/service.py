@@ -1,387 +1,243 @@
-"""Implement legacy and capability-based AgentControl unary RPCs."""
+"""Internal five-RPC control plane; browser authentication belongs to Blog."""
 
-from collections.abc import Awaitable
-from datetime import UTC, datetime
-from typing import NoReturn, Protocol, final, override
+from collections.abc import AsyncIterator, Awaitable, Callable
+from typing import Final, NoReturn, Protocol, TypeVar, final, override
 
 import anyio
 import grpc
-from grpc import aio
+from google.protobuf.any_pb2 import Any
+from google.rpc import status_pb2
+from grpc_status import rpc_status
 
-from scyg_agent.adapters.auth import JwtVerifier
-from scyg_agent.adapters.redis import RedisStreamError, RedisStreamStore
-from scyg_agent.agents.contracts import (
-    INPUT_SCHEMA_VERSION,
-    Capability,
-    CapabilityInput,
-    ChatInput,
-    PolishInput,
-    SearchInput,
-    WritingInput,
-    input_digest,
-    input_payload,
-    recipe_for_capability,
-)
-from scyg_agent.application import (
-    CreateRunInput,
-    FacadeCancelled,
-    FacadeConflict,
-    FacadeInternal,
-    FacadeNotFound,
-    FacadePrecondition,
-    FacadeSuccess,
-    FacadeValidation,
-    OwnerContext,
-    SnapshotSuccess,
-)
-from scyg_agent.domain.runs import (
-    InvalidEnumValueError,
-    InvalidIdentifierError,
-    InvalidRuntimeVersionError,
-    Run,
-    RunId,
-    RuntimeKind,
-    RuntimeSelection,
-    TaskType,
-)
-from scyg_agent.generated.scyg.agent.v1 import agent_control_service_pb2 as service_pb2
-from scyg_agent.generated.scyg.agent.v1 import agent_control_service_pb2_grpc as service_grpc
+from scyg_agent.adapters.database.event_subscription import SubscriptionCursorError
+from scyg_agent.agents.contracts import Capability
+from scyg_agent.application.control import ControlError, ControlSnapshot, ResumeCommand
+from scyg_agent.generated.proto.scyg.agent.v1 import agent_control_service_pb2 as service_pb2
+from scyg_agent.generated.proto.scyg.agent.v1 import agent_control_service_pb2_grpc as service_grpc
+from scyg_agent.generated.proto.scyg.agent.v1 import common_pb2
 
-from .authentication import authenticate_blog_service
 from .conversion import (
     InvalidGrpcRequestError,
-    parse_create_agent_run_request,
-    parse_create_request,
-    parse_get_request,
+    parse_capability,
     run_to_proto,
+    validate_cursor,
+    validate_interaction,
+    validate_json,
+    validate_key,
+    validate_run_id,
+    validate_user,
 )
 
+T = TypeVar("T")
+_CURSOR_REJECTED: Final = ("FAILED_PRECONDITION", "Event cursor is outside the retained journal")
 
-class AgentControlApplications(Protocol):
-    """声明两个控制面 RPC 使用的完成门面能力."""
 
-    async def create_run(
-        self, request: CreateRunInput
-    ) -> (
-        FacadeSuccess
-        | FacadeConflict
-        | FacadePrecondition
-        | FacadeValidation
-        | FacadeCancelled
-        | FacadeInternal
-    ):
-        """创建或重放 Run."""
+class Context(Protocol):
+    """Expose the actual grpc.aio lifecycle methods used across RPC message types."""
+
+    def time_remaining(self) -> float | None:
+        """Return the remaining deadline, or None when no deadline was specified."""
         ...
 
-    async def get_snapshot(
-        self, owner: OwnerContext, run_id: RunId
-    ) -> (
-        SnapshotSuccess
-        | FacadeNotFound
-        | FacadePrecondition
-        | FacadeValidation
-        | FacadeCancelled
-        | FacadeInternal
-    ):
-        """读取稳定 Run 快照."""
+    async def send_initial_metadata(
+        self, initial_metadata: tuple[tuple[str, str | bytes], ...]
+    ) -> None:
+        """Send the subscription readiness metadata before yielding frames."""
+        ...
+
+    async def abort(
+        self,
+        code: grpc.StatusCode,
+        details: str = "",
+        trailing_metadata: tuple[tuple[str, str | bytes], ...] = (),
+    ) -> NoReturn:
+        """Terminate the RPC with the canonical serialized rich-status metadata."""
         ...
 
 
-class Clock(Protocol):
-    """提供创建请求使用的可注入 UTC 时钟."""
+class OpenedFrames(Protocol):
+    """An already registered subscription whose resources can be released."""
 
-    def now(self) -> datetime:
-        """返回当前 UTC 时刻."""
+    def frames(self) -> AsyncIterator[str]:
+        """Iterate complete frames from an already registered subscription."""
+        ...
+
+    async def aclose(self) -> None:
+        """Release the subscription, including before iteration begins."""
         ...
 
 
-class UtcClock:
-    """提供生产环境 UTC 当前时间."""
+class ControlFacade(Protocol):
+    """The complete control application contract, without transport credentials."""
 
-    def now(self) -> datetime:
-        """返回时区明确的当前时间."""
-        return datetime.now(tz=UTC)
+    async def create(
+        self, user_id: str, key: str, capability: Capability, raw_json: bytes
+    ) -> ControlSnapshot:
+        """Create or replay a Run in one successful-key transaction."""
+        ...
+
+    async def get(self, user_id: str, run_id: str) -> ControlSnapshot:
+        """Read one owner-authorized public snapshot."""
+        ...
+
+    async def resume(self, user_id: str, key: str, command: ResumeCommand) -> ControlSnapshot:
+        """Resolve the current interaction or replay a successful key."""
+        ...
+
+    async def cancel(self, user_id: str, key: str, run_id: str) -> ControlSnapshot:
+        """Set cancellation admission fences or replay a successful key."""
+        ...
+
+    async def open_events(self, user_id: str, run_id: str, cursor: str | None) -> OpenedFrames:
+        """Authorize and open a cursor-validated subscription before readiness."""
+        ...
 
 
 @final
 class AgentControlServicer(service_grpc.AgentControlServiceServicer):
-    """认证 Blog 服务并把两个控制面 RPC 委托给共享门面."""
+    """Validate transport syntax, then delegate transactional business behavior."""
 
-    def __init__(
-        self,
-        facade: AgentControlApplications,
-        verifier: JwtVerifier,
-        clock: Clock | None = None,
-        stream_store: RedisStreamStore | None = None,
-    ) -> None:
-        """绑定完成门面、JWT 验证器、时钟与 Redis 健康端口."""
+    def __init__(self, facade: ControlFacade) -> None:
+        """Bind only the shared owner-authorized application facade."""
         self._facade = facade
-        self._verifier = verifier
-        self._clock = clock or UtcClock()
-        self._stream_store = stream_store
+
+    async def _invoke(self, context: Context, call: Callable[[], Awaitable[T]]) -> T:
+        try:
+            remaining = context.time_remaining()
+            if remaining is None:
+                return await call()
+            with anyio.fail_after(remaining):
+                return await call()
+        except (InvalidGrpcRequestError, UnicodeError):
+            await _abort(context, grpc.StatusCode.INVALID_ARGUMENT, "Invalid request")
+        except ControlError as error:
+            await _abort(context, grpc.StatusCode[error.code], error.message)
+        except TimeoutError:
+            await _abort(context, grpc.StatusCode.DEADLINE_EXCEEDED, "Request deadline exceeded")
+        except Exception:  # noqa: BLE001  # BROAD_EXCEPT_OK: sanitize all infrastructure failures at the public boundary.
+            await _abort(context, grpc.StatusCode.INTERNAL, "Internal service error")
 
     @override
     async def CreateRun(
-        self,
-        request: service_pb2.CreateRunRequest,
-        context: aio.ServicerContext[service_pb2.CreateRunRequest, service_pb2.CreateRunResponse],
-    ) -> service_pb2.CreateRunResponse:
-        """认证、解析并执行一次规范幂等 Run 创建."""
-        _ = await authenticate_blog_service(context, self._verifier)
-        await _require_live_context(context)
-        await _require_redis_available(context, self._stream_store)
-        try:
-            owner, operation_id, run_id, task_type, runtime, article_id, message = (
-                parse_create_request(request)
+        self, request: service_pb2.CreateRunRequest, context: Context
+    ) -> common_pb2.Run:
+        """Preserve raw JSON and leave business parsing after key replay."""
+
+        async def call() -> common_pb2.Run:
+            return run_to_proto(
+                await self._facade.create(
+                    validate_user(request.user_id),
+                    validate_key(request.idempotency_key),
+                    parse_capability(request.capability),
+                    validate_json(request.json_payload),
+                )
             )
-            create = CreateRunInput(
-                OwnerContext(owner),
-                operation_id,
-                run_id,
-                task_type,
-                runtime,
-                article_id,
-                message,
-                self._clock.now(),
-            )
-        except (
-            InvalidGrpcRequestError,
-            InvalidIdentifierError,
-            InvalidEnumValueError,
-            InvalidRuntimeVersionError,
-            ValueError,
-        ):
-            await _abort(context, grpc.StatusCode.INVALID_ARGUMENT, "创建 Run 的请求参数无效")
-        try:
-            result = await _within_deadline(context, self._facade.create_run(create))
-        except TimeoutError:
-            await _abort(context, grpc.StatusCode.DEADLINE_EXCEEDED, "请求处理超过截止时间")
-        except Exception:  # noqa: BLE001  # noqa: BROAD_EXCEPT_OK - 传输最外层必须隐藏未知基础设施异常。
-            await _abort(context, grpc.StatusCode.INTERNAL, "服务内部错误")
-        return await _create_outcome(context, result, article_id)
+
+        return await self._invoke(context, call)
 
     @override
-    async def CreateAgentRun(
-        self,
-        request: service_pb2.CreateAgentRunRequest,
-        context: aio.ServicerContext[
-            service_pb2.CreateAgentRunRequest, service_pb2.CreateAgentRunResponse
-        ],
-    ) -> service_pb2.CreateAgentRunResponse:
-        """Authenticate and adapt the public capability request to the current Run facade."""
-        _ = await authenticate_blog_service(context, self._verifier)
-        await _require_live_context(context)
-        await _require_redis_available(context, self._stream_store)
-        try:
-            owner, operation, run_id, capability, value, locale = parse_create_agent_run_request(
-                request
+    async def GetRun(self, request: service_pb2.GetRunRequest, context: Context) -> common_pb2.Run:
+        """Return one owner-authorized consistent snapshot."""
+
+        async def call() -> common_pb2.Run:
+            return run_to_proto(
+                await self._facade.get(
+                    validate_user(request.user_id),
+                    validate_run_id(request.run_id),
+                )
             )
-            task_type, runtime, message = _legacy_route(capability, value)
-            create = CreateRunInput(
-                OwnerContext(owner),
-                operation,
-                run_id,
-                task_type,
-                runtime,
-                "",
-                message,
-                self._clock.now(),
-                capability=capability.value,
-                recipe_id=recipe_for_capability(capability).value,
-                recipe_version="v1",
-                input_schema_version=INPUT_SCHEMA_VERSION,
-                input_payload=input_payload(value),
-                input_digest=input_digest(value),
-                locale=locale,
-            )
-        except (InvalidGrpcRequestError, InvalidIdentifierError, InvalidEnumValueError, ValueError):
-            await _abort(context, grpc.StatusCode.INVALID_ARGUMENT, "创建 Agent Run 的请求参数无效")
-        try:
-            result = await _within_deadline(context, self._facade.create_run(create))
-        except TimeoutError:
-            await _abort(context, grpc.StatusCode.DEADLINE_EXCEEDED, "请求处理超过截止时间")
-        except Exception:  # noqa: BLE001  # noqa: BROAD_EXCEPT_OK - 传输最外层必须隐藏未知基础设施异常。
-            await _abort(context, grpc.StatusCode.INTERNAL, "服务内部错误")
-        return await _create_agent_outcome(context, result)
+
+        return await self._invoke(context, call)
 
     @override
-    async def GetRun(
-        self,
-        request: service_pb2.GetRunRequest,
-        context: aio.ServicerContext[service_pb2.GetRunRequest, service_pb2.GetRunResponse],
-    ) -> service_pb2.GetRunResponse:
-        """认证、解析并返回不含内部执行字段的稳定 Run 快照."""
-        _ = await authenticate_blog_service(context, self._verifier)
-        await _require_live_context(context)
+    async def ResumeRun(
+        self, request: service_pb2.ResumeRunRequest, context: Context
+    ) -> common_pb2.Run:
+        """Preserve omitted payload separately from explicit JSON null."""
+
+        async def call() -> common_pb2.Run:
+            if not request.decision:
+                raise InvalidGrpcRequestError
+            payload = (
+                validate_json(request.payload_json) if request.HasField("payload_json") else None
+            )
+            return run_to_proto(
+                await self._facade.resume(
+                    validate_user(request.user_id),
+                    validate_key(request.idempotency_key),
+                    ResumeCommand(
+                        validate_run_id(request.run_id),
+                        validate_interaction(request.interaction_id),
+                        request.decision,
+                        payload,
+                    ),
+                )
+            )
+
+        return await self._invoke(context, call)
+
+    @override
+    async def CancelRun(
+        self, request: service_pb2.CancelRunRequest, context: Context
+    ) -> common_pb2.Run:
+        """Delegate atomic cancellation and successful-key replay."""
+
+        async def call() -> common_pb2.Run:
+            return run_to_proto(
+                await self._facade.cancel(
+                    validate_user(request.user_id),
+                    validate_key(request.idempotency_key),
+                    validate_run_id(request.run_id),
+                )
+            )
+
+        return await self._invoke(context, call)
+
+    @override
+    async def StreamRunEvents(
+        self, request: service_pb2.StreamRunEventsRequest, context: Context
+    ) -> AsyncIterator[service_pb2.RunEventFrame]:
+        """Signal readiness only after open; relay complete frames and heartbeats."""
+
+        async def open_stream() -> OpenedFrames:
+            user = validate_user(request.user_id)
+            run_id = validate_run_id(request.run_id)
+            cursor = validate_cursor(
+                request.after_event_id if request.HasField("after_event_id") else None
+            )
+            try:
+                return await self._facade.open_events(user, run_id, cursor)
+            except ValueError:
+                raise InvalidGrpcRequestError from None
+            except SubscriptionCursorError:
+                raise ControlError(*_CURSOR_REJECTED) from None
+
+        opened = await self._invoke(context, open_stream)
         try:
-            owner, run_id = parse_get_request(request)
-        except (
-            InvalidGrpcRequestError,
-            InvalidIdentifierError,
-            InvalidEnumValueError,
-            InvalidRuntimeVersionError,
-            ValueError,
-        ):
-            await _abort(context, grpc.StatusCode.INVALID_ARGUMENT, "读取 Run 的请求参数无效")
-        try:
-            result = await _within_deadline(
-                context, self._facade.get_snapshot(OwnerContext(owner), run_id)
-            )
-        except TimeoutError:
-            await _abort(context, grpc.StatusCode.DEADLINE_EXCEEDED, "请求处理超过截止时间")
-        except Exception:  # noqa: BLE001  # noqa: BROAD_EXCEPT_OK - 传输最外层必须隐藏未知基础设施异常。
-            await _abort(context, grpc.StatusCode.INTERNAL, "服务内部错误")
-        return await _get_outcome(context, result)
+            await context.send_initial_metadata((("scyg-subscription-ready", "1"),))
+            async for frame in opened.frames():
+                yield service_pb2.RunEventFrame(frame=frame.encode("utf-8"))
+        except ControlError as error:
+            await _abort(context, grpc.StatusCode[error.code], error.message)
+        except Exception:  # noqa: BLE001  # BROAD_EXCEPT_OK: terminate the public stream without exposing internals.
+            await _abort(context, grpc.StatusCode.INTERNAL, "Internal service error")
+        finally:
+            with anyio.CancelScope(shield=True):
+                await opened.aclose()
 
 
-async def _create_outcome(
-    context: aio.ServicerContext[service_pb2.CreateRunRequest, service_pb2.CreateRunResponse],
-    result: FacadeSuccess
-    | FacadeConflict
-    | FacadePrecondition
-    | FacadeValidation
-    | FacadeCancelled
-    | FacadeInternal,
-    article_id: str,
-) -> service_pb2.CreateRunResponse:
-    """映射创建门面闭合结果为稳定 RPC 结果."""
-    match result:
-        case FacadeSuccess(value=Run() as run):
-            response_run = run_to_proto(run)
-            if article_id:
-                response_run.article_id.value = article_id
-            return service_pb2.CreateRunResponse(run=response_run)
-        case FacadeConflict():
-            return await _abort(context, grpc.StatusCode.ALREADY_EXISTS, "创建请求与已有事实冲突")
-        case FacadePrecondition():
-            return await _abort(
-                context, grpc.StatusCode.FAILED_PRECONDITION, "Run 当前状态不允许此操作"
-            )
-        case FacadeValidation():
-            return await _abort(context, grpc.StatusCode.INVALID_ARGUMENT, "请求参数无效")
-        case FacadeCancelled():
-            return await _abort(context, grpc.StatusCode.CANCELLED, "请求已取消")
-        case FacadeInternal() | FacadeSuccess():
-            return await _abort(context, grpc.StatusCode.INTERNAL, "服务内部错误")
-
-
-def _legacy_route(
-    capability: Capability, value: CapabilityInput
-) -> tuple[TaskType, RuntimeSelection, str]:
-    """Resolve server-owned legacy fields until the P2 Run cutover."""
-    if capability is Capability.SEARCH and isinstance(value, SearchInput):
-        return TaskType.RESEARCH, RuntimeSelection(RuntimeKind.DEEP, "v1"), value.query
-    if capability is Capability.WRITE and isinstance(value, WritingInput):
-        return TaskType.COMPOSE, RuntimeSelection(RuntimeKind.DEEP, "v1"), value.topic
-    if capability is Capability.POLISH and isinstance(value, PolishInput):
-        return TaskType.POLISH, RuntimeSelection(RuntimeKind.SIMPLE, "v1"), value.content
-    if capability is Capability.CHAT and isinstance(value, ChatInput):
-        return TaskType.QUESTION, RuntimeSelection(RuntimeKind.SIMPLE, "v1"), value.message
-    raise InvalidGrpcRequestError
-
-
-async def _create_agent_outcome(
-    context: aio.ServicerContext[
-        service_pb2.CreateAgentRunRequest, service_pb2.CreateAgentRunResponse
-    ],
-    result: FacadeSuccess
-    | FacadeConflict
-    | FacadePrecondition
-    | FacadeValidation
-    | FacadeCancelled
-    | FacadeInternal,
-) -> service_pb2.CreateAgentRunResponse:
-    """Map the shared facade result to the capability-specific response."""
-    match result:
-        case FacadeSuccess(value=Run() as run):
-            return service_pb2.CreateAgentRunResponse(run=run_to_proto(run))
-        case FacadeConflict():
-            return await _abort(context, grpc.StatusCode.ALREADY_EXISTS, "创建请求与已有事实冲突")
-        case FacadePrecondition():
-            return await _abort(
-                context, grpc.StatusCode.FAILED_PRECONDITION, "Run 当前状态不允许此操作"
-            )
-        case FacadeValidation():
-            return await _abort(context, grpc.StatusCode.INVALID_ARGUMENT, "请求参数无效")
-        case FacadeCancelled():
-            return await _abort(context, grpc.StatusCode.CANCELLED, "请求已取消")
-        case FacadeInternal() | FacadeSuccess():
-            return await _abort(context, grpc.StatusCode.INTERNAL, "服务内部错误")
-
-
-async def _get_outcome(
-    context: aio.ServicerContext[service_pb2.GetRunRequest, service_pb2.GetRunResponse],
-    result: SnapshotSuccess
-    | FacadeNotFound
-    | FacadePrecondition
-    | FacadeValidation
-    | FacadeCancelled
-    | FacadeInternal,
-) -> service_pb2.GetRunResponse:
-    """映射读取门面闭合结果为稳定 RPC 结果."""
-    match result:  # noqa: RUF100  # noqa: MATCH_OK - 门面闭合结果已完整映射。
-        case SnapshotSuccess(run=run):
-            return service_pb2.GetRunResponse(run=run_to_proto(run))
-        case FacadeNotFound():
-            return await _abort(context, grpc.StatusCode.NOT_FOUND, "未找到 Run")
-        case FacadePrecondition():
-            return await _abort(
-                context, grpc.StatusCode.FAILED_PRECONDITION, "Run 当前状态不允许此操作"
-            )
-        case FacadeValidation():
-            return await _abort(context, grpc.StatusCode.INVALID_ARGUMENT, "请求参数无效")
-        case FacadeCancelled():
-            return await _abort(context, grpc.StatusCode.CANCELLED, "请求已取消")
-        case FacadeInternal():
-            return await _abort(context, grpc.StatusCode.INTERNAL, "服务内部错误")
-
-
-async def _require_redis_available[RequestT, ResponseT](
-    context: aio.ServicerContext[RequestT, ResponseT],
-    stream_store: RedisStreamStore | None,
-) -> None:
-    """Reject Run creation before database mutation when Redis is unavailable."""
-    if stream_store is None:
-        return
-    try:
-        await stream_store.ping()
-    except RedisStreamError:
-        await _abort(context, grpc.StatusCode.UNAVAILABLE, "Redis 流存储不可用")
-
-
-async def _require_live_context[RequestT, ResponseT](
-    context: aio.ServicerContext[RequestT, ResponseT],
-) -> None:
-    """在任何数据库操作前拒绝已取消或已到期调用."""
-    remaining = _time_remaining(context)
-    if context.cancelled():
-        await _abort(context, grpc.StatusCode.CANCELLED, "请求已取消")
-    if remaining is not None and remaining <= 0:
-        await _abort(context, grpc.StatusCode.DEADLINE_EXCEEDED, "请求处理超过截止时间")
-
-
-async def _within_deadline[T, RequestT, ResponseT](
-    context: aio.ServicerContext[RequestT, ResponseT], operation: Awaitable[T]
-) -> T:
-    """以客户端剩余截止期约束门面协程并传播外部取消."""
-    remaining = _time_remaining(context)
-    if remaining is None:
-        return await operation
-    with anyio.fail_after(remaining):
-        return await operation
-
-
-def _time_remaining[RequestT, ResponseT](
-    context: aio.ServicerContext[RequestT, ResponseT],
-) -> float | None:
-    """兼容 grpc.aio 无截止期时的运行时 None."""
-    return context.time_remaining()
-
-
-async def _abort[RequestT, ResponseT](
-    context: aio.ServicerContext[RequestT, ResponseT],
-    code: grpc.StatusCode,
-    detail: str,
-) -> NoReturn:
-    """以稳定公开状态终止 RPC."""
-    await context.abort(code, detail)
+async def _abort(context: Context, code: grpc.StatusCode, message: str) -> NoReturn:
+    """Pack a sanitized canonical public status detail for the Blog gateway."""
+    public_error = common_pb2.PublicError(code=code.name, message=message)
+    detail = Any(
+        type_url="type.googleapis.com/scyg.agent.v1.PublicError",
+        value=public_error.SerializeToString(),
+    )
+    status = rpc_status.to_status(
+        status_pb2.Status(
+            code=code.value[0],
+            message=message,
+            details=[detail],
+        )
+    )
+    await context.abort(status.code, status.details, status.trailing_metadata)

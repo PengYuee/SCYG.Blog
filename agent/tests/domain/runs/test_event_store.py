@@ -10,26 +10,12 @@ from scyg_agent.domain.ports.event_store import (
     InvalidAppendRequestError,
     InvalidEventCursorError,
     InvalidReplayLimitError,
-    MalformedCursor,
     StoredEvent,
     TerminalSnapshot,
-    parse_event_cursor,
     project_terminal_snapshot,
     validate_replay_limit,
 )
 from scyg_agent.domain.runs import CommandId, EventId, RunId, RunStatus, RunSucceeded
-
-
-def test_cursor_parser_returns_typed_malformed_outcome() -> None:
-    # Given: a cursor that is neither a nonnegative integer nor empty.
-    raw = "not-a-sequence"
-
-    # When: the transport-neutral parser handles the untrusted value.
-    result = parse_event_cursor(raw)
-
-    # Then: callers receive a typed value-free failure.
-    assert isinstance(result, MalformedCursor)
-    assert str(result) == "event cursor must be a nonnegative integer"
 
 
 def test_terminal_snapshot_is_derived_from_durable_terminal_event() -> None:
@@ -61,13 +47,6 @@ def test_cursor_and_append_value_objects_reject_invalid_domains() -> None:
         _ = EventCursor(-1)
     with pytest.raises(InvalidAppendRequestError, match="exactly one run"):
         _ = AppendRequest(run_id, ())
-
-
-def test_cursor_parser_defaults_absence_and_accepts_zero() -> None:
-    # Given/When/Then: absent and textual zero both parse to the journal baseline.
-    assert parse_event_cursor(None) == EventCursor(0)
-    assert parse_event_cursor("") == EventCursor(0)
-    assert parse_event_cursor("0") == EventCursor(0)
 
 
 def test_terminal_projection_returns_none_without_terminal_event() -> None:

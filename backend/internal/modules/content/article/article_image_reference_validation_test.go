@@ -7,7 +7,7 @@ import (
 )
 
 func TestManagedImageReferencesExtractsAndDeduplicatesControlledImages(t *testing.T) {
-	keys, err := ManagedImageReferences("![first](/media/article-images/first.jpg) ![again](/media/article-images/first.jpg) ![second](/media/article-images/second.png)")
+	keys, err := ManagedImageReferences("![first](/media/article-images/first.jpg) ![again](http://127.0.0.1:8080/media/article-images/first.jpg) ![second](https://api.example.test/media/article-images/second.png) ![external](https://images.example.test/picture.png)")
 	if err != nil {
 		t.Fatalf("extract references: %v", err)
 	}

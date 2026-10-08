@@ -24,15 +24,15 @@ class AuditFact:
     metadata: AuditMetadata
 
     def __post_init__(self) -> None:
-        """验证事实时间及至少一个相关身份。."""
+        """验证事实时间与必填 Run 关联, 不伪造可选命令或 Tool 身份."""
         require_utc(self.occurred_at, "occurred_at")
-        if not self.audit_id or (self.command_id is None and self.tool_call_id is None):
+        if not self.audit_id or not self.run_id:
             raise InvalidAuditFactError
 
 
 @dataclass(frozen=True, slots=True)
 class InvalidAuditFactError(ValueError):
-    """拒绝缺少关联身份的审计事实。."""
+    """拒绝缺少审计身份或 Run 关联的事实."""
 
 
 @dataclass(frozen=True, slots=True)

@@ -94,14 +94,15 @@ async def test_stale_post_rpc_becomes_unknown_and_never_replays(
     await seed_run(sessions)
     await _seed_pending(sessions)
     store = PostgreSQLToolOperationStore(sessions)
-    first = await store.claim(_claim(3, NOW - LEASE_DURATION))
+    first = await store.claim(_claim(3, NOW))
     assert isinstance(first, FirstClaim)
-    marked = await store.mark_rpc_started(first.fence)
-    assert isinstance(marked, FirstClaim)
+    async with sessions.begin() as session:
+        record = (await session.execute(select(ToolCallRecord))).scalar_one()
+        record.rpc_started_at = NOW
 
     # When: 新 worker 在截止点尝试恢复。
-    unknown = await store.claim(_claim(4, NOW))
-    replay = await store.claim(_claim(5, NOW + LEASE_DURATION))
+    unknown = await store.claim(_claim(4, NOW + LEASE_DURATION))
+    replay = await store.claim(_claim(5, NOW + LEASE_DURATION * 2))
 
     # Then: 首次转换为未知外部结果, 后续只读取同一关闭分类和一条审计。
     assert unknown == replay == ExternalOutcomeUnknown(OPERATION_ID)

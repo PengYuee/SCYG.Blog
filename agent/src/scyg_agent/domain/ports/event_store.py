@@ -1,6 +1,5 @@
 """Pure typed contract for durable Run domain-event journals."""
 
-from collections.abc import AsyncIterator
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final, Protocol, override
@@ -45,18 +44,6 @@ class InvalidEventCursorError(ValueError):
     def __str__(self) -> str:
         """Return the stable boundary diagnostic."""
         return "event cursor must be a nonnegative integer"
-
-
-@dataclass(frozen=True, slots=True)
-class MalformedCursor:
-    """Report an unparseable cursor as an expected typed outcome."""
-
-    message: str = "event cursor must be a nonnegative integer"
-
-    @override
-    def __str__(self) -> str:
-        """Return the stable boundary diagnostic."""
-        return self.message
 
 
 @dataclass(frozen=True, slots=True)
@@ -156,6 +143,7 @@ class ReplayPage:
     events: tuple[StoredEvent, ...]
     latest: EventCursor
     minimum_retained: EventCursor
+    terminal: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -169,19 +157,8 @@ class TerminalSnapshot:
     revision: int
 
 
-type CursorParseResult = EventCursor | MalformedCursor
 type AppendResult = Appended | EventIdentityConflict | PartialEventBatchConflict | EventRunNotFound
 type ReplayResult = ReplayPage | FutureCursor | CursorTooOld
-
-
-def parse_event_cursor(raw: str | None) -> CursorParseResult:
-    """Parse an optional untrusted cursor, where absence means before sequence one."""
-    if raw is None or raw == "":
-        return EventCursor(0)
-    try:
-        return EventCursor(int(raw))
-    except ValueError:
-        return MalformedCursor()
 
 
 def validate_replay_limit(limit: int) -> int:
@@ -207,6 +184,18 @@ def project_terminal_snapshot(events: tuple[StoredEvent, ...]) -> TerminalSnapsh
     return None
 
 
+class OpenedEventSubscription(Protocol):
+    """Expose an already validated, registered durable subscription."""
+
+    async def next_event(self, wait_seconds: float = 10.0) -> StoredEvent | None:
+        """Read an event, return heartbeat timeout, or stop at terminal head."""
+        ...
+
+    async def aclose(self) -> None:
+        """Release notification resources idempotently."""
+        ...
+
+
 class EventStore(Protocol):
     """Persist, replay, and tail domain events with the database as sole truth."""
 
@@ -226,6 +215,8 @@ class EventStore(Protocol):
         """Load the persisted terminal projection derived from durable events."""
         ...  # pragma: no cover - protocol declaration.
 
-    def subscribe(self, run_id: RunId, cursor: EventCursor) -> AsyncIterator[StoredEvent]:
-        """Tail durable events using notifications only as coalescible wakeups."""
-        ...  # pragma: no cover - protocol declaration.
+    async def open_subscription(
+        self, run_id: RunId, cursor: EventCursor | None
+    ) -> OpenedEventSubscription:
+        """Validate and register LISTEN before returning an owned subscription."""
+        ...

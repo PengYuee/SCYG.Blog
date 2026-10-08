@@ -17,6 +17,7 @@ from .contracts import (
     SearchResponse,
     WritingInput,
 )
+from .tool_catalog import ReadToolName
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +31,7 @@ class AgentRecipe:
     output_schema: type[BaseModel]
     prompt: str
     model_tier: str
+    tool_names: tuple[ReadToolName, ...] = ()
 
 
 class InvalidRecipeRegistryError(ValueError):
@@ -54,6 +56,11 @@ class RecipeRegistry:
             or len(self.recipes) != EXPECTED_RECIPE_COUNT
             or len(capabilities) != EXPECTED_RECIPE_COUNT
             or any(recipe.version != "v1" or not recipe.prompt for recipe in self.recipes)
+            or any(
+                len(set(recipe.tool_names)) != len(recipe.tool_names)
+                or (recipe.recipe_id is not RecipeId.SEARCH_V1 and bool(recipe.tool_names))
+                for recipe in self.recipes
+            )
         ):
             raise InvalidRecipeRegistryError
 
@@ -69,7 +76,12 @@ class RecipeRegistry:
         )
 
 
-SEARCH_PROMPT: Final = "Return a concise, evidence-backed site search result."
+SEARCH_PROMPT: Final = (
+    "Search the site using registered Blog management read tools. Cite only articles "
+    "returned for the current user, including authorized drafts and archived articles. "
+    "Use numeric article IDs and page/page_size pagination; never invent evidence. "
+    "Return a concise structured result."
+)
 WRITING_PROMPT: Final = "Write a structured article draft from the supplied topic and requirements."
 POLISH_PROMPT: Final = "Polish the supplied prose without inventing facts."
 CHAT_PROMPT: Final = "Answer the user clearly and concisely."
@@ -87,6 +99,7 @@ def default_recipe_registry() -> RecipeRegistry:
                 SearchResponse,
                 SEARCH_PROMPT,
                 "standard",
+                tuple(ReadToolName),
             ),
             AgentRecipe(
                 RecipeId.WRITING_V1,

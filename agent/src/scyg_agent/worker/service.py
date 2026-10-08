@@ -8,7 +8,6 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from scyg_agent.domain.runs import ExecutionOwnerId, RuntimeKind
 from scyg_agent.domain.runs.repository import ClaimRequest, RunLease
-from scyg_agent.runtimes.router import RuntimeRouter
 
 from .config import WorkerConfig
 from .contracts import WorkerDependencies
@@ -25,14 +24,12 @@ class Worker:
         self,
         owner: ExecutionOwnerId,
         dependencies: WorkerDependencies,
-        router: RuntimeRouter,
         config: WorkerConfig | None = None,
     ) -> None:
-        """建立互不共享的 SIMPLE/DEEP 容量和停止信号."""
+        """建立统一 Recipe 容量和停止信号."""
         resolved = config or WorkerConfig()
         self._owner = owner
         self._dependencies = dependencies
-        self._router = router
         self._config = resolved
         self._state = WorkerState.NEW
         self._stop_requested = anyio.Event()
@@ -40,11 +37,8 @@ class Worker:
         self._heartbeat = anyio.Event()
         self._drained = anyio.Event()
         self._drained.set()
-        self._active = {RuntimeKind.SIMPLE: 0, RuntimeKind.DEEP: 0}
-        self._limits = {
-            RuntimeKind.SIMPLE: anyio.Semaphore(resolved.simple_capacity),
-            RuntimeKind.DEEP: anyio.Semaphore(resolved.deep_capacity),
-        }
+        self._active = 0
+        self._limit = anyio.Semaphore(resolved.capacity)
 
     @property
     def state(self) -> WorkerState:
@@ -96,12 +90,7 @@ class Worker:
 
     async def _poll(self, kind: RuntimeKind, tasks: TaskGroup) -> bool:
         """只按已预留空闲槽认领并立即启动."""
-        capacity = (
-            self._config.simple_capacity
-            if kind is RuntimeKind.SIMPLE
-            else self._config.deep_capacity
-        )
-        free = capacity - self._active[kind]
+        free = self._config.capacity - self._active
         if free <= 0:
             return False
         leases: tuple[RunLease, ...] = ()
@@ -120,22 +109,22 @@ class Worker:
         except SQLAlchemyError:
             await anyio.sleep(self._config.error_backoff.total_seconds())
             return False
-        if leases and not any(self._active.values()):
+        if leases and not self._active:
             self._drained = anyio.Event()
-        self._active[kind] += len(leases)
+        self._active += len(leases)
         for lease in leases:
-            _ = tasks.start_soon(self._execute, kind, lease)
+            _ = tasks.start_soon(self._execute, lease)
         return bool(leases)
 
-    async def _execute(self, kind: RuntimeKind, lease: RunLease) -> None:
-        """占用对应信号量并在所有退出路径释放预留."""
-        async with self._limits[kind]:
+    async def _execute(self, lease: RunLease) -> None:
+        """占用统一信号量并在所有退出路径释放预留."""
+        async with self._limit:
             try:
                 try:
-                    await execute_lease(lease, self._dependencies, self._router, self._config)
+                    await execute_lease(lease, self._dependencies, self._config)
                 except SQLAlchemyError:
                     await anyio.sleep(self._config.error_backoff.total_seconds())
             finally:
-                self._active[kind] -= 1
-                if not any(self._active.values()):
+                self._active -= 1
+                if not self._active:
                     self._drained.set()

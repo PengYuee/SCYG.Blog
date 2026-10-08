@@ -1,15 +1,14 @@
-"""从持久化输入构造 SIMPLE 请求。 ."""
+"""Read the persisted Recipe Agent input snapshot."""
 
 from dataclasses import dataclass
-from typing import ClassVar, override
+from typing import ClassVar
 
 from pydantic import BaseModel, ConfigDict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from scyg_agent.domain.runs import Run, RunId
-from scyg_agent.domain.runs.input import MissingRunInput, RunInput, RunInputSource
-from scyg_agent.runtimes.simple.models import CompletionRequest, Message, MessageRole
+from scyg_agent.domain.runs import RunId
+from scyg_agent.domain.runs.input import MissingRunInput, RunInput
 
 from .run_records import RunRecord
 
@@ -30,33 +29,6 @@ class PersistedInputRow(BaseModel):
     input_payload: dict[str, object] | None = None
     input_digest: str | None = None
     locale: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class MissingRunInputError(RuntimeError):
-    """阻止执行缺少创建输入的历史 Run。 ."""
-
-    @override
-    def __str__(self) -> str:
-        return "Run 缺少可执行的创建输入"
-
-
-@dataclass(frozen=True, slots=True)
-class PersistedRunRequestSource:
-    """异步读取数据库且不缓存传输输入。 ."""
-
-    source: RunInputSource
-    model: str
-
-    async def request_for(self, run: Run) -> CompletionRequest:
-        """把持久化用户消息映射为提供方请求。 ."""
-        result = await self.source.get_input(run.id)
-        if isinstance(result, RunInput):
-            return CompletionRequest(
-                model=self.model,
-                messages=(Message(role=MessageRole.USER, content=result.initial_message),),
-            )
-        raise MissingRunInputError
 
 
 @dataclass(frozen=True, slots=True)

@@ -212,7 +212,7 @@ def test_schema_probe_maps_to_typed_inventory_without_database() -> None:
 
 
 def test_value_error_surfaces_and_metadata_parser_are_typed() -> None:
-    # Given: 外部 metadata 和无效短线程值.
+    # Given: 外部 metadata 和包含非法字符的线程值.
     expected = CheckpointCompatibility(
         runtime_kind="deep", runtime_version="v1", dependencies=VERSIONS
     )
@@ -228,8 +228,9 @@ def test_value_error_surfaces_and_metadata_parser_are_typed() -> None:
     assert parsed == checkpoint_metadata(expected)
     assert str(InvalidCheckpointerConfigError()) == "LangGraph 检查点配置无效"
     assert str(IncompatibleCheckpoint()) == "LangGraph 检查点运行时不兼容"
+    assert CheckpointThreadId("bad").to_run_id() == RunId("run_bad")
     with pytest.raises(InvalidIdentifierError):
-        _ = CheckpointThreadId("bad").to_run_id()
+        _ = CheckpointThreadId("bad/path").to_run_id()
 
 
 def test_config_rejects_reversed_pool_bounds() -> None:

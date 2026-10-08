@@ -1,146 +1,78 @@
-"""异步持久化 Run 输入源测试。"""
+"""Persisted Recipe inputs remain executable after the public JSON cutover."""
 
-from collections.abc import Iterator, Mapping
-from dataclasses import dataclass
-from typing import override
+from uuid import uuid4
 
 import pytest
-from pydantic import ValidationError
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from scyg_agent.adapters.database.run_request_source import (
-    MissingRunInputError,
-    PersistedInputRow,
-    PersistedRunRequestSource,
-    map_input_row,
-)
-from scyg_agent.domain.runs import RunId, RunStatus
-from scyg_agent.domain.runs.input import (
-    InvalidRunInputError,
-    MissingRunInput,
-    RunInput,
-    RunInputResult,
-)
-from tests.domain.runs.helpers import make_run
+from scyg_agent.adapters.database.event_store import NotificationChannel, PostgreSQLEventStore
+from scyg_agent.adapters.database.event_subscription import open_listener_connection
+from scyg_agent.adapters.database.run_records import RunRecord
+from scyg_agent.adapters.database.run_request_source import PostgreSQLRunInputSource, map_input_row
+from scyg_agent.agents.contracts import Capability, WritingInput
+from scyg_agent.agents.input import decode_agent_input
+from scyg_agent.agents.recipes import default_recipe_registry
+from scyg_agent.application.control import ControlApplication
+from scyg_agent.application.event_subscription import EventSubscriptionService
+from scyg_agent.domain.runs import RunId
+from scyg_agent.domain.runs.input import MissingRunInput
 
-
-@dataclass(frozen=True, slots=True)
-class InputSource:
-    """返回注入结果的异步输入源。"""
-
-    result: RunInputResult
-
-    async def get_input(self, run_id: RunId) -> RunInputResult:
-        del run_id
-        return self.result
-
-
-@dataclass(frozen=True, slots=True)
-class RowMappingLike(Mapping[str, str | int | None]):
-    """模拟 SQLAlchemy RowMapping 的 Mapping 协议而非 dict 继承。"""
-
-    data: dict[str, str | int | None]
-
-    @override
-    def __getitem__(self, key: str) -> str | int | None:
-        return self.data[key]
-
-    @override
-    def __iter__(self) -> Iterator[str]:
-        return iter(self.data)
-
-    @override
-    def __len__(self) -> int:
-        return len(self.data)
+type DatabaseFixture = tuple[AsyncEngine, async_sessionmaker[AsyncSession]]
 
 
 @pytest.mark.anyio
-async def test_persisted_input_reaches_completion_request() -> None:
-    # Given
-    source = PersistedRunRequestSource(InputSource(RunInput("完整输入", "article-1")), "m")
-
-    # When
-    request = await source.request_for(make_run(RunStatus.PENDING))
-
-    # Then
-    assert request.messages[0].content == "完整输入"
-
-
-@pytest.mark.anyio
-async def test_historical_null_input_fails_with_typed_chinese_error() -> None:
-    # Given
-    run = make_run(RunStatus.PENDING)
-    source = PersistedRunRequestSource(InputSource(MissingRunInput(run.id)), "m")
-
-    # When / Then
-    with pytest.raises(MissingRunInputError, match="缺少可执行"):
-        _ = await source.request_for(run)
-
-
 @pytest.mark.parametrize(
-    ("message", "article"),
-    [("", "article-1"), ("x" * 16_001, "article-1"), ("输入", ""), ("输入", "x" * 129)],
+    ("capability", "payload"),
+    [
+        (Capability.CHAT, b'{"message":"hello"}'),
+        (Capability.SEARCH, b'{"query":"architecture"}'),
+        (Capability.WRITE, b'{"topic":"article","reference_article_ids":[17,23]}'),
+        (Capability.POLISH, b'{"content":"paragraph","requirements":"clear"}'),
+    ],
 )
-def test_new_run_input_rejects_empty_or_oversized_values(message: str, article: str) -> None:
-    with pytest.raises(InvalidRunInputError):
-        _ = RunInput(message, article)
-
-
-@pytest.mark.parametrize("row", [None, (None, "article-1"), ("输入", None)])
-def test_nullable_historical_rows_map_to_missing(
-    row: tuple[str | None, str | None] | None,
+async def test_created_capability_snapshot_decodes_for_real_runner(
+    t12_database: DatabaseFixture,
+    capability: Capability,
+    payload: bytes,
 ) -> None:
-    result = map_input_row(RunId("run_history01"), row)
+    engine, sessions = t12_database
+    store = PostgreSQLEventStore(
+        sessions,
+        str(engine.url),
+        NotificationChannel.parse("agent_events"),
+        open_listener_connection,
+    )
+    control = ControlApplication(sessions, "agent_events", EventSubscriptionService(store))
+    created = await control.create("owner", str(uuid4()), capability, payload)
+    persisted = await PostgreSQLRunInputSource(sessions).get_input(RunId(created.run_id))
+    assert not isinstance(persisted, MissingRunInput)
+    snapshot = decode_agent_input(persisted, default_recipe_registry())
+    assert snapshot.capability is capability
+    assert snapshot.locale == "und"
+    if capability is Capability.WRITE:
+        assert isinstance(snapshot.value, WritingInput)
+        assert snapshot.value.reference_article_ids == (17, 23)
+    async with sessions() as session:
+        row = (
+            await session.execute(
+                select(RunRecord).where(RunRecord.run_id == created.run_id),
+            )
+        ).scalar_one()
+        assert row.thread_id == created.run_id
+        assert row.recipe_id == snapshot.recipe.recipe_id.value
+        assert row.quality == snapshot.recipe.model_tier
+
+
+@pytest.mark.anyio
+async def test_nonexistent_input_is_typed_missing(t12_database: DatabaseFixture) -> None:
+    _, sessions = t12_database
+    result = await PostgreSQLRunInputSource(sessions).get_input(RunId("legal-but-absent"))
     assert isinstance(result, MissingRunInput)
 
 
-def test_complete_row_maps_capability_snapshot() -> None:
-    result = map_input_row(
-        RunId("run_history01"),
-        ("输入", "article-1"),
-        capability="write",
-        recipe_id="writing-v1",
-        recipe_version="v1",
-        input_schema_version="v1",
-        input_payload={"topic": "主题"},
-        input_digest="a" * 64,
-        locale="zh-CN",
-    )
-    assert result == RunInput(
-        "输入",
-        "article-1",
-        "write",
-        "writing-v1",
-        "v1",
-        "v1",
-        {"topic": "主题"},
-        "a" * 64,
-        "zh-CN",
-    )
-
-
-def test_complete_row_maps_without_optional_capability_snapshot() -> None:
-    result = map_input_row(RunId("run_history01"), ("输入", "article-1"))
-    assert result == RunInput("输入", "article-1")
-
-
-def test_sqlalchemy_mapping_shape_preserves_exact_scalars() -> None:
-    mapping = RowMappingLike({"initial_message": "完整输入", "article_id": "article-1"})
-    row = PersistedInputRow.model_validate(dict(mapping), strict=True)
-    assert (row.initial_message, row.article_id) == ("完整输入", "article-1")
-
-
-@pytest.mark.parametrize(
-    "values",
-    [
-        {"initial_message": "输入"},
-        {"initial_message": "输入", "article_id": "article-1", "extra": "拒绝"},
-        {"initial_message": 1, "article_id": "article-1"},
-        {"initial_message": "输入", "article_id": 1},
-    ],
-)
-def test_mapping_copy_rejects_missing_extra_and_wrong_scalar_types(
-    values: dict[str, str | int | None],
+@pytest.mark.parametrize("row", [None, (None, ""), ("message", None)])
+def test_incomplete_historical_row_cannot_be_executed(
+    row: tuple[str | None, str | None] | None,
 ) -> None:
-    mapping = RowMappingLike(values)
-    with pytest.raises(ValidationError):
-        _ = PersistedInputRow.model_validate(dict(mapping), strict=True)
+    assert isinstance(map_input_row(RunId("historical-row"), row), MissingRunInput)

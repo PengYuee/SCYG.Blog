@@ -44,6 +44,7 @@ type Migration interface {
 type HTTPServer interface {
 	Start() (net.Listener, <-chan error, error)
 	Shutdown(context.Context) error
+	Close() error
 }
 
 // Dependencies 集中测试可替换的同类构造接缝，生产使用 DefaultDependencies。
@@ -58,10 +59,12 @@ type Dependencies struct {
 	NewTaxonomy      func(Database, content.Authorizer, content.Clock) (*taxonomy.Service, error)
 	NewImage         func(Database, content.Authorizer, content.CurrentAuthorProvider, *blobstorage.Filesystem, image.Policy, content.Clock) (*image.Service, error)
 	NewArticleImages func(Database, content.Authorizer, content.CurrentAuthorProvider, content.Clock, *article.Service, *image.Service) (*application.ArticleImages, error)
-	NewImageCleanup  func(Database, *blobstorage.Filesystem, image.Policy, content.Clock) (CleanupRunner, error)
-	NewCleanupWorker func(CleanupRunner, time.Duration, *slog.Logger) (CleanupWorker, error)
-	NewREST          func(rest.Options) (func(*gin.Engine) error, error)
-	NewHTTP          func(httpserver.Options) (HTTPServer, error)
+	// NewArticleResponses assembles REST article/category snapshots and write results.
+	NewArticleResponses func(Database, *article.Service, *taxonomy.Service, *application.ArticleImages) (*application.ArticleResponses, error)
+	NewImageCleanup     func(Database, *blobstorage.Filesystem, image.Policy, content.Clock) (CleanupRunner, error)
+	NewCleanupWorker    func(CleanupRunner, time.Duration, *slog.Logger) (CleanupWorker, error)
+	NewREST             func(rest.Options) (func(*gin.Engine) error, error)
+	NewHTTP             func(httpserver.Options) (HTTPServer, error)
 }
 
 // Options 是启动来源和生产可替换策略。

@@ -10,7 +10,7 @@ from scyg_agent.adapters.database.journal_records import EventRecord
 from scyg_agent.adapters.database.run_records import RunRecord
 from scyg_agent.worker import Worker, WorkerState
 
-from .runtime_support import RuntimeProbe
+from .runtime_support import RunnerProbe
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,14 +19,14 @@ class WorkerQueueTimeoutError(AssertionError):
 
     statuses: tuple[tuple[str, int], ...]
     event_count: int
-    adapter_visits: int
+    runner_visits: int
     first_state: WorkerState
     second_state: WorkerState
 
 
 async def wait_for_completion(
     sessions: async_sessionmaker[AsyncSession],
-    probe: RuntimeProbe,
+    probe: RunnerProbe,
     first: Worker,
     second: Worker,
 ) -> None:

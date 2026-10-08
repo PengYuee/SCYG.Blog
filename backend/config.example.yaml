@@ -32,6 +32,15 @@ docs:
 telemetry:
   otlp_endpoint: ""
 
+
+# Internal-network Agent integration; do not expose these gRPC ports publicly.
+agent:
+  enabled: false
+  target: 127.0.0.1:9090
+  blog_content_listen: 127.0.0.1:50051
+  unary_timeout: 5s
+  sse_idle_timeout: 30s
+  grpc_shutdown_timeout: 10s
 # 文章正文图片的本地存储、生命周期与上传安全限制。
 article_images:
   # 可使用相对配置文件目录的路径；不得包含向上路径穿越。

@@ -6,6 +6,11 @@ deps:
 lint:
   use:
     - STANDARD
+  ignore_only:
+    RPC_RESPONSE_STANDARD_NAME:
+      - proto/scyg/agent/v1/agent_control_service.proto
+    RPC_REQUEST_RESPONSE_UNIQUE:
+      - proto/scyg/agent/v1/agent_control_service.proto
 breaking:
   use:
     - FILE

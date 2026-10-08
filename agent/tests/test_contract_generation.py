@@ -27,7 +27,7 @@ def test_write_restores_current_tree_when_replacement_fails(
 ) -> None:
     # Given: an existing generated tree and fresh generated output.
     repository = tmp_path / "repository"
-    target = repository / "agent" / "src" / "scyg_agent" / "generated"
+    target = repository / "agent" / "src" / "scyg_agent" / "generated" / "proto"
     target.mkdir(parents=True)
     _ = (target / "current.py").write_bytes(b"current-generated-tree\n")
     before = _tree_bytes(target)
@@ -65,7 +65,7 @@ def test_write_leaves_current_tree_when_generation_fails(
 ) -> None:
     # Given: an existing tree and a generator that fails before staging.
     repository = tmp_path / "repository"
-    target = repository / "agent" / "src" / "scyg_agent" / "generated"
+    target = repository / "agent" / "src" / "scyg_agent" / "generated" / "proto"
     target.mkdir(parents=True)
     _ = (target / "current.py").write_bytes(b"current-generated-tree\n")
     before = _tree_bytes(target)
@@ -94,7 +94,7 @@ def test_write_preserves_backup_when_swap_and_rollback_fail(
 ) -> None:
     # Given: an existing tree and failures for both swap and rollback renames.
     repository = tmp_path / "repository"
-    target = repository / "agent" / "src" / "scyg_agent" / "generated"
+    target = repository / "agent" / "src" / "scyg_agent" / "generated" / "proto"
     target.mkdir(parents=True)
     _ = (target / "current.py").write_bytes(b"current-generated-tree\n")
     before = _tree_bytes(target)
@@ -137,12 +137,12 @@ def test_write_commits_complete_generated_tree(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # Given: an existing tree and the committed 26-file generated fixture.
+    # Given: an existing tree and the complete generated Python/typing artifacts.
     repository = tmp_path / "repository"
-    target = repository / "agent" / "src" / "scyg_agent" / "generated"
+    target = repository / "agent" / "src" / "scyg_agent" / "generated" / "proto"
     target.mkdir(parents=True)
     _ = (target / "current.py").write_bytes(b"current-generated-tree\n")
-    source = Path(contract_generation.__file__).parent / "generated"
+    source = Path(contract_generation.__file__).parent / "generated" / "proto"
     expected = _tree_bytes(source)
 
     def generate(destination: Path) -> None:
@@ -157,7 +157,7 @@ def test_write_commits_complete_generated_tree(
 
     # Then: the complete fixture is current and transaction siblings are absent.
     assert exit_code == 0
-    assert len(expected) == 26
+    assert "current.py" not in _tree_bytes(target)
     assert _tree_bytes(target) == expected
     assert contract_generation.report_drift(_tree_bytes(target), expected) == 0
     assert not tuple(target.parent.glob(".generated-staged-*"))

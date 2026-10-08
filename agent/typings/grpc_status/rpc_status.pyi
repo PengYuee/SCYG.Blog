@@ -1,0 +1,6 @@
+from google.rpc.status_pb2 import Status
+from grpc import Call, aio
+from grpc import Status as GrpcStatus
+
+def from_call(call: Call | aio.AioRpcError) -> Status | None: ...
+def to_status(status: Status) -> GrpcStatus: ...

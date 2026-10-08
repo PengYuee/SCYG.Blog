@@ -26,10 +26,10 @@ func main() {
 	}
 }
 
-// run 从 YAML 读取数据库连接并执行一个迁移动作。
+// run 从显式 YAML 或环境配置读取数据库连接并执行一个迁移动作。
 func run(args []string) (err error) {
 	if len(args) == 1 && (args[0] == "-h" || args[0] == "--help") {
-		fmt.Print("用法：migrate -config YAML路径 <up|down|version|force VERSION>\n数据库连接读取 YAML 的 database.dsn。\n")
+		fmt.Print("用法：migrate -config YAML路径 <up|down|version|force VERSION>\n或：migrate -config= <up|down|version|force VERSION>\n空配置路径读取 SCYG 环境配置，必须设置 SCYG_DATABASE_DSN；环境模式只操作已存在数据库。\n")
 		return flag.ErrHelp
 	}
 	arguments, err := parseMigrationArguments(args)
@@ -47,7 +47,7 @@ func run(args []string) (err error) {
 		return fmt.Errorf("force 命令必须提供版本号")
 	}
 	ctx := context.Background()
-	if command[0] == "up" {
+	if command[0] == "up" && arguments.configFile != "" {
 		if ensureErr := ensureDatabaseForUp(ctx, dsn, func() (string, error) {
 			return loadMigrationAdminDSN(arguments.configFile)
 		}); ensureErr != nil {

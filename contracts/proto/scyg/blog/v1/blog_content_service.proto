@@ -1,0 +1,150 @@
+syntax = "proto3";
+
+package scyg.blog.v1;
+
+import "scyg/blog/v1/article.proto";
+import "scyg/blog/v1/common.proto";
+
+// BlogContentService executes existing Blog management operations as user_id.
+service BlogContentService {
+  rpc SearchArticles(SearchArticlesRequest) returns (SearchArticlesResponse);
+  rpc GetArticle(GetArticleRequest) returns (GetArticleResponse);
+  rpc ListTags(ListTagsRequest) returns (ListTagsResponse);
+  rpc ListArticleTypes(ListArticleTypesRequest) returns (ListArticleTypesResponse);
+  rpc CreateArticle(CreateArticleRequest) returns (CreateArticleResponse);
+  rpc UpdateArticle(UpdateArticleRequest) returns (UpdateArticleResponse);
+  rpc PublishArticle(PublishArticleRequest) returns (PublishArticleResponse);
+  rpc ArchiveArticle(ArchiveArticleRequest) returns (ArchiveArticleResponse);
+}
+
+// SearchArticlesRequest uses the existing management filters and sort whitelist.
+message SearchArticlesRequest {
+  reserved 1, 4;
+  reserved "metadata", "page_token";
+
+  string query = 2;
+  uint32 page_size = 3;
+  string user_id = 5;
+  uint32 page = 6;
+  ArticleStatus status = 7;
+  int64 article_type_id = 8;
+  int64 tag_id = 9;
+  string sort = 10;
+}
+
+// SearchArticlesResponse returns one database-paginated management projection.
+message SearchArticlesResponse {
+  reserved 1, 2;
+  reserved "next_page_token";
+
+  repeated Article articles = 3;
+  uint32 page = 4;
+  uint32 page_size = 5;
+  int64 total_items = 6;
+  uint32 total_pages = 7;
+}
+
+message GetArticleRequest {
+  string user_id = 1;
+  int64 article_id = 2;
+}
+
+message GetArticleResponse {
+  Article article = 1;
+}
+
+message ListTagsRequest {
+  string user_id = 1;
+  uint32 page = 2;
+  uint32 page_size = 3;
+  string query = 4;
+  string sort = 5;
+}
+
+message ListTagsResponse {
+  repeated Tag tags = 1;
+  uint32 page = 2;
+  uint32 page_size = 3;
+  int64 total_items = 4;
+  uint32 total_pages = 5;
+}
+
+message ListArticleTypesRequest {
+  string user_id = 1;
+  uint32 page = 2;
+  uint32 page_size = 3;
+  string query = 4;
+  string sort = 5;
+}
+
+message ListArticleTypesResponse {
+  repeated ArticleType article_types = 1;
+  uint32 page = 2;
+  uint32 page_size = 3;
+  int64 total_items = 4;
+  uint32 total_pages = 5;
+}
+
+// CreateArticleRequest is validated by Blog business rules after key arbitration.
+message CreateArticleRequest {
+  string user_id = 1;
+  string operation_id = 2;
+  ArticleStatus status = 3;
+  int64 article_type_id = 4;
+  string title = 5;
+  string slug = 6;
+  string digest = 7;
+  string content = 8;
+  repeated int64 tag_ids = 9;
+}
+
+message CreateArticleResponse {
+  Article article = 1;
+}
+
+// TagIds preserves absent versus explicitly empty tag replacement.
+message TagIds {
+  repeated int64 values = 1;
+}
+
+message UpdateArticleRequest {
+  string user_id = 1;
+  string operation_id = 2;
+  int64 article_id = 3;
+  uint64 expected_version = 4;
+  optional int64 article_type_id = 5;
+  optional string title = 6;
+  optional string slug = 7;
+  optional string digest = 8;
+  optional string content = 9;
+  TagIds tag_ids = 10;
+}
+
+message UpdateArticleResponse {
+  Article article = 1;
+}
+
+message PublishArticleRequest {
+  reserved 1, 2;
+  reserved "metadata";
+
+  uint64 expected_version = 3;
+  string user_id = 4;
+  int64 article_id = 5;
+  string operation_id = 6;
+}
+
+message PublishArticleResponse {
+  Article article = 1;
+}
+
+message ArchiveArticleRequest {
+  string user_id = 1;
+  string operation_id = 2;
+  int64 article_id = 3;
+  uint64 expected_version = 4;
+}
+
+message ArchiveArticleResponse {
+  Article article = 1;
+}

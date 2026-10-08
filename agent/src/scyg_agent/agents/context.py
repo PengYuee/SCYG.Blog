@@ -6,6 +6,7 @@ from enum import StrEnum
 from scyg_agent.domain.runs import UserId
 
 from .contracts import Capability, RecipeId
+from .execution import ExecutionDispatch
 
 MAX_LOCALE_LENGTH = 32
 
@@ -33,6 +34,7 @@ class AgentRequestContext:
     recipe_version: str
     locale: str
     quality: Quality
+    execution_guard: ExecutionDispatch
     scopes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:

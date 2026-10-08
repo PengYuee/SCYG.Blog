@@ -49,6 +49,7 @@ def _create_result_table(connection: Connection) -> None:
     if "agent_run_results" in _inspector().get_table_names():
         return
     metadata = MetaData()
+    _ = Table("agent_runs", metadata, autoload_with=connection)
     result_table = Table(
         "agent_run_results",
         metadata,

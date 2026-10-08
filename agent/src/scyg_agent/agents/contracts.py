@@ -10,6 +10,7 @@ from typing import Annotated, ClassVar, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 MAX_REFERENCE_ARTICLES = 20
+ResourceId = Annotated[int, Field(strict=True, ge=1, le=2**63 - 1)]
 
 
 class Capability(StrEnum):
@@ -48,11 +49,11 @@ class WritingInput(ContractModel):
 
     topic: Annotated[str, Field(min_length=1, max_length=2_000)]
     requirements: Annotated[str, Field(max_length=16_000)] = ""
-    reference_article_ids: tuple[Annotated[str, Field(min_length=1, max_length=128)], ...] = ()
+    reference_article_ids: tuple[ResourceId, ...] = ()
 
     @field_validator("reference_article_ids")
     @classmethod
-    def bound_references(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+    def bound_references(cls, value: tuple[int, ...]) -> tuple[int, ...]:
         """Reject unbounded reference expansion."""
         if len(value) > MAX_REFERENCE_ARTICLES:
             reason = f"at most {MAX_REFERENCE_ARTICLES} reference articles are allowed"
@@ -123,9 +124,9 @@ def validate_capability_input(capability: Capability, value: CapabilityInput) ->
 class ArticleEvidence(ContractModel):
     """Tool-backed article evidence allowed in final output."""
 
-    article_id: Annotated[str, Field(min_length=1, max_length=128)]
+    article_id: ResourceId
     title: Annotated[str, Field(min_length=1, max_length=1_000)]
-    visibility: Literal["published", "owned_draft"]
+    visibility: Literal["published", "draft", "archived"]
     evidence: Annotated[str, Field(min_length=1, max_length=4_000)]
 
 
@@ -143,7 +144,7 @@ class ArticleDraft(ContractModel):
     title: Annotated[str, Field(min_length=1, max_length=1_000)]
     outline: Annotated[str, Field(min_length=1, max_length=16_000)]
     markdown: Annotated[str, Field(min_length=1, max_length=200_000)]
-    source_article_ids: tuple[str, ...] = ()
+    source_article_ids: tuple[ResourceId, ...] = ()
 
 
 class PolishResponse(ContractModel):
@@ -157,7 +158,7 @@ class ChatResponse(ContractModel):
     """Structured conversational result."""
 
     response: Annotated[str, Field(min_length=1, max_length=32_000)]
-    source_article_ids: tuple[str, ...] = ()
+    source_article_ids: tuple[ResourceId, ...] = ()
 
 
 CapabilityOutput = SearchResponse | ArticleDraft | PolishResponse | ChatResponse
@@ -237,6 +238,7 @@ class ApprovalRequest(ContractModel):
     """Approval payload emitted before writing continues."""
 
     interaction_id: Annotated[str, Field(min_length=1, max_length=128)]
+    kind: Literal["confirmation", "selection", "text_input"] = "confirmation"
     title: Annotated[str, Field(min_length=1, max_length=1_000)]
     outline: Annotated[str, Field(min_length=1, max_length=16_000)]
 

@@ -26,7 +26,6 @@ class TestSettings:
     normal_database_url: SecretStr
     migration_database_url: SecretStr
     admin_database_url: SecretStr | None = None
-    jwt_public_key_path: Path | None = None
 
     @classmethod
     def from_file(cls, path: Path) -> TestSettings:
@@ -43,7 +42,6 @@ class TestSettings:
             normal = _required_url(values, "normal_database_url")
             migration = _required_url(values, "migration_database_url")
             admin = _optional_url(values, "admin_database_url")
-            key_path = _optional_path(values, "jwt_public_key_path", path.parent)
         except (TypeError, ValueError) as error:
             message = f"{path}: invalid test endpoint configuration"
             raise TestConfigurationError(message) from error
@@ -51,7 +49,6 @@ class TestSettings:
             normal_database_url=SecretStr(normal),
             migration_database_url=SecretStr(migration),
             admin_database_url=SecretStr(admin) if admin is not None else None,
-            jwt_public_key_path=key_path,
         )
 
     @property
@@ -88,12 +85,6 @@ class TestSettings:
             pytest.skip("admin_database_url is required for this PostgreSQL acceptance")
         return self.admin_database_url.get_secret_value()
 
-    def require_jwt_public_key_path(self) -> Path:
-        """Return the optional subprocess key path or skip that acceptance test."""
-        if self.jwt_public_key_path is None:
-            pytest.skip("jwt_public_key_path is required for this acceptance")
-        return self.jwt_public_key_path
-
 
 def load_test_settings() -> TestSettings | None:
     """Load the configured test file, returning None when acceptance is not enabled."""
@@ -129,13 +120,3 @@ def _optional_url(values: dict[str, object], field: str) -> str | None:
         raise TestConfigurationError(field)
     _ = TypeAdapter(PostgresDsn).validate_python(value)
     return value
-
-
-def _optional_path(values: dict[str, object], field: str, config_directory: Path) -> Path | None:
-    value = values.get(field)
-    if value is None:
-        return None
-    if not isinstance(value, str) or not value:
-        raise TestConfigurationError(field)
-    path = Path(value)
-    return path if path.is_absolute() else config_directory / path

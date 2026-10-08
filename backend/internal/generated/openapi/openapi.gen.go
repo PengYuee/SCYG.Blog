@@ -5,20 +5,14 @@ package openapi
 
 import (
 	"bytes"
-	"compress/flate"
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
-	"net/url"
-	"path"
-	"strings"
 	"time"
 
-	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/gin-gonic/gin"
 	"github.com/oapi-codegen/runtime"
 	openapi_types "github.com/oapi-codegen/runtime/types"
@@ -27,6 +21,81 @@ import (
 const (
 	BearerAuthScopes bearerAuthContextKey = "bearerAuth.Scopes"
 )
+
+// Defines values for AgentRunCapability.
+const (
+	Chat   AgentRunCapability = "chat"
+	Polish AgentRunCapability = "polish"
+	Search AgentRunCapability = "search"
+	Write  AgentRunCapability = "write"
+)
+
+// Valid indicates whether the value is a known member of the AgentRunCapability enum.
+func (e AgentRunCapability) Valid() bool {
+	switch e {
+	case Chat:
+		return true
+	case Polish:
+		return true
+	case Search:
+		return true
+	case Write:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AgentRunPendingInteractionType.
+const (
+	Confirmation AgentRunPendingInteractionType = "confirmation"
+	Selection    AgentRunPendingInteractionType = "selection"
+	TextInput    AgentRunPendingInteractionType = "textInput"
+)
+
+// Valid indicates whether the value is a known member of the AgentRunPendingInteractionType enum.
+func (e AgentRunPendingInteractionType) Valid() bool {
+	switch e {
+	case Confirmation:
+		return true
+	case Selection:
+		return true
+	case TextInput:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for AgentRunStatus.
+const (
+	Cancelled          AgentRunStatus = "cancelled"
+	Failed             AgentRunStatus = "failed"
+	Queued             AgentRunStatus = "queued"
+	Running            AgentRunStatus = "running"
+	Succeeded          AgentRunStatus = "succeeded"
+	WaitingForApproval AgentRunStatus = "waitingForApproval"
+)
+
+// Valid indicates whether the value is a known member of the AgentRunStatus enum.
+func (e AgentRunStatus) Valid() bool {
+	switch e {
+	case Cancelled:
+		return true
+	case Failed:
+		return true
+	case Queued:
+		return true
+	case Running:
+		return true
+	case Succeeded:
+		return true
+	case WaitingForApproval:
+		return true
+	default:
+		return false
+	}
+}
 
 // Defines values for ArticleCreateStatus.
 const (
@@ -264,6 +333,81 @@ func (e ListManageTagsParamsSort) Valid() bool {
 		return false
 	}
 }
+
+// AgentResumeRequest 提交交互决定的 JSON object；Blog 不解释 decision 或 payload，payload 省略与显式 null 由 Agent 区分。
+type AgentResumeRequest struct {
+	// Decision 非空决定字符串，由 Agent 校验，Blog 不限制枚举值。
+	Decision string `json:"decision"`
+
+	// InteractionID 非空不透明交互标识，长度 1–128 个 UTF-8 字节（不是字符数）。
+	InteractionID string `json:"interactionId"`
+
+	// Payload 可选的任意 JSON 决定内容；省略与显式 null 含义不同，Blog 保留该区别。
+	Payload interface{} `json:"payload,omitempty"`
+}
+
+// AgentRun Create、Get、Resume、Cancel 共用的 owner 授权 Run 快照，字段始终存在；无结果、失败或待处理交互时对应值为 null。result 与 failure 可以同时存在，Blog 不实现 Run 状态机。
+type AgentRun struct {
+	// Capability 路由固定能力：`search` 搜索，`write` 写作，`polish` 润色，`chat` 对话。
+	Capability AgentRunCapability `json:"capability"`
+
+	// CreatedAt Run 创建时间，RFC 3339 UTC 字符串。
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Failure Agent 提供的公开失败对象，无失败时为 null；Blog 不翻译或解释 code 和 message。
+	Failure *struct {
+		// Code Agent 提供的失败代码。
+		Code string `json:"code"`
+
+		// Message Agent 提供的已脱敏失败说明。
+		Message string `json:"message"`
+	} `json:"failure"`
+
+	// PendingInteraction 当前待处理交互，无待处理交互时为 null。
+	PendingInteraction *struct {
+		// InteractionID Agent 提供的不透明交互标识，Resume 时原样提交。
+		InteractionID string `json:"interactionId"`
+
+		// Payload Agent 定义的任意 JSON 交互内容，可以为 null。
+		Payload interface{} `json:"payload"`
+
+		// Type 交互类型：`confirmation` 确认，`selection` 选择，`textInput` 文本输入。
+		Type AgentRunPendingInteractionType `json:"type"`
+	} `json:"pendingInteraction"`
+
+	// RecipeID Agent 选定的 Recipe 标识，创建成功起非空，客户端只读。
+	RecipeID *string `json:"recipeId,omitempty"`
+
+	// RecipeVersion Agent 选定的 Recipe 版本，创建成功起非空，客户端只读。
+	RecipeVersion *string `json:"recipeVersion,omitempty"`
+
+	// Result Agent 提供的任意 JSON 结果；无结果时为 null，可以与 failure 同时存在。
+	Result interface{} `json:"result"`
+
+	// RunID Agent 生成的不透明 URL-safe ASCII Run 标识，长度 1–128，不能等于 . 或 ..。
+	RunID AgentRunID `json:"runId"`
+
+	// Status Run 状态：`queued` 排队，`running` 执行中，`waitingForApproval` 等待交互，`succeeded` 成功，`failed` 失败，`cancelled` 已取消；后三者为终态。
+	Status AgentRunStatus `json:"status"`
+
+	// StreamURL Blog 根据 runId 生成的相对 SSE 订阅路径，例如 /api/v1/runs/run-safe-id/events。
+	StreamURL string `json:"streamUrl"`
+
+	// UpdatedAt Run 最近更新时间，RFC 3339 UTC 字符串。
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// AgentRunCapability 路由固定能力：`search` 搜索，`write` 写作，`polish` 润色，`chat` 对话。
+type AgentRunCapability string
+
+// AgentRunPendingInteractionType 交互类型：`confirmation` 确认，`selection` 选择，`textInput` 文本输入。
+type AgentRunPendingInteractionType string
+
+// AgentRunStatus Run 状态：`queued` 排队，`running` 执行中，`waitingForApproval` 等待交互，`succeeded` 成功，`failed` 失败，`cancelled` 已取消；后三者为终态。
+type AgentRunStatus string
+
+// AgentRunID Agent 生成的不透明 URL-safe ASCII Run 标识，长度 1–128，不能等于 . 或 ..。
+type AgentRunID = string
 
 // Article 文章资源，包含所属类型、标签关系、状态、计数、版本和 UTC 时间。
 type Article struct {
@@ -516,6 +660,9 @@ type PositiveID = int64
 
 // Problem 错误响应信封，描述请求失败原因。
 type Problem struct {
+	// Code 可选的 Agent 公开错误代码；提供时必须非空，缺失时不返回该字段。
+	Code *string `json:"code,omitempty"`
+
 	// Detail 具体错误说明。
 	Detail string `json:"detail"`
 
@@ -637,6 +784,12 @@ type TagPatch struct {
 // Version 资源当前正整数版本，用于并发控制，示例 `1`。
 type Version = int64
 
+// AgentEventCursor defines model for AgentEventCursor.
+type AgentEventCursor = string
+
+// AgentIdempotencyKey defines model for AgentIdempotencyKey.
+type AgentIdempotencyKey = openapi_types.UUID
+
 // ArticleID 资源正整数标识，示例 `1`。
 type ArticleID = PositiveID
 
@@ -675,6 +828,9 @@ type TagFilter = PositiveID
 
 // TagID 资源正整数标识，示例 `1`。
 type TagID = PositiveID
+
+// AgentError 错误响应信封，描述请求失败原因。
+type AgentError = Problem
 
 // BadRequest 错误响应信封，描述请求失败原因。
 type BadRequest = Problem
@@ -2079,6 +2235,8 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 	router.GET(options.BaseURL+"/api/v1/tags/:tagId", wrapper.GetPublicTag)
 	router.GET(options.BaseURL+"/media/article-images/:storageKey", wrapper.GetArticleImageMedia)
 }
+
+type AgentErrorApplicationProblemPlusJSONResponse Problem
 
 type BadRequestApplicationProblemPlusJSONResponse Problem
 
@@ -5715,207 +5873,4 @@ func (sh *strictHandler) GetArticleImageMedia(ctx *gin.Context, storageKey Artic
 	} else if response != nil {
 		sh.options.ResponseErrorHandlerFunc(ctx, fmt.Errorf("unexpected response type: %T", response))
 	}
-}
-
-// Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
-// Stored as a slice of fixed-width chunks rather than one concatenated
-// const string: with thousands of chunks the chained `+` fold is several
-// times slower for the Go compiler than parsing a slice literal.
-var swaggerSpec = []string{
-	"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",
-	"jvsbkb/Vpr0IV3uob+j/BwA=",
-}
-
-// decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,
-// after base64-decoding and flate-decompressing the embedded blob.
-func decodeSpec() ([]byte, error) {
-	encoded := strings.Join(swaggerSpec, "")
-	compressed, err := base64.StdEncoding.DecodeString(encoded)
-	if err != nil {
-		return nil, fmt.Errorf("error base64 decoding spec: %w", err)
-	}
-	zr := flate.NewReader(bytes.NewReader(compressed))
-	var buf bytes.Buffer
-	if _, err := buf.ReadFrom(zr); err != nil {
-		return nil, fmt.Errorf("read flate: %w", err)
-	}
-	if err := zr.Close(); err != nil {
-		return nil, fmt.Errorf("close flate reader: %w", err)
-	}
-
-	return buf.Bytes(), nil
-}
-
-var rawSpec = decodeSpecCached()
-
-// a naive cache of the decoded OpenAPI spec
-func decodeSpecCached() func() ([]byte, error) {
-	data, err := decodeSpec()
-	return func() ([]byte, error) {
-		return data, err
-	}
-}
-
-// Constructs a synthetic filesystem for resolving external references when loading openapi specifications.
-func PathToRawSpec(pathToFile string) map[string]func() ([]byte, error) {
-	res := make(map[string]func() ([]byte, error))
-	if len(pathToFile) > 0 {
-		res[pathToFile] = rawSpec
-	}
-
-	return res
-}
-
-// GetSpec returns the OpenAPI specification corresponding to the generated
-// code in this file. External references in the spec are resolved through
-// PathToRawSpec; externally-referenced files must be embedded in their
-// corresponding Go packages (via the import-mapping feature). URL-based
-// external refs are not supported.
-func GetSpec() (swagger *openapi3.T, err error) {
-	resolvePath := PathToRawSpec("")
-
-	loader := openapi3.NewLoader()
-	loader.IsExternalRefsAllowed = true
-	loader.ReadFromURIFunc = func(loader *openapi3.Loader, url *url.URL) ([]byte, error) {
-		pathToFile := url.String()
-		pathToFile = path.Clean(pathToFile)
-		getSpec, ok := resolvePath[pathToFile]
-		if !ok {
-			err1 := fmt.Errorf("path not found: %s", pathToFile)
-			return nil, err1
-		}
-		return getSpec()
-	}
-	var specData []byte
-	specData, err = rawSpec()
-	if err != nil {
-		return
-	}
-	swagger, err = loader.LoadFromData(specData)
-	if err != nil {
-		return
-	}
-	return
-}
-
-// GetSpecJSON returns the raw JSON bytes of the embedded OpenAPI
-// specification: decompressed but not unmarshaled. External references
-// are not resolved here; the bytes are the spec exactly as embedded by
-// codegen. The result is cached at package init time, so repeated calls
-// are cheap.
-func GetSpecJSON() ([]byte, error) {
-	return rawSpec()
-}
-
-// GetSwagger returns the OpenAPI specification corresponding to the
-// generated code in this file.
-//
-// Deprecated: GetSwagger predates kin-openapi renaming openapi3.Swagger
-// to openapi3.T. Use [GetSpec] instead. This wrapper is retained for
-// backwards compatibility.
-func GetSwagger() (*openapi3.T, error) {
-	return GetSpec()
 }

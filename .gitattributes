@@ -1,0 +1,2 @@
+# Keep generated contract bytes identical to deterministic Buf output on Windows.
+agent/src/scyg_agent/generated/** text eol=lf

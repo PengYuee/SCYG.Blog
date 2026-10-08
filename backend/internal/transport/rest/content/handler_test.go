@@ -38,6 +38,7 @@ type testService struct {
 	articlePage           article.Page
 	article               article.Result
 	articleType           taxonomy.ArticleTypeResult
+	articleTypeErr        error
 	publicArticleTypePage taxonomy.PublicArticleTypePage
 	publicTagPage         taxonomy.PublicTagPage
 	lastArticleCreate     article.Create
@@ -61,8 +62,14 @@ func (service *testService) ListManage(context.Context, article.List) (article.P
 	return service.articlePage, nil
 }
 
-func (*testService) GetArticleType(context.Context, taxonomy.GetArticleType) (taxonomy.ArticleTypeResult, error) {
-	return taxonomy.ArticleTypeResult{}, errors.New("not found")
+func (service *testService) GetArticleType(_ context.Context, query taxonomy.GetArticleType) (taxonomy.ArticleTypeResult, error) {
+	if service.articleTypeErr != nil {
+		return taxonomy.ArticleTypeResult{}, service.articleTypeErr
+	}
+	if service.articleType.ID != 0 {
+		return service.articleType, nil
+	}
+	return taxonomy.ArticleTypeResult{ID: query.ID, Name: "News"}, nil
 }
 
 func (*testService) ListArticleTypes(context.Context, taxonomy.ListArticleTypes) (taxonomy.ArticleTypePage, error) {

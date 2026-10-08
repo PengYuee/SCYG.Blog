@@ -8,10 +8,10 @@ import anyio
 import pytest
 from fastapi import FastAPI
 from grpc import aio
+from grpc_health.v1 import health_pb2, health_pb2_grpc
 from pydantic import TypeAdapter
 from uvicorn import Server
 
-from scyg_agent.adapters.auth import JwtVerifier
 from scyg_agent.servers import (
     GrpcServerComponent,
     GrpcServerConfig,
@@ -21,10 +21,7 @@ from scyg_agent.servers import (
     ServerState,
 )
 from scyg_agent.transport.grpc import AgentControlServicer
-from tests.adapters.auth.test_jwt_verifier import private_key, verifier
 from tests.transport.grpc.scenario_support import ScenarioFacade
-
-__all__ = ["private_key", "verifier"]
 
 _HOST = "127.0.0.1"
 
@@ -33,8 +30,8 @@ def _http_component(app: FastAPI, port: int = 0) -> HttpServerComponent:
     return HttpServerComponent(app, HttpServerConfig(_HOST, port, 2.0, 2.0))
 
 
-def _grpc_component(verifier: JwtVerifier, port: int = 0) -> GrpcServerComponent:
-    servicer = AgentControlServicer(ScenarioFacade(), verifier)
+def _grpc_component(port: int = 0) -> GrpcServerComponent:
+    servicer = AgentControlServicer(ScenarioFacade())
     return GrpcServerComponent(servicer, GrpcServerConfig(_HOST, port, 2.0, 0.1))
 
 
@@ -107,9 +104,9 @@ def test_http_close_waiter_cancellation_does_not_abandon_cleanup() -> None:
     anyio.run(scenario)
 
 
-def test_grpc_ephemeral_ready_and_concurrent_close(verifier: JwtVerifier) -> None:
+def test_grpc_ephemeral_ready_and_concurrent_close() -> None:
     async def scenario() -> None:
-        component = _grpc_component(verifier)
+        component = _grpc_component()
         await component.start()
         endpoint = component.endpoint
         assert endpoint is not None
@@ -118,6 +115,11 @@ def test_grpc_ephemeral_ready_and_concurrent_close(verifier: JwtVerifier) -> Non
         channel = aio.insecure_channel(f"{endpoint.host}:{endpoint.port}")
         try:
             await channel.channel_ready()
+            health = health_pb2_grpc.HealthStub(channel)
+            response = await health.Check(
+                health_pb2.HealthCheckRequest(service="scyg.agent.v1.AgentControlService"),
+            )
+            assert response.status == health_pb2.HealthCheckResponse.SERVING
             assert (await component.probe()).ready
         finally:
             await channel.close()
@@ -131,11 +133,11 @@ def test_grpc_ephemeral_ready_and_concurrent_close(verifier: JwtVerifier) -> Non
     anyio.run(scenario)
 
 
-def test_grpc_bind_conflict_is_typed(verifier: JwtVerifier) -> None:
+def test_grpc_bind_conflict_is_typed() -> None:
     async def scenario() -> None:
         with closing(socket.create_server((_HOST, 0))) as occupied:
             port = TypeAdapter(int).validate_python(occupied.getsockname()[1])
-            component = _grpc_component(verifier, port)
+            component = _grpc_component(port)
             with pytest.raises(ServerStartError, match="grpc"):
                 await component.start()
             assert component.state is ServerState.FAILED
@@ -145,11 +147,9 @@ def test_grpc_bind_conflict_is_typed(verifier: JwtVerifier) -> None:
     anyio.run(scenario)
 
 
-def test_grpc_close_waiter_cancellation_does_not_abandon_cleanup(
-    verifier: JwtVerifier,
-) -> None:
+def test_grpc_close_waiter_cancellation_does_not_abandon_cleanup() -> None:
     async def scenario() -> None:
-        component = _grpc_component(verifier)
+        component = _grpc_component()
         await component.start()
         waiter = asyncio.create_task(component.close())
         _ = waiter.cancel()
@@ -186,11 +186,9 @@ def test_http_stop_before_start_is_idempotent() -> None:
     anyio.run(scenario)
 
 
-def test_grpc_start_is_idempotent_and_restart_after_stop_is_rejected(
-    verifier: JwtVerifier,
-) -> None:
+def test_grpc_start_is_idempotent_and_restart_after_stop_is_rejected() -> None:
     async def scenario() -> None:
-        component = _grpc_component(verifier)
+        component = _grpc_component()
         await component.start()
         endpoint = component.endpoint
         await component.start()
@@ -202,9 +200,9 @@ def test_grpc_start_is_idempotent_and_restart_after_stop_is_rejected(
     anyio.run(scenario)
 
 
-def test_grpc_stop_before_start_is_idempotent(verifier: JwtVerifier) -> None:
+def test_grpc_stop_before_start_is_idempotent() -> None:
     async def scenario() -> None:
-        component = _grpc_component(verifier)
+        component = _grpc_component()
         await component.stop()
         await component.stop()
         assert component.state is ServerState.STOPPED

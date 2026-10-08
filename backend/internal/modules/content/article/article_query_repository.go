@@ -2,6 +2,7 @@ package article
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
@@ -36,9 +37,11 @@ func (query *Query) get(ctx context.Context, input Get, publishedOnly bool) (Res
 		return Result{}, validation(err)
 	}
 	var row projectionRow
-	statement := query.db.WithContext(ctx).Table("articles").Where("id = ? AND is_deleted = false", id.Int64())
+	// The correlated aggregate shares the article statement's MVCC snapshot and
+	// returns the content only once, regardless of how many tags are attached.
+	statement := query.db.WithContext(ctx).Table("articles AS a").Select("a.*, COALESCE((SELECT json_agg(at.tag_id ORDER BY at.tag_id) FROM article_tags AS at WHERE at.article_id = a.id), '[]'::json)::text AS tag_ids_json").Where("a.id = ? AND a.is_deleted = false", id.Int64())
 	if publishedOnly {
-		statement = statement.Where("status = 2")
+		statement = statement.Where("a.status = 2")
 	}
 	r := statement.Take(&row)
 	if errors.Is(r.Error, gorm.ErrRecordNotFound) {
@@ -47,11 +50,18 @@ func (query *Query) get(ctx context.Context, input Get, publishedOnly bool) (Res
 	if r.Error != nil {
 		return Result{}, translate(r.Error)
 	}
-	tags, err := query.tags(ctx, []int64{row.ID})
-	if err != nil {
-		return Result{}, err
+	var ids []int64
+	if err := json.Unmarshal([]byte(row.TagIDsJSON), &ids); err != nil {
+		return Result{}, translate(err)
 	}
-	return projectionResult(row, tags[row.ID])
+	tags := make([]TagID, len(ids))
+	for index, value := range ids {
+		tags[index], err = NewTagID(value)
+		if err != nil {
+			return Result{}, translate(err)
+		}
+	}
+	return projectionResult(row, tags)
 }
 
 // ListManage reads non-deleted articles for authorized management clients.
@@ -67,6 +77,13 @@ func (query *Query) ListManage(ctx context.Context, input List) (Page, error) {
 		size = 100
 	}
 	q := query.db.WithContext(ctx).Table("articles AS a").Where("a.is_deleted = false")
+	if input.Status != "" {
+		status, err := statusToDB(Status(input.Status))
+		if err != nil {
+			return Page{}, validation(err)
+		}
+		q = q.Where("a.status = ?", status)
+	}
 	if input.ArticleTypeID > 0 {
 		q = q.Where("a.article_type_id = ?", input.ArticleTypeID)
 	}

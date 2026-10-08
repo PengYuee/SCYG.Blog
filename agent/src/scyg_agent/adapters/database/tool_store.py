@@ -11,7 +11,6 @@ from scyg_agent.domain.ports.audit_store import AuditFact
 from scyg_agent.domain.ports.semantic_identity import tool_semantic_digest
 from scyg_agent.domain.ports.tool_store import (
     ClaimRequest,
-    FirstClaim,
     ToolClaimResult,
     ToolDataIntegrity,
     ToolFence,
@@ -157,10 +156,6 @@ class PostgreSQLToolOperationStore:
     async def claim(self, request: ClaimRequest) -> ToolClaimResult:
         """在短事务中竞争或恢复工具执行租约。."""
         return await ToolExecutionTransactions(self._sessions).claim(request)
-
-    async def mark_rpc_started(self, fence: ToolFence) -> ToolFenceResult | FirstClaim:
-        """在外部调用前持久化 RPC 已开始事实。."""
-        return await ToolExecutionTransactions(self._sessions).mark_rpc_started(fence)
 
     async def complete(self, fence: ToolFence, outcome: ToolOperation) -> ToolFenceResult:
         """围栏完成工具终态并追加唯一审计事实。."""

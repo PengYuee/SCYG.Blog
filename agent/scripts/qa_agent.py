@@ -55,14 +55,18 @@ REQUIRED_TOPOLOGY_ENV: Final[tuple[str, ...]] = (
     "SCYG_POSTGRES_ADMIN_DATABASE_URL",
     "SCYG_AGENT_DB_PASSWORD",
     "SCYG_AGENT_DATABASE_URL",
-    "SCYG_AGENT_JWT_PUBLIC_KEY_PATH",
-    "SCYG_AGENT_JWT_ISSUER",
-    "SCYG_AGENT_JWT_AUDIENCE",
-    "SCYG_AGENT_JWT_SERVICE_SUBJECT",
-    "SCYG_AGENT_PROVIDER_BASE_URL",
-    "SCYG_AGENT_PROVIDER_API_KEY",
-    "SCYG_AGENT_PROVIDER_MODEL",
-    "SCYG_AGENT_BLOG_GRPC_TARGET",
+    "SCYG_AGENT_MODELS__FAST__BASE_URL",
+    "SCYG_AGENT_MODELS__FAST__API_KEY",
+    "SCYG_AGENT_MODELS__FAST__MODEL",
+    "SCYG_AGENT_MODELS__STANDARD__BASE_URL",
+    "SCYG_AGENT_MODELS__STANDARD__API_KEY",
+    "SCYG_AGENT_MODELS__STANDARD__MODEL",
+    "SCYG_AGENT_MODELS__STRONG__BASE_URL",
+    "SCYG_AGENT_MODELS__STRONG__API_KEY",
+    "SCYG_AGENT_MODELS__STRONG__MODEL",
+    "SCYG_BLOG_DB_PASSWORD",
+    "SCYG_DATABASE_DSN",
+    "SCYG_AUTH_JWT_SECRET",
 )
 
 
@@ -133,7 +137,7 @@ class AgentQa:
                 "--volumes",
                 "--remove-orphans",
             ),
-            self.agent,
+            self.root,
         )
         if result.returncode != 0:
             raise OSError(result.output or "docker compose cleanup failed")
@@ -147,7 +151,7 @@ class AgentQa:
             return False
         if mode is Mode.FULL:
             has_environment = all(self.environment.get(name) for name in REQUIRED_TOPOLOGY_ENV)
-            has_env_file = (self.agent / ".env").is_file()
+            has_env_file = (self.root / ".env").is_file()
             if not has_environment and not has_env_file:
                 message = (
                     "T32 topology prerequisites: Docker plus Compose secrets/approved endpoint "
@@ -159,7 +163,7 @@ class AgentQa:
 
     def _commands(self) -> tuple[tuple[str, tuple[str, ...]], ...]:
         """Return the static-safe Agent gate sequence."""
-        uv = ("uv", "run", "--locked")
+        uv = ("uv", "run", "--locked", "--no-sync")
         return (
             ("agent-contracts", (*uv, "scyg-agent-contracts", "check")),
             ("ruff-check", (*uv, "ruff", "check", ".")),
@@ -167,7 +171,7 @@ class AgentQa:
             ("basedpyright", (*uv, "basedpyright")),
             (
                 "pytest-coverage",
-                (*uv, "pytest", "-q", "--cov=src/scyg_agent", "--cov-branch"),
+                (*uv, "pytest", "-q", "--cov=scyg_agent", "--cov-branch"),
             ),
             ("no-excuse", (*uv, "python", "scripts/check_no_excuse.py", "src", "tests")),
             ("scope-scan", (*uv, "python", "scripts/check_qa_scope.py")),
@@ -179,10 +183,14 @@ class AgentQa:
             ("deployment-contracts", (*uv, "pytest", "tests/deployment", "-q")),
         )
 
-    def _run_sequence(self, commands: tuple[tuple[str, tuple[str, ...]], ...]) -> str | None:
+    def _run_sequence(
+        self,
+        commands: tuple[tuple[str, tuple[str, ...]], ...],
+        cwd: Path | None = None,
+    ) -> str | None:
         """Run commands in order and return the first failed label."""
         for label, command in commands:
-            result = self.runner(label, command, self.agent)
+            result = self.runner(label, command, cwd or self.agent)
             if result.returncode != 0:
                 print(f"agent QA failed: {label}")
                 return label
@@ -209,6 +217,7 @@ class AgentQa:
                                     "-f",
                                     "compose.yaml",
                                     "config",
+                                    "--quiet",
                                 ),
                             ),
                             (
@@ -228,14 +237,24 @@ class AgentQa:
                                     "120",
                                 ),
                             ),
-                        )
+                        ),
+                        self.root,
                     )
                     if primary_failure is None:
                         primary_failure = self._run_sequence(
                             (
                                 (
-                                    "t34-e2e",
-                                    ("uv", "run", "--locked", "python", "scripts/t34_e2e.py"),
+                                    "integration-smoke",
+                                    (
+                                        "uv",
+                                        "run",
+                                        "--locked",
+                                        "--no-sync",
+                                        "python",
+                                        "scripts/integration_smoke.py",
+                                        "--compose-project",
+                                        self.compose_project,
+                                    ),
                                 ),
                             )
                         )

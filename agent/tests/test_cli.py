@@ -91,8 +91,8 @@ def test_check_reports_url_and_concurrency_without_echoing_environment_values(
     assert configured_environment is None
     provider_value = "sentinel-provider-url-6381"
     concurrency_value = "0"
-    monkeypatch.setenv("SCYG_AGENT_PROVIDER_BASE_URL", provider_value)
-    monkeypatch.setenv("SCYG_AGENT_SIMPLE_CONCURRENCY", concurrency_value)
+    monkeypatch.setenv("SCYG_AGENT_MODELS__FAST__BASE_URL", provider_value)
+    monkeypatch.setenv("SCYG_AGENT_WORKER_CONCURRENCY", concurrency_value)
 
     # When: the bounded configuration check parses the environment.
     exit_code = run(("--check",))
@@ -102,8 +102,8 @@ def test_check_reports_url_and_concurrency_without_echoing_environment_values(
     assert exit_code == 2
     assert stderr == (
         "SCYG Agent 配置无效:\n"
-        "- provider_base_url: must be a valid URL\n"
-        "- simple_concurrency: must be greater than or equal to 1\n"
+        "- worker_concurrency: must be greater than or equal to 1\n"
+        "- models.fast.base_url: must be a valid URL\n"
     )
     assert provider_value not in stderr
     assert concurrency_value not in stderr

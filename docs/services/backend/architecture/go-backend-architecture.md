@@ -2,9 +2,9 @@
 
 > **Historical decision record.** This architecture document describes the superseded pre-Feature-first target. The implemented runtime is documented in [`current-state-architecture.zh-CN.md`](current-state-architecture.zh-CN.md). The refactoring plans and completed execution record are preserved locally under `.scratch/documentation-migration/preserved/backend/docs/architecture/`, outside the versioned documentation. Do not use this document as the current directory or dependency contract.
 
-**Status:** Binding Gate A architecture decision
-**Scope:** `backend/` Go service foundation
-**Current runtime:** REST over HTTP only
+**Status:** Historical Gate A architecture decision
+**Scope:** Superseded `backend/` service foundation
+**Runtime at that decision:** REST over HTTP only
 
 This document records the backend architecture and its hard boundaries. Statements marked **MUST**, **MUST NOT**, and **ONLY** are binding for implementation. Naming, file size, the common five-layer module shape, generic-token wording, and future-technology names are review guidance, not a prose-only scanner contract. Future gRPC, WebSocket, broker, identity, media, search, and AI capabilities are design decisions only until a real feature is implemented and reviewed.
 
@@ -411,7 +411,7 @@ Later implementation records decision details without reopening this architectur
 | ADR-009 | Authorizer extension point with production deny-all writes |
 | ADR-010 | Versioned self-hosted Scalar browser asset |
 
-Toolchain/dependency baselines are Go 1.26.0, Gin 1.11.0, GORM 1.31.1, Viper 1.20.1, and oapi-codegen 2.7.2. A pin may change only when its exact version cannot resolve, with official release evidence and an ADR recorded before code uses the replacement.
+Toolchain/dependency baselines are Go 1.26.8, Gin 1.11.0, GORM 1.31.1, Viper 1.20.1, and oapi-codegen 2.7.2. A pin may change only when its exact version cannot resolve, with official release evidence and an ADR recorded before code uses the replacement.
 
 ## References and Provenance
 

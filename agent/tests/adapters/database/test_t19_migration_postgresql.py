@@ -87,9 +87,11 @@ def test_fresh_current_metadata_upgrade_head_is_stable() -> None:
 def test_historical_revision03_cycle_preserves_rows_and_null_semantics() -> None:
     environment = _environment()
     _alembic(["downgrade", "base"], environment)
+    seeded = False
     try:
         _alembic(["upgrade", "20260712_03"], environment)
         anyio.run(_phase, environment, _prepare_historical_row)
+        seeded = True
         _alembic(["upgrade", "head"], environment)
         count, comment = anyio.run(_phase, environment, _column_state)
         is_null = anyio.run(_phase, environment, _cancellation_is_null)
@@ -103,6 +105,8 @@ def test_historical_revision03_cycle_preserves_rows_and_null_semantics() -> None
         is_null = anyio.run(_phase, environment, _cancellation_is_null)
         assert is_null
     finally:
+        if seeded:
+            anyio.run(_phase, environment, _remove_historical_row)
         _alembic(["downgrade", "base"], environment)
 
 
@@ -140,6 +144,15 @@ async def _prepare_historical_row(engine: AsyncEngine) -> None:
                 'v1', 1, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, 0, CURRENT_TIMESTAMP
 )"""
             )
+        )
+
+
+async def _remove_historical_row(engine: AsyncEngine) -> None:
+    """Delete only this fixture's historical row before returning to base."""
+    async with engine.begin() as connection:
+        _ = await connection.execute(
+            text("DELETE FROM agent_runs WHERE run_id = :run_id"),
+            {"run_id": "run_migration01"},
         )
 
 

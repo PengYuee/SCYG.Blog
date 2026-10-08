@@ -84,7 +84,7 @@ async def test_claim_helper_closes_pending_live_stale_and_terminal_branches(
 
 
 @pytest.mark.anyio
-async def test_rpc_mark_and_completion_are_fenced_and_append_once(
+async def test_completion_rejects_stale_fence_and_appends_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # Given: 一个当前 token/version 的 in-flight 记录。
@@ -97,14 +97,15 @@ async def test_rpc_mark_and_completion_are_fenced_and_append_once(
     record.claim_expires_at = NOW + LEASE
     fence = ToolFence(record_operation(record), LeaseToken(UUID(int=4)), 2, NOW)
 
-    # When: 旧版本标记失败, 当前版本标记并完成。
+    # A stale completion must not alter the current in-flight operation.
     lost_fence = ToolFence(fence.operation_id, fence.token, 1, NOW)
-    lost = await executor.mark_rpc_started_in_session(
-        session(monkeypatch, _locked(record)), lost_fence
+    lost = await executor.complete_in_session(
+        session(monkeypatch, _locked(record)),
+        lost_fence,
+        tool_operation(),
     )
-    marked = await executor.mark_rpc_started_in_session(
-        session(monkeypatch, _locked(record)), fence
-    )
+    assert record.status == "in_flight"
+    assert record.claim_version == 2
     completed_script = _locked(record)
     completed_script.results.extend([FakeResult(run()), FakeResult(0)])
     completed = await executor.complete_in_session(
@@ -113,7 +114,6 @@ async def test_rpc_mark_and_completion_are_fenced_and_append_once(
 
     # Then: 旧围栏丢失, 当前围栏保存终态并生成一个审计行。
     assert lost == ClaimLost(fence.operation_id)
-    assert marked == FirstClaim(fence)
     assert isinstance(completed, TerminalReplay)
     assert len(completed_script.added) == 1
 

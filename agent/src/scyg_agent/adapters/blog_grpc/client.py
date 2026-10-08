@@ -1,223 +1,271 @@
-"""静态允许列表 BlogTool 异步 gRPC 客户端。."""
+"""Allowlisted asynchronous BlogContent client with fenced Call creation."""
 
 from collections.abc import Awaitable, Callable
 from types import TracebackType
-from typing import Final, Protocol, Self, final, override
+from typing import TYPE_CHECKING, Final, Self, cast, final, override
+from uuid import UUID
 
+from google.protobuf.message import Message
 from grpc import aio
 
-from scyg_agent.generated.scyg.blog.v1 import blog_tool_service_pb2 as service_pb2
-from scyg_agent.generated.scyg.blog.v1 import blog_tool_service_pb2_grpc as service_grpc
-from scyg_agent.generated.scyg.blog.v1 import common_pb2
-from scyg_agent.runtimes.profiles import RUNTIME_VERSION_V1, RuntimeProfile, ToolPermission
+from scyg_agent.generated.proto.scyg.blog.v1 import blog_content_service_pb2 as service_pb2
+from scyg_agent.generated.proto.scyg.blog.v1 import blog_content_service_pb2_grpc as service_grpc
 
 from .contracts import (
-    AddArticleTags,
+    ArchiveArticle,
     BlogCommand,
     BlogFailure,
     BlogResult,
-    CreateArticleDraft,
+    CreateArticle,
     FailureKind,
-    GetPublishedArticle,
-    RequestIdentity,
+    GetArticle,
+    ListArticleTypes,
+    ListTags,
+    PublishArticle,
+    RpcDispatch,
     SearchArticles,
-    UpdateArticleDraft,
+    UpdateArticle,
 )
-from .mapping import article_response, search_response
-from .security import SecurityConfiguration
+from .mapping import article_response, article_types_response, search_response, tags_response
+from .security import RpcDeadline
 from .status import map_rpc_status
 
+if TYPE_CHECKING:
+    from scyg_agent.generated.proto.scyg.blog.v1 import common_pb2
 
-class BlogStub(Protocol):
-    """描述生成桩中五个获批的一元调用。."""
+_COMMANDS: Final = {
+    "get_article": GetArticle,
+    "search_articles": SearchArticles,
+    "list_tags": ListTags,
+    "list_article_types": ListArticleTypes,
+    "create_article": CreateArticle,
+    "update_article": UpdateArticle,
+    "publish_article": PublishArticle,
+    "archive_article": ArchiveArticle,
+}
+_UUID_VERSION: Final = 4
 
-    GetPublishedArticle: Callable[..., Awaitable[service_pb2.GetPublishedArticleResponse]]
-    SearchArticles: Callable[..., Awaitable[service_pb2.SearchArticlesResponse]]
-    CreateArticleDraft: Callable[..., Awaitable[service_pb2.CreateArticleDraftResponse]]
-    UpdateArticleDraft: Callable[..., Awaitable[service_pb2.UpdateArticleDraftResponse]]
-    AddArticleTags: Callable[..., Awaitable[service_pb2.AddArticleTagsResponse]]
+
+class ImmutableBlogConfigurationError(AttributeError):
+    """Reject mutation of the client channel, deadline and generated stub."""
+
+
+type PreparedCall = tuple[Callable[[], Awaitable[object]], Callable[[object], BlogResult]]
+
+
+def _bind[RequestT: Message, ResponseT: Message](
+    request: RequestT,
+    method: aio.UnaryUnaryMultiCallable[RequestT, ResponseT],
+    mapper: Callable[[ResponseT], BlogResult],
+    deadline: float,
+) -> PreparedCall:
+    def start() -> Awaitable[object]:
+        # Calling grpc.aio's callable synchronously starts the Call under the fence.
+        return method(request, timeout=deadline)
+
+    def map_response(response: object) -> BlogResult:
+        # This Call's protobuf deserializer returns exactly its declared response.
+        return mapper(cast("ResponseT", response))
+
+    return start, map_response
+
+
+def _update_request(command: UpdateArticle) -> service_pb2.UpdateArticleRequest:
+    return service_pb2.UpdateArticleRequest(
+        user_id=command.user_id,
+        operation_id=command.operation_id.value,
+        article_id=command.article_id,
+        expected_version=command.expected_version,
+        article_type_id=command.article_type_id,
+        title=command.title,
+        slug=command.slug,
+        digest=command.digest,
+        content=command.content,
+        tag_ids=(
+            service_pb2.TagIds(values=command.tag_ids) if command.tag_ids is not None else None
+        ),
+    )
 
 
 @final
 class BlogGrpcClient:
-    """在一个可复用通道上调用画像明确授权的 Blog RPC。."""
+    """Prepare arguments before the fence; create the actual Call inside it."""
 
-    __slots__: Final = ("_channel", "_closed", "_security", "_stub")
+    __slots__ = ("_channel", "_closed", "_deadline", "_stub")
 
-    def __init__(self, target: str, profile: RuntimeProfile, deadline_seconds: float) -> None:
-        """构造具有固定画像和有限截止期的客户端。."""
-        security = SecurityConfiguration.parse(profile, deadline_seconds)
-        self._security: SecurityConfiguration = security
-        self._channel: aio.Channel = aio.insecure_channel(target)
-        self._stub: BlogStub = service_grpc.BlogToolServiceStub(self._channel)
-        self._closed: bool = False
+    def __init__(self, target: str, deadline_seconds: float) -> None:
+        """Create an asynchronous channel with an immutable bounded deadline."""
+        self._deadline = RpcDeadline.parse(deadline_seconds)
+        self._channel = aio.insecure_channel(
+            target, options=(("grpc.max_receive_message_length", -1),)
+        )
+        self._stub = service_grpc.BlogContentServiceStub(self._channel)
+        self._closed = False
 
     @override
-    def __setattr__(
-        self,
-        name: str,
-        value: Self | aio.Channel | BlogStub | SecurityConfiguration | bool,
-    ) -> None:
-        """仅允许生命周期闭合标记在初始化后发生变化。."""
-        if name == "_closed" and hasattr(self, "_closed"):
-            if type(value) is not bool:
-                msg = "Blog gRPC 生命周期状态必须为 bool"
-                raise AttributeError(msg)
-            object.__setattr__(self, name, value)
-            return
-        if hasattr(self, name):
-            msg = "Blog gRPC 安全配置初始化后不可修改"
-            raise AttributeError(msg)
+    def __setattr__(self, name: str, value: object) -> None:
+        if hasattr(self, name) and (name != "_closed" or type(value) is not bool):
+            raise ImmutableBlogConfigurationError
         object.__setattr__(self, name, value)
 
     @override
-    def __delattr__(self, _name: str) -> None:
-        """禁止删除安全或生命周期字段后重建。."""
-        msg = "Blog gRPC 客户端字段不可删除"
-        raise AttributeError(msg)
+    def __delattr__(self, name: str) -> None:
+        raise ImmutableBlogConfigurationError
 
-    async def __aenter__(self) -> "BlogGrpcClient":
-        """进入客户端资源作用域。."""
+    async def __aenter__(self) -> Self:
+        """Return the same client as an owned asynchronous resource."""
         return self
 
     async def __aexit__(
         self,
-        _exception_type: type[BaseException] | None,
-        _exception: BaseException | None,
+        _kind: type[BaseException] | None,
+        _error: BaseException | None,
         _traceback: TracebackType | None,
     ) -> None:
-        """离开作用域时关闭通道并取消遗留调用。."""
+        """Close the owned channel when leaving the resource scope."""
         await self.close()
 
     async def close(self) -> None:
-        """幂等关闭通道并取消遗留调用。."""
+        """Close the channel and reject further dispatches."""
         await self._channel.close()
         self._closed = True
 
-    async def invoke(self, tool_name: str, version: str, command: BlogCommand) -> BlogResult:
-        """在网络调用前验证版本、授权和命令精确类型。."""
-        boundary_failure = self._validate_boundary(tool_name, version, command)
-        if boundary_failure is not None:
-            return boundary_failure
+    async def invoke(
+        self, tool_name: str, version: str, command: BlogCommand, *, dispatch: RpcDispatch
+    ) -> BlogResult:
+        """Start the real RPC inside the caller's cancellation admission fence."""
+        failure = self._validate_boundary(tool_name, version, command)
+        if failure is not None:
+            return failure
+        start, mapper = self._prepare(command)
         try:
-            return await self._dispatch(command)
+            response = await dispatch(start)
+            return mapper(response)
         except aio.AioRpcError as error:
             return map_rpc_status(error.code())
 
     def _validate_boundary(
         self, tool_name: str, version: str, command: BlogCommand
     ) -> BlogFailure | None:
-        """把不可信工具选择解析为 T14 权限并校验命令绑定。."""
-        state_failure = self._state_failure()
-        if state_failure is not None:
-            return state_failure
-        if version != RUNTIME_VERSION_V1:
-            return BlogFailure(FailureKind.INVALID_VERSION, retryable=False)
-        try:
-            permission = ToolPermission(tool_name)
-        except ValueError:
-            return BlogFailure(FailureKind.INVALID_TOOL, retryable=False)
-        if permission not in self._security.authorization.permissions:
-            return BlogFailure(FailureKind.INVALID_TOOL, retryable=False)
-        if not _command_matches(permission, command):
-            return BlogFailure(FailureKind.WRONG_COMMAND, retryable=False)
-        return None
-
-    def _state_failure(self) -> BlogFailure | None:
-        """在业务边界前关闭生命周期和安全状态失败。."""
         if self._closed:
-            return BlogFailure(FailureKind.CHANNEL_CLOSED, retryable=False)
-        return None
+            kind = FailureKind.CHANNEL_CLOSED
+        elif version != "v1":
+            kind = FailureKind.INVALID_VERSION
+        elif tool_name not in _COMMANDS:
+            kind = FailureKind.INVALID_TOOL
+        elif _COMMANDS.get(tool_name) is not type(command):
+            kind = FailureKind.WRONG_COMMAND
+        elif isinstance(command, (CreateArticle, UpdateArticle, PublishArticle, ArchiveArticle)):
+            try:
+                operation = UUID(command.operation_id.value)
+            except (ValueError, AttributeError):
+                return BlogFailure(FailureKind.INVALID_ARGUMENT, retryable=False)
+            if operation.version != _UUID_VERSION or str(operation) != command.operation_id.value:
+                return BlogFailure(FailureKind.INVALID_ARGUMENT, retryable=False)
+            return None
+        else:
+            return None
+        return BlogFailure(kind, retryable=False)
 
-    async def _dispatch(self, command: BlogCommand) -> BlogResult:
-        """对已验证命令闭集执行唯一显式 RPC。."""
-        match command:  # noqa: RUF100  # noqa: MATCH_OK - 五个精确分支已静态穷尽。
-            case GetPublishedArticle():
-                response = await self._stub.GetPublishedArticle(
-                    service_pb2.GetPublishedArticleRequest(
-                        metadata=_request_metadata(command.identity),
-                        article_id=common_pb2.ArticleId(value=command.article_id),
-                    ),
-                    timeout=self._security.deadline.seconds,
+    def _prepare(self, command: BlogCommand) -> PreparedCall:
+        user = command.user_id
+        deadline = self._deadline.seconds
+        match command:
+            case GetArticle():
+                prepared = _bind(
+                    service_pb2.GetArticleRequest(user_id=user, article_id=command.article_id),
+                    self._stub.GetArticle,
+                    article_response,
+                    deadline,
                 )
-                return article_response(response)
             case SearchArticles():
-                response = await self._stub.SearchArticles(
+                prepared = _bind(
                     service_pb2.SearchArticlesRequest(
-                        metadata=_request_metadata(command.identity),
+                        user_id=user,
                         query=command.query,
+                        page=command.page,
                         page_size=command.page_size,
-                        page_token=command.page_token,
+                        status=cast("common_pb2.ArticleStatus", command.status),
+                        article_type_id=command.article_type_id,
+                        tag_id=command.tag_id,
+                        sort=command.sort,
                     ),
-                    timeout=self._security.deadline.seconds,
+                    self._stub.SearchArticles,
+                    search_response,
+                    deadline,
                 )
-                return search_response(response)
-            case CreateArticleDraft():
-                response = await self._stub.CreateArticleDraft(
-                    service_pb2.CreateArticleDraftRequest(
-                        metadata=_write_metadata(command.identity, command.operation_id.value),
-                        author_user_id=common_pb2.UserId(value=command.author_user_id),
+            case ListTags():
+                prepared = _bind(
+                    service_pb2.ListTagsRequest(
+                        user_id=user,
+                        page=command.page,
+                        page_size=command.page_size,
+                        query=command.query,
+                        sort=command.sort,
+                    ),
+                    self._stub.ListTags,
+                    tags_response,
+                    deadline,
+                )
+            case ListArticleTypes():
+                prepared = _bind(
+                    service_pb2.ListArticleTypesRequest(
+                        user_id=user,
+                        page=command.page,
+                        page_size=command.page_size,
+                        query=command.query,
+                        sort=command.sort,
+                    ),
+                    self._stub.ListArticleTypes,
+                    article_types_response,
+                    deadline,
+                )
+            case CreateArticle():
+                prepared = _bind(
+                    service_pb2.CreateArticleRequest(
+                        user_id=user,
+                        operation_id=command.operation_id.value,
+                        status=cast("common_pb2.ArticleStatus", command.status),
+                        article_type_id=command.article_type_id,
                         title=command.title,
-                        body_markdown=command.body_markdown,
-                        summary=command.summary,
+                        slug=command.slug,
+                        digest=command.digest,
+                        content=command.content,
+                        tag_ids=command.tag_ids,
                     ),
-                    timeout=self._security.deadline.seconds,
+                    self._stub.CreateArticle,
+                    article_response,
+                    deadline,
                 )
-                return article_response(response)
-            case UpdateArticleDraft():
-                response = await self._stub.UpdateArticleDraft(
-                    service_pb2.UpdateArticleDraftRequest(
-                        metadata=_write_metadata(command.identity, command.operation_id.value),
-                        article_id=common_pb2.ArticleId(value=command.article_id),
+            case UpdateArticle():
+                prepared = _bind(
+                    _update_request(command),
+                    self._stub.UpdateArticle,
+                    article_response,
+                    deadline,
+                )
+            case PublishArticle():
+                prepared = _bind(
+                    service_pb2.PublishArticleRequest(
+                        user_id=user,
+                        operation_id=command.operation_id.value,
+                        article_id=command.article_id,
                         expected_version=command.expected_version,
-                        title=command.title,
-                        body_markdown=command.body_markdown,
-                        summary=command.summary,
                     ),
-                    timeout=self._security.deadline.seconds,
+                    self._stub.PublishArticle,
+                    article_response,
+                    deadline,
                 )
-                return article_response(response)
-            case AddArticleTags():
-                response = await self._stub.AddArticleTags(
-                    service_pb2.AddArticleTagsRequest(
-                        metadata=_write_metadata(command.identity, command.operation_id.value),
-                        article_id=common_pb2.ArticleId(value=command.article_id),
+            case ArchiveArticle():
+                prepared = _bind(
+                    service_pb2.ArchiveArticleRequest(
+                        user_id=user,
+                        operation_id=command.operation_id.value,
+                        article_id=command.article_id,
                         expected_version=command.expected_version,
-                        tag_ids=tuple(common_pb2.TagId(value=value) for value in command.tag_ids),
                     ),
-                    timeout=self._security.deadline.seconds,
+                    self._stub.ArchiveArticle,
+                    article_response,
+                    deadline,
                 )
-                return article_response(response)
-
-
-def _command_matches(permission: ToolPermission, command: BlogCommand) -> bool:
-    """检查 T14 权限名称与精确命令类型的一一绑定。."""
-    expected_types: Final = {
-        ToolPermission.GET_PUBLISHED_ARTICLE: GetPublishedArticle,
-        ToolPermission.SEARCH_ARTICLES: SearchArticles,
-        ToolPermission.CREATE_ARTICLE_DRAFT: CreateArticleDraft,
-        ToolPermission.UPDATE_ARTICLE_DRAFT: UpdateArticleDraft,
-        ToolPermission.ADD_ARTICLE_TAGS: AddArticleTags,
-    }
-    expected_type = expected_types.get(permission)
-    return expected_type is not None and type(command) is expected_type
-
-
-def _request_metadata(identity: RequestIdentity) -> common_pb2.ToolRequestMetadata:
-    """精确构造调用追踪元数据。."""
-    return common_pb2.ToolRequestMetadata(
-        request_id=identity.request_id,
-        correlation_id=identity.correlation_id,
-        causation_id=identity.causation_id,
-        run_id=identity.run_id.value,
-        tool_call_id=identity.tool_call_id.value,
-    )
-
-
-def _write_metadata(
-    identity: RequestIdentity, operation_id: str
-) -> common_pb2.WriteOperationMetadata:
-    """仅在契约字段中传播一次规范幂等身份。."""
-    return common_pb2.WriteOperationMetadata(
-        request=_request_metadata(identity), operation_id=operation_id
-    )
+        return prepared

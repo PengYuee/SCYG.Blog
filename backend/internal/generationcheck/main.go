@@ -13,7 +13,6 @@ import (
 )
 
 const (
-	committedOutput = "internal/generated/openapi/openapi.gen.go"
 	generatorModule = "github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.7.2"
 )
 
@@ -37,12 +36,26 @@ func run() error {
 		}
 	}()
 
-	config, err := os.ReadFile("oapi-codegen.yaml")
+	for _, artifact := range []struct{ config, output string }{
+		{"oapi-codegen.yaml", "internal/generated/openapi/openapi.gen.go"},
+		{"oapi-codegen-spec.yaml", "internal/generated/openapi/spec.gen.go"},
+	} {
+		if err := checkArtifact(tempDirectory, artifact.config, artifact.output); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// checkArtifact compares one generated artifact using its own pinned configuration.
+func checkArtifact(tempDirectory, configPath, committedOutput string) error {
+	//nolint:gosec // Both paths come solely from run's compile-time artifact list, never CLI input.
+	config, err := os.ReadFile(configPath)
 	if err != nil {
 		return fmt.Errorf("read generator config: %w", err)
 	}
-	tempOutput := filepath.ToSlash(filepath.Join(tempDirectory, "openapi.gen.go"))
-	tempConfig := filepath.Join(tempDirectory, "oapi-codegen.yaml")
+	tempOutput := filepath.ToSlash(filepath.Join(tempDirectory, filepath.Base(committedOutput)))
+	tempConfig := filepath.Join(tempDirectory, filepath.Base(configPath))
 	updatedConfig := strings.Replace(string(config), "output: "+committedOutput, "output: "+tempOutput, 1)
 	if updatedConfig == string(config) {
 		return fmt.Errorf("generator output setting %q not found", committedOutput)
@@ -61,6 +74,7 @@ func run() error {
 	if output, commandErr := command.CombinedOutput(); commandErr != nil {
 		return fmt.Errorf("run pinned generator: %w: %s", commandErr, bytes.TrimSpace(output))
 	}
+	//nolint:gosec // committedOutput is selected solely from run's compile-time artifact list.
 	committed, err := os.ReadFile(committedOutput)
 	if err != nil {
 		return fmt.Errorf("read committed output: %w", err)

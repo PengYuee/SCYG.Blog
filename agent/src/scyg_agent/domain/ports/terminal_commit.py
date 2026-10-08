@@ -27,7 +27,7 @@ class TerminalResult:
 
     schema_version: str
     capability: str
-    payload: dict[str, object]
+    payload: object
     digest: str
 
 
@@ -41,13 +41,13 @@ class TerminalCommitRequest:
     result: TerminalResult | None = None
     error_code: str | None = None
     error_message: str | None = None
+    interaction_payload: object = None
+    interaction_kind: str = "confirmation"
 
     def __post_init__(self) -> None:
         """要求终态、结构化结果和稳定失败字段严格一致."""
         run_id = self.completion.guard.run_id
         if self.events.run_id != run_id or self.audit.run_id != run_id:
-            raise InvalidTerminalCommitRequestError
-        if self.result is not None and self.completion.status is not RunStatus.SUCCEEDED:
             raise InvalidTerminalCommitRequestError
         has_error = self.error_code is not None or self.error_message is not None
         if has_error and self.completion.status is not RunStatus.FAILED:

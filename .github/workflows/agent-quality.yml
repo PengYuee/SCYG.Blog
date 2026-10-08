@@ -5,14 +5,33 @@ on:
     branches: [main]
     paths:
       - "agent/**"
+      - "contracts/**"
+      - "compose.yaml"
+      - ".dockerignore"
       - "Taskfile.yml"
       - ".github/workflows/agent-quality.yml"
   pull_request:
     paths:
       - "agent/**"
+      - "contracts/**"
+      - "compose.yaml"
+      - ".dockerignore"
       - "Taskfile.yml"
       - ".github/workflows/agent-quality.yml"
   workflow_dispatch:
+    inputs:
+      accepted_base:
+        description: Accepted pre-change contract commit SHA
+        required: true
+        type: string
+      cutover_base:
+        description: Optional explicitly approved one-time cutover baseline SHA
+        required: false
+        type: string
+      cutover_head:
+        description: Optional explicitly approved one-time cutover HEAD SHA
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -29,6 +48,8 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           clean: true
           persist-credentials: false
       - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38
@@ -39,5 +60,11 @@ jobs:
           version: "3.49.1"
       - name: Install pinned uv bootstrap
         run: python -m pip install --disable-pip-version-check uv==0.11.28
+      - name: Lint contracts and enforce accepted-base compatibility
+        env:
+          SCYG_CONTRACTS_ACCEPTED_BASE: ${{ github.event.pull_request.base.sha || github.event.before || inputs.accepted_base }}
+          SCYG_CONTRACTS_CUTOVER_BASE: ${{ inputs.cutover_base || vars.CONTRACTS_CUTOVER_BASE }}
+          SCYG_CONTRACTS_CUTOVER_HEAD: ${{ inputs.cutover_head || vars.CONTRACTS_CUTOVER_HEAD }}
+        run: task contracts:check
       - name: Run static-safe Agent QA only
         run: task qa:agent:static

@@ -12,3 +12,6 @@ dist/
 .env
 tests/test-agent.toml
 agent.toml
+src/scyg_agent/generated/proto/
+src/scyg_agent/generated/.generated-staged-*/
+src/scyg_agent/generated/.generated-backup-*/

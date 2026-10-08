@@ -3,8 +3,8 @@ version: '3'
 vars:
   BINARY: api
   MODULE: github.com/PengYuee/SCYG.Blog/backend
-  GO_VERSION: 1.26.0
-  GO_IMAGE: golang:1.26.0-bookworm@sha256:2a0ba12e116687098780d3ce700f9ce3cb340783779646aafbabed748fa6677c
+  GO_VERSION: 1.26.8
+  GO_IMAGE: golang:1.26.8-bookworm@sha256:dc9ad6c05acc7a88e5b71bde60a5fe3bd4b9f0db209011711b464107438a8107
   POSTGRES_IMAGE: postgres:17.5@sha256:aadf2c0696f5ef357aa7a68da995137f0cf17bad0bf6e1f17de06ae5c769b302
   TASK_VERSION: v3.49.1
   GOFUMPT_CMD: go run mvdan.cc/gofumpt@v0.10.0
@@ -30,20 +30,22 @@ tasks:
     cmds:
       - cmd: >-
           powershell.exe -NoProfile -Command
-          "if ((task --version).Trim() -ne '{{trimPrefix "v" .TASK_VERSION}}') { Write-Error '必须使用 Task {{.TASK_VERSION}}'; exit 1 }"
+          "if ((& '{{.TASK_EXE}}' --version).Trim() -ne '{{trimPrefix "v" .TASK_VERSION}}') { Write-Error '必须使用 Task {{.TASK_VERSION}}'; exit 1 }"
         platforms: [windows]
       - cmd: >-
-          sh -c 'test "$(task --version)" = "{{trimPrefix "v" .TASK_VERSION}}"'
+          sh -c 'test "$("{{.TASK_EXE}}" --version)" = "{{trimPrefix "v" .TASK_VERSION}}"'
         platforms: [linux, darwin]
 
   format:
     desc: Format all Go source files
+    deps: [proto:generate]
     cmds:
       - '{{.GOFUMPT_CMD}} -w .'
       - '{{.GOIMPORTS_CMD}} -w -local {{.MODULE}} .'
 
   fmt:check:
     desc: Reject Go formatting drift without modifying files
+    deps: [proto:generate]
     cmds:
       - cmd: >-
           powershell.exe -NoProfile -Command
@@ -55,17 +57,20 @@ tasks:
 
   lint:
     desc: Run pinned static analyzers outside the runtime module graph
+    deps: [proto:generate]
     cmds:
       - '{{.GOLANGCI_LINT_CMD}} run ./...'
       - '{{.NILAWAY_CMD}} -include-pkgs={{.MODULE}}/... ./...'
 
   unit:
     desc: Run uncached race-enabled unit tests
+    deps: [proto:generate]
     cmds:
       - go test -race -shuffle=on -count=1 ./...
 
   integration:
     desc: Run integration-tagged tests with explicit QA configuration
+    deps: [proto:generate]
     cmds:
       - cmd: >-
           sh -c 'test -n "$QA_CONFIG" || { echo "QA_CONFIG is required" >&2; exit 1; }; if [ -n "$PACKAGES" ]; then go test -tags=integration -race -shuffle=on -count=1 $PACKAGES; else go test -tags=integration -race -shuffle=on -count=1 ./...; fi'
@@ -82,6 +87,7 @@ tasks:
 
   e2e:
     desc: Run end-to-end-tagged tests with explicit QA configuration
+    deps: [proto:generate]
     cmds:
       - cmd: >-
           sh -c 'test -n "$QA_CONFIG" || { echo "QA_CONFIG is required" >&2; exit 1; }; if [ -n "$PACKAGES" ]; then go test -tags=e2e -race -shuffle=on -count=1 $PACKAGES; else go test -tags=e2e -race -shuffle=on -count=1 ./...; fi'
@@ -100,14 +106,17 @@ tasks:
     desc: Regenerate all committed source artifacts
     cmds:
       - task: api:generate
+      - task: proto:generate
 
   build:
     desc: Build the API binary
+    deps: [proto:generate]
     cmds:
       - go build -trimpath -o bin/{{.BINARY}}{{exeExt}} ./cmd/api
 
   vet:
     desc: Run Go vet
+    deps: [proto:generate]
     cmds:
       - go vet ./...
 
@@ -118,6 +127,7 @@ tasks:
 
   vuln:
     desc: Scan packages with pinned govulncheck
+    deps: [proto:generate]
     cmds:
       - '{{.GOVULNCHECK_CMD}} ./...'
 
@@ -130,6 +140,7 @@ tasks:
     desc: Generate OpenAPI Gin interfaces and transport models
     cmds:
       - '{{.OAPI_CODEGEN_CMD}} --config oapi-codegen.yaml api/openapi.yaml'
+      - '{{.OAPI_CODEGEN_CMD}} --config oapi-codegen-spec.yaml api/openapi.yaml'
 
   api:docs:sync:
     desc: Synchronize the API docs copy from the authoritative specification
@@ -203,7 +214,7 @@ tasks:
   container:build:
     desc: Build the pinned API image
     cmds:
-      - docker build --pull=false --tag {{.IMAGE}} .
+      - docker build --pull=false --tag {{.IMAGE}} -f Dockerfile ..
 
   compose:smoke:
     desc: Start Compose and wait for PostgreSQL and API healthchecks
@@ -223,6 +234,7 @@ tasks:
 
   qa:feature:
     desc: Run fast feature-level backend checks
+    deps: [proto:generate]
     cmds:
       - task: task:version:check
       - task: fmt:check
@@ -231,6 +243,7 @@ tasks:
 
   qa:contract:
     desc: Run API contract checks
+    deps: [proto:generate]
     cmds:
       - task: api:lint
       - task: api:generate:check
@@ -268,6 +281,7 @@ tasks:
 
   qa:database:
     desc: Run the fixed QA database orchestrator
+    deps: [proto:generate]
     cmds:
       - cmd: test -n "$QA_CONFIG" || { echo "QA_CONFIG is required" >&2; exit 1; }; go run ./cmd/qa-database -config "$QA_CONFIG"
         platforms: [linux, darwin]
@@ -309,3 +323,9 @@ tasks:
     cmds:
       - task: qa:database
       - task: qa:container
+
+  proto:generate:
+    desc: Generate ignored internal protobuf bindings before consuming Go packages
+    run: once
+    cmds:
+      - npx --yes @bufbuild/buf@1.47.2 generate ../contracts --template ../contracts/buf.gen.go.yaml --output internal/generated/proto

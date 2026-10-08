@@ -1,4 +1,4 @@
-"""Worker 独立容量和公平轮询测试."""
+"""Unified Recipe capacity, fair polling, and bounded Worker lifecycle tests."""
 
 from datetime import UTC, datetime, timedelta
 from typing import final, override
@@ -18,9 +18,6 @@ from scyg_agent.domain.runs.repository import (
     RunLease,
 )
 from scyg_agent.domain.runs.repository_values import LeaseToken
-from scyg_agent.runtimes.base import AdapterIdentity
-from scyg_agent.runtimes.registry import default_registry
-from scyg_agent.runtimes.router import RuntimeRouter
 from scyg_agent.worker import (
     InvalidWorkerTransitionError,
     Worker,
@@ -28,7 +25,8 @@ from scyg_agent.worker import (
     WorkerDependencies,
     WorkerState,
 )
-from tests.runtimes.fakes import FakeRuntimeAdapter
+
+from .test_executor import StructuredRunner
 
 NOW = datetime(2026, 7, 12, 18, tzinfo=UTC)
 
@@ -111,28 +109,29 @@ class DelayedClaimRepository(QueueRepository):
 
 
 @pytest.mark.anyio
-async def test_mixed_queues_never_exceed_independent_capacity(
+async def test_mixed_queues_never_exceed_shared_capacity(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Given 8 SIMPLE 和 3 DEEP, When 调度, Then 峰值不超过 4 和 1."""
+    """Both persisted queue kinds share the same bounded Recipe capacity."""
     repository = QueueRepository()
     active = {RuntimeKind.SIMPLE: 0, RuntimeKind.DEEP: 0}
     maxima = {RuntimeKind.SIMPLE: 0, RuntimeKind.DEEP: 0}
     completed = 0
+    peak_total = 0
     first_wave = anyio.Event()
     all_done = anyio.Event()
 
     async def controlled_execute(
         lease: RunLease,
         _dependencies: WorkerDependencies,
-        _router: RuntimeRouter,
         _config: WorkerConfig,
     ) -> None:
-        nonlocal completed
+        nonlocal completed, peak_total
         kind = RuntimeKind.SIMPLE if "simple" in str(lease.run_id) else RuntimeKind.DEEP
         active[kind] += 1
         maxima[kind] = max(maxima[kind], active[kind])
-        if sum(active.values()) == 5:
+        peak_total = max(peak_total, sum(active.values()))
+        if sum(active.values()) == 4:
             first_wave.set()
         await first_wave.wait()
         active[kind] -= 1
@@ -141,22 +140,14 @@ async def test_mixed_queues_never_exceed_independent_capacity(
             all_done.set()
 
     monkeypatch.setattr("scyg_agent.worker.service.execute_lease", controlled_execute)
-    router = RuntimeRouter(
-        default_registry(
-            FakeRuntimeAdapter(AdapterIdentity("simple-test", RuntimeKind.SIMPLE)),
-            FakeRuntimeAdapter(AdapterIdentity("deep-test", RuntimeKind.DEEP)),
-        )
-    )
     worker = Worker(
         ExecutionOwnerId("worker_schedule01"),
-        WorkerDependencies(repository, UnusedCommitter(), lambda: NOW),
-        router,
+        WorkerDependencies(repository, UnusedCommitter(), lambda: NOW, StructuredRunner()),
         WorkerConfig(poll_interval=timedelta(milliseconds=1)),
     )
     fresh = Worker(
         ExecutionOwnerId("worker_schedule02"),
-        WorkerDependencies(repository, UnusedCommitter(), lambda: NOW),
-        router,
+        WorkerDependencies(repository, UnusedCommitter(), lambda: NOW, StructuredRunner()),
     )
     with pytest.raises(InvalidWorkerTransitionError):
         await fresh.stop()
@@ -166,10 +157,10 @@ async def test_mixed_queues_never_exceed_independent_capacity(
         await all_done.wait()
         await worker.stop()
 
-    assert maxima == {RuntimeKind.SIMPLE: 4, RuntimeKind.DEEP: 1}
-    assert all(
-        limit <= (4 if kind is RuntimeKind.SIMPLE else 1) for kind, limit in repository.claim_limits
-    )
+    assert max(maxima.values()) <= 4
+    assert completed == 11
+    assert peak_total == 4
+    assert all(limit <= 4 for _kind, limit in repository.claim_limits)
     assert {kind for kind, _limit in repository.claim_limits} == set(RuntimeKind)
     assert worker.state is WorkerState.STOPPED
     await worker.stop()
@@ -181,16 +172,9 @@ async def test_mixed_queues_never_exceed_independent_capacity(
 async def test_claim_database_error_uses_backoff_and_worker_remains_stoppable() -> None:
     """Given claim 瞬时失败, When 调度, Then 退避且仍可有界停止."""
     repository = FailingClaimRepository()
-    runtime_router = RuntimeRouter(
-        default_registry(
-            FakeRuntimeAdapter(AdapterIdentity("simple-db", RuntimeKind.SIMPLE)),
-            FakeRuntimeAdapter(AdapterIdentity("deep-db", RuntimeKind.DEEP)),
-        )
-    )
     worker = Worker(
         ExecutionOwnerId("worker_database01"),
-        WorkerDependencies(repository, UnusedCommitter(), lambda: NOW),
-        runtime_router,
+        WorkerDependencies(repository, UnusedCommitter(), lambda: NOW, StructuredRunner()),
         WorkerConfig(error_backoff=timedelta(milliseconds=1)),
     )
 
@@ -215,23 +199,15 @@ async def test_successful_slow_claim_is_not_treated_as_backoff(
     async def observe_execute(
         lease: RunLease,
         dependencies: WorkerDependencies,
-        runtime_router: RuntimeRouter,
         config: WorkerConfig,
     ) -> None:
-        _ = (lease, dependencies, runtime_router, config)
+        _ = (lease, dependencies, config)
         executed.set()
 
     monkeypatch.setattr("scyg_agent.worker.service.execute_lease", observe_execute)
-    router = RuntimeRouter(
-        default_registry(
-            FakeRuntimeAdapter(AdapterIdentity("simple-slow-claim", RuntimeKind.SIMPLE)),
-            FakeRuntimeAdapter(AdapterIdentity("deep-slow-claim", RuntimeKind.DEEP)),
-        )
-    )
     worker = Worker(
         ExecutionOwnerId("worker_slowclaim01"),
-        WorkerDependencies(repository, UnusedCommitter(), lambda: NOW),
-        router,
+        WorkerDependencies(repository, UnusedCommitter(), lambda: NOW, StructuredRunner()),
         WorkerConfig(
             poll_interval=timedelta(milliseconds=1),
             error_backoff=timedelta(milliseconds=5),
@@ -260,24 +236,16 @@ async def test_terminal_database_error_isolated_to_one_execution(
     async def failing_execute(
         lease: RunLease,
         dependencies: WorkerDependencies,
-        runtime_router: RuntimeRouter,
         config: WorkerConfig,
     ) -> None:
-        _ = (lease, dependencies, runtime_router, config)
+        _ = (lease, dependencies, config)
         failed.set()
         raise SQLAlchemyError
 
     monkeypatch.setattr("scyg_agent.worker.service.execute_lease", failing_execute)
-    runtime_router = RuntimeRouter(
-        default_registry(
-            FakeRuntimeAdapter(AdapterIdentity("simple-terminal-db", RuntimeKind.SIMPLE)),
-            FakeRuntimeAdapter(AdapterIdentity("deep-terminal-db", RuntimeKind.DEEP)),
-        )
-    )
     worker = Worker(
         ExecutionOwnerId("worker_database02"),
-        WorkerDependencies(repository, UnusedCommitter(), lambda: NOW),
-        runtime_router,
+        WorkerDependencies(repository, UnusedCommitter(), lambda: NOW, StructuredRunner()),
         WorkerConfig(error_backoff=timedelta(milliseconds=1)),
     )
 

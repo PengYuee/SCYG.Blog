@@ -13,3 +13,5 @@ coverage.html
 /config.*.local.yaml
 /config.qa.yaml
 /config.*.qa.yaml
+/data/article-images/
+/internal/generated/proto/

@@ -6,6 +6,7 @@ import pytest
 from langgraph.checkpoint.base import empty_checkpoint
 from psycopg import AsyncConnection
 from pydantic import SecretStr
+from sqlalchemy.engine import make_url
 
 from scyg_agent.adapters.langgraph.checkpointer import CheckpointStore
 from scyg_agent.adapters.langgraph.metadata import (
@@ -27,20 +28,10 @@ if TYPE_CHECKING:
     from langchain_core.runnables import RunnableConfig
 
 
-def _environment(name: str) -> str:
-    """读取统一验收配置中的安全端点."""
-    settings = require_test_settings()
-    if name == "SCYG_T13_DATABASE_URL":
-        return settings.normal_url
-    if name == "SCYG_T13_ADMIN_DATABASE_URL":
-        return settings.require_admin_url()
-    raise ValueError(name)
-
-
 def _config() -> CheckpointerConfig:
     """构造不泄密的共享应用池配置."""
     return CheckpointerConfig(
-        dsn=SecretStr(_environment("SCYG_T13_DATABASE_URL")),
+        dsn=SecretStr(require_test_settings().listener_dsn("normal")),
         min_pool_size=1,
         max_pool_size=2,
         close_timeout_seconds=2,
@@ -49,9 +40,14 @@ def _config() -> CheckpointerConfig:
 
 async def _admin() -> AsyncConnection[tuple[str, ...]]:
     """打开仅用于隔离验收破坏与恢复的管理员连接."""
-    return await AsyncConnection.connect(
-        _environment("SCYG_T13_ADMIN_DATABASE_URL"), autocommit=True
+    dsn = (
+        make_url(require_test_settings().require_admin_url())
+        .set(
+            drivername="postgresql", database=make_url(require_test_settings().normal_url).database
+        )
+        .render_as_string(hide_password=False)
     )
+    return await AsyncConnection.connect(dsn, autocommit=True)
 
 
 @pytest.mark.anyio
@@ -95,7 +91,8 @@ async def test_checkpoint_recovers_after_restart_and_closes_every_session() -> N
     admin = await _admin()
     try:
         result = await admin.execute(
-            "SELECT count(*) FROM pg_stat_activity WHERE application_name=%s",
+            """SELECT count(*) FROM pg_stat_activity
+            WHERE application_name=%s AND datname=current_database()""",
             ("scyg-langgraph-checkpoints",),
         )
         assert (await result.fetchone()) == (0,)
@@ -133,18 +130,21 @@ async def test_setup_never_overwrites_conflicting_version_metadata() -> None:
 
 @pytest.mark.anyio
 async def test_missing_table_fails_before_saver() -> None:
-    # Given: 必需检查点表随后被删除.
+    # Hide a required table without destroying durable checkpoint data.
     config = _config()
     admin = await _admin()
     try:
-        _ = await admin.execute("DROP TABLE langgraph.checkpoints")
+        _ = await admin.execute("ALTER TABLE langgraph.checkpoints RENAME TO checkpoints_missing")
+        try:
+            async with CheckpointStore(config) as store:
+                with pytest.raises(IncompatibleCheckpointSchema):
+                    _ = await store.readiness()
+                with pytest.raises(IncompatibleCheckpointSchema):
+                    async with store.saver():
+                        pytest.fail("不兼容 schema 不得借出 saver")
+        finally:
+            _ = await admin.execute(
+                "ALTER TABLE langgraph.checkpoints_missing RENAME TO checkpoints"
+            )
     finally:
         await admin.close()
-
-    # When/Then: readiness 和 saver 均类型化失败且不修复 schema.
-    async with CheckpointStore(config) as store:
-        with pytest.raises(IncompatibleCheckpointSchema):
-            _ = await store.readiness()
-        with pytest.raises(IncompatibleCheckpointSchema):
-            async with store.saver():
-                pytest.fail("不兼容 schema 不得借出 saver")

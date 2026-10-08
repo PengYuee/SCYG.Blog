@@ -1,5 +1,6 @@
-"""Blog gRPC 边界的冻结命令与封闭结果。."""
+"""Frozen BlogContent commands and complete management projections."""
 
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import NewType
@@ -8,14 +9,15 @@ from scyg_agent.domain.runs import OperationId, RunId, ToolCallId
 
 RequestId = NewType("RequestId", str)
 CorrelationId = NewType("CorrelationId", str)
-ArticleId = NewType("ArticleId", str)
-TagId = NewType("TagId", str)
+ArticleId = NewType("ArticleId", int)
+TagId = NewType("TagId", int)
 BlogUserId = NewType("BlogUserId", str)
+type RpcDispatch = Callable[[Callable[[], Awaitable[object]]], Awaitable[object]]
 
 
 @dataclass(frozen=True, slots=True)
 class RequestIdentity:
-    """携带一次工具调用的审计与追踪身份。."""
+    """Internal tracing identity; never forwarded as arbitrary metadata."""
 
     request_id: RequestId
     correlation_id: CorrelationId
@@ -25,102 +27,191 @@ class RequestIdentity:
 
 
 @dataclass(frozen=True, slots=True)
-class GetPublishedArticle:
-    """读取一个已发布文章。."""
+class GetArticle:
+    """Read one article through current management authorization."""
 
     identity: RequestIdentity
+    user_id: BlogUserId
     article_id: ArticleId
 
 
 @dataclass(frozen=True, slots=True)
 class SearchArticles:
-    """搜索一个有界文章页。."""
+    """Search management articles using explicit page-based filters."""
 
     identity: RequestIdentity
-    query: str
-    page_size: int
-    page_token: str | None = None
+    user_id: BlogUserId
+    query: str = ""
+    page: int = 1
+    page_size: int = 20
+    status: int = 0
+    article_type_id: int = 0
+    tag_id: int = 0
+    sort: str = ""
 
 
 @dataclass(frozen=True, slots=True)
-class CreateArticleDraft:
-    """以稳定操作身份创建草稿。."""
+class ListTags:
+    """List existing management tags with database pagination."""
 
     identity: RequestIdentity
+    user_id: BlogUserId
+    page: int = 1
+    page_size: int = 20
+    query: str = ""
+    sort: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class ListArticleTypes:
+    """List existing article classifications with database pagination."""
+
+    identity: RequestIdentity
+    user_id: BlogUserId
+    page: int = 1
+    page_size: int = 20
+    query: str = ""
+    sort: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class CreateArticle:
+    """Create using a caller-persisted UUIDv4 write intent identity."""
+
+    identity: RequestIdentity
+    user_id: BlogUserId
     operation_id: OperationId
-    author_user_id: BlogUserId
+    status: int
+    article_type_id: int
     title: str
-    body_markdown: str
-    summary: str
+    slug: str
+    digest: str
+    content: str
+    tag_ids: tuple[TagId, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
-class UpdateArticleDraft:
-    """以稳定操作身份和预期版本更新草稿。."""
+class UpdateArticle:
+    """Apply optional patches; None means absent, empty means replacement."""
 
     identity: RequestIdentity
+    user_id: BlogUserId
     operation_id: OperationId
     article_id: ArticleId
     expected_version: int
-    title: str
-    body_markdown: str
-    summary: str
+    article_type_id: int | None = None
+    title: str | None = None
+    slug: str | None = None
+    digest: str | None = None
+    content: str | None = None
+    tag_ids: tuple[TagId, ...] | None = None
 
 
 @dataclass(frozen=True, slots=True)
-class AddArticleTags:
-    """以稳定操作身份添加既有标签。."""
+class PublishArticle:
+    """Publish under optimistic version checking and a stable UUIDv4."""
 
     identity: RequestIdentity
+    user_id: BlogUserId
     operation_id: OperationId
     article_id: ArticleId
     expected_version: int
-    tag_ids: tuple[TagId, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ArchiveArticle:
+    """Archive under optimistic version checking and a stable UUIDv4."""
+
+    identity: RequestIdentity
+    user_id: BlogUserId
+    operation_id: OperationId
+    article_id: ArticleId
+    expected_version: int
 
 
 type BlogCommand = (
-    GetPublishedArticle | SearchArticles | CreateArticleDraft | UpdateArticleDraft | AddArticleTags
+    GetArticle
+    | SearchArticles
+    | ListTags
+    | ListArticleTypes
+    | CreateArticle
+    | UpdateArticle
+    | PublishArticle
+    | ArchiveArticle
 )
 
 
 @dataclass(frozen=True, slots=True)
-class ArticleResult:
-    """返回经边界解析的文章标量投影。."""
+class TaxonomyResult:
+    """Project a numeric taxonomy identity and its current name."""
 
-    article_id: ArticleId
-    title: str
-    body_markdown: str
-    summary: str
-    status: int
-    version: int
+    id: int
+    name: str
 
 
 @dataclass(frozen=True, slots=True)
-class SearchHit:
-    """返回经边界解析的搜索命中。."""
+class ArticleResult:
+    """Preserve the complete management article projection."""
 
     article_id: ArticleId
     title: str
-    summary: str
+    content: str
+    digest: str
+    status: int
+    version: int
+    article_type_id: int
+    slug: str
+    tags: tuple[TaxonomyResult, ...]
+    created_at: str
+    updated_at: str
+    published_at: str | None
+    support: int
+    comment: int
+    visited: int
 
 
 @dataclass(frozen=True, slots=True)
 class ArticleSucceeded:
-    """表示文章操作成功。."""
+    """Return one successfully decoded article projection."""
 
     article: ArticleResult
 
 
 @dataclass(frozen=True, slots=True)
 class SearchSucceeded:
-    """表示搜索成功。."""
+    """Return validated article projections and their pagination fields."""
 
-    articles: tuple[SearchHit, ...]
-    next_page_token: str | None
+    articles: tuple[ArticleResult, ...]
+    page: int
+    page_size: int
+    total_items: int
+    total_pages: int
+
+
+@dataclass(frozen=True, slots=True)
+class TagsSucceeded:
+    """Current taxonomy page, not an opaque cursor."""
+
+    tags: tuple[TaxonomyResult, ...]
+    page: int
+    page_size: int
+    total_items: int
+    total_pages: int
+
+
+@dataclass(frozen=True, slots=True)
+class ArticleTypesSucceeded:
+    """Current classification page, not an opaque cursor."""
+
+    article_types: tuple[TaxonomyResult, ...]
+    page: int
+    page_size: int
+    total_items: int
+    total_pages: int
 
 
 class FailureKind(StrEnum):
-    """关闭所有允许暴露给上层的 gRPC 失败类别。."""
+    """Classify public client failures without exposing infrastructure details."""
 
     INVALID_TOOL = "invalid_tool"
     INVALID_VERSION = "invalid_version"
@@ -137,15 +228,16 @@ class FailureKind(StrEnum):
     INTERNAL = "internal"
     INVALID_RESPONSE = "invalid_response"
     CHANNEL_CLOSED = "channel_closed"
-    SECURITY_DRIFT = "security_drift"
 
 
 @dataclass(frozen=True, slots=True)
 class BlogFailure:
-    """返回无服务端详情、无请求内容的稳定失败。."""
+    """Carry a sanitized failure and the existing retry decision."""
 
     kind: FailureKind
     retryable: bool
 
 
-type BlogResult = ArticleSucceeded | SearchSucceeded | BlogFailure
+type BlogResult = (
+    ArticleSucceeded | SearchSucceeded | TagsSucceeded | ArticleTypesSucceeded | BlogFailure
+)

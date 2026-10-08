@@ -15,10 +15,10 @@ tasks:
     cmds:
       - cmd: >-
           powershell.exe -NoProfile -Command
-          "if ((task --version).Trim() -ne '{{trimPrefix "v" .TASK_VERSION}}') { Write-Error '必须使用 Task {{.TASK_VERSION}}'; exit 1 }"
+          "if ((& '{{.TASK_EXE}}' --version).Trim() -ne '{{trimPrefix "v" .TASK_VERSION}}') { Write-Error '必须使用 Task {{.TASK_VERSION}}'; exit 1 }"
         platforms: [windows]
       - cmd: >-
-          sh -c 'test "$(task --version)" = "{{trimPrefix "v" .TASK_VERSION}}"'
+          sh -c 'test "$("{{.TASK_EXE}}" --version)" = "{{trimPrefix "v" .TASK_VERSION}}"'
         platforms: [linux, darwin]
 
   uv:version:check:
@@ -37,11 +37,46 @@ tasks:
     cmds:
       - task: task:version:check
       - task: uv:version:check
-      - cmd: uv run --locked --project agent python agent/scripts/qa_agent.py --mode full
+      - task: agent:install
+      - cmd: uv run --locked --no-sync --project agent python agent/scripts/qa_agent.py --mode full
 
   qa:agent:static:
     desc: Run secret-free static Agent QA for CI only
     cmds:
       - task: task:version:check
       - task: uv:version:check
-      - cmd: uv run --locked --project agent python agent/scripts/qa_agent.py --mode static
+      - task: agent:install
+      - cmd: uv run --locked --no-sync --project agent python agent/scripts/qa_agent.py --mode static
+
+  contracts:generate:python:
+    desc: Generate Python bindings before installing the Agent package
+    cmds:
+      - uv run --no-project --python 3.12.13 python agent/src/scyg_agent/contract_generation.py generate
+
+  contracts:generate:go:
+    desc: Generate Go internal protobuf bindings from the root contracts
+    cmds:
+      - npx --yes @bufbuild/buf@1.47.2 generate contracts --template contracts/buf.gen.go.yaml --output backend/internal/generated/proto
+
+  contracts:check:
+    desc: Lint and check breaking changes against SCYG_CONTRACTS_ACCEPTED_BASE
+    cmds:
+      - uv run --no-project --python 3.12.13 python agent/scripts/contracts_gate.py
+
+  agent:install:
+    desc: Generate and install the real noneditable Agent distribution
+    cmds:
+      - task: contracts:generate:python
+      - uv sync --locked --project agent --no-editable --reinstall-package scyg-agent
+
+  agent:test:
+    desc: Generate, install and test the installed Agent package
+    cmds:
+      - task: agent:install
+      - uv run --locked --no-sync --project agent pytest
+
+  agent:build:
+    desc: Generate protobuf bindings before building wheel and sdist
+    cmds:
+      - task: contracts:generate:python
+      - uv build --project agent

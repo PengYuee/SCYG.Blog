@@ -28,10 +28,13 @@ class RunInput:
 
     def __post_init__(self) -> None:
         """拒绝空值和超出契约长度的输入。."""
-        if not self.initial_message or len(self.initial_message) > MAX_MESSAGE_LENGTH:
+        maximum = 100_000 if self.capability == "polish" else MAX_MESSAGE_LENGTH
+        if not self.initial_message or len(self.initial_message) > maximum:
             field = "initial_message"
             raise InvalidRunInputError(field)
-        if not self.article_id or len(self.article_id) > MAX_ARTICLE_ID_LENGTH:
+        if (not self.article_id and self.capability is None) or len(
+            self.article_id
+        ) > MAX_ARTICLE_ID_LENGTH:
             field = "article_id"
             raise InvalidRunInputError(field)
 

@@ -37,12 +37,15 @@ type Options struct {
 	HTTP config.HTTP
 	// ArticleImages 提供已验证的图片上传请求体上限；零值兼容既有构造测试并使用安全默认值。
 	ArticleImages config.ArticleImages
+	// AgentRequestTooLarge is only supplied when Agent routes are mounted.
+	AgentRequestTooLarge func(*gin.Context)
 }
 
 // Server owns one configured HTTP server and its concurrent shutdown state.
 type Server struct {
 	// httpServer is the configured standard-library server.
-	httpServer *http.Server
+	httpServer     *http.Server
+	cancelRequests context.CancelFunc
 	// shutdownDone coordinates callers sharing an active shutdown attempt.
 	shutdownDone chan struct{}
 	// shutdownErr stores the active attempt result for concurrent callers.
@@ -71,17 +74,19 @@ func New(options Options) (*Server, error) {
 	if uploadRequestBytes == 0 {
 		uploadRequestBytes = MaxArticleImageUploadRequestBytes
 	}
-	engine.Use(requestID(), securityHeaders(), recovery(options.Logger), accessLog(options.Logger), cors(options.HTTP.CORSAllowedOrigins()), requestLimit(MaxRequestBodyBytes, uploadRequestBytes))
+	engine.Use(requestID(), securityHeaders(), recovery(options.Logger), accessLog(options.Logger), cors(options.HTTP.CORSAllowedOrigins()), requestLimit(MaxRequestBodyBytes, uploadRequestBytes, options.AgentRequestTooLarge))
 	if err := options.Mount(engine); err != nil {
 		return nil, fmt.Errorf("mount routes: %w", err)
 	}
 	address := net.JoinHostPort(options.HTTP.Host(), strconv.Itoa(options.HTTP.Port()))
+	baseContext, cancelRequests := context.WithCancel(context.Background())
 	configured := &http.Server{
 		Addr: address, Handler: engine,
 		ReadHeaderTimeout: options.HTTP.ReadHeaderTimeout(), ReadTimeout: options.HTTP.ReadTimeout(),
 		WriteTimeout: options.HTTP.WriteTimeout(), IdleTimeout: options.HTTP.IdleTimeout(), MaxHeaderBytes: MaxHeaderBytes,
+		BaseContext: func(net.Listener) context.Context { return baseContext },
 	}
-	return &Server{httpServer: configured}, nil
+	return &Server{httpServer: configured, cancelRequests: cancelRequests}, nil
 }
 
 // Handler exposes the fully configured handler for tests and embedding.
@@ -153,3 +158,6 @@ func (server *Server) Shutdown(ctx context.Context) error {
 	server.shutdownMu.Unlock()
 	return err
 }
+
+// Close cancels active request contexts and forcibly releases blocked connections.
+func (server *Server) Close() error { server.cancelRequests(); return server.httpServer.Close() }
