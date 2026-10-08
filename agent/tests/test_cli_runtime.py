@@ -146,7 +146,7 @@ class FakeWindowsSignalApi:
 
 def test_windows_bridge_wakes_once_and_restores_all_handlers() -> None:
     async def scenario() -> None:
-        values = (signal.SIGINT, signal.SIGTERM, signal.SIGBREAK)
+        values = (signal.SIGINT, signal.SIGTERM, signal.SIGABRT)
         api = FakeWindowsSignalApi(values)
         controller = ShutdownController()
         async with anyio.create_task_group() as tasks:

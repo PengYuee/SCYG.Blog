@@ -34,6 +34,8 @@ uv run --locked --no-sync pytest -q --cov=scyg_agent --cov-branch
 
 Python gRPC 绑定生成树为 `agent/src/scyg_agent/generated/proto/`；需要重新生成时，从仓库根执行 `task agent:install`，同时刷新已安装包。业务层不得使用生成类型作为 domain 类型。90% 分支覆盖门槛统计可独立测试的业务模块，具体范围统一维护在 `pyproject.toml` 的 `tool.coverage.report.omit`；真实 PostgreSQL、checkpoint、Provider 与构建路径另做端点或产物验收。
 
+未配置端点时，PostgreSQL 测试会明确跳过；静态成功不表示 Run owner、状态与幂等 SQL 已通过验收。完整验收必须提供共享测试配置，实际执行对应的 PostgreSQL 用例，不能以静态覆盖率替代数据库行为证据。
+
 生成物固定使用 LF，根 `.gitattributes` 对该目录强制 `eol=lf`，避免 Windows 检出换行导致字节级漂移。既有工作副本若已检出为 CRLF，重跑 `task agent:install` 后再执行 `check`，不手工修改绑定。原生生成与漂移检查需要 Node.js/npx 或 `SCYG_BUF_BIN` 指向的 Buf；有效 `BUF_TOKEN` 只适用于这些原生进程。当前 Docker 构建不接收宿主机 `BUF_TOKEN`，不能据此宣称容器生成支持 token，详见[合同生成与检查](README.md#合同生成与检查)。
 
 ## 本地拓扑

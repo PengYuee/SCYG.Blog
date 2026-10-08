@@ -131,7 +131,6 @@ jobs:
           --health-timeout 3s
           --health-retries 10
     env:
-      QA_CONFIG: ${{ runner.temp }}/config.qa.yaml
       QA_ADMIN_DSN: postgres://postgres:ci-only-password@127.0.0.1:5432/postgres?sslmode=disable
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -148,6 +147,8 @@ jobs:
           version: ${{ env.TASK_VERSION }}
       - name: Materialize strict QA configuration
         run: |
+          QA_CONFIG="$RUNNER_TEMP/config.qa.yaml"
+          printf 'QA_CONFIG=%s\n' "$QA_CONFIG" >> "$GITHUB_ENV"
           cat > "$QA_CONFIG" <<EOF
           qa:
             postgres_admin_dsn: $QA_ADMIN_DSN

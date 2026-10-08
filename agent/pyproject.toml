@@ -166,6 +166,7 @@ omit = [
     "*/scyg_agent/adapters/database/interaction_store.py", # Interaction SQL requires PostgreSQL acceptance.
     "*/scyg_agent/adapters/database/terminal_commit.py", # Atomic terminal SQL requires PostgreSQL acceptance.
     "*/scyg_agent/adapters/database/tool_store.py", # Tool idempotency SQL requires PostgreSQL acceptance.
+    "*/scyg_agent/application/control.py", # Owner, state and idempotency SQL require real PostgreSQL control acceptance.
     "*/scyg_agent/adapters/langgraph/checkpointer.py", # Checkpoint setup/read/write requires PostgreSQL acceptance.
     "*/scyg_agent/agents/input.py", # Persisted Agent input decoding is covered by P9/P10 acceptance.
     "*/scyg_agent/agents/production.py", # LangChain graph construction requires provider/checkpoint acceptance.
