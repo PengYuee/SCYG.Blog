@@ -77,14 +77,14 @@ func Test_E2E_public_reads_hide_drafts(t *testing.T) {
 	if visible := h.request(http.MethodGet, publicPublishedLocation, "", nil); visible.StatusCode != http.StatusOK {
 		t.Fatalf("公开详情未返回直接发布文章：%d", visible.StatusCode)
 	}
-	publish := h.request(http.MethodPost, draft.Header.Get("Location")+"/publish", "", map[string]string{"If-Match": draft.Header.Get("ETag")})
+	publish := h.authenticatedRequest(http.MethodPost, draft.Header.Get("Location")+"/publish", "", map[string]string{"If-Match": draft.Header.Get("ETag")})
 	if publish.StatusCode != http.StatusOK {
 		t.Fatalf("管理端发布草稿失败：%d", publish.StatusCode)
 	}
 	if visible := h.request(http.MethodGet, publicDraftLocation, "", nil); visible.StatusCode != http.StatusOK {
 		t.Fatalf("发布后文章不可见：%d", visible.StatusCode)
 	}
-	archive := h.request(http.MethodPost, draft.Header.Get("Location")+"/archive", "", map[string]string{"If-Match": publish.Header.Get("ETag")})
+	archive := h.authenticatedRequest(http.MethodPost, draft.Header.Get("Location")+"/archive", "", map[string]string{"If-Match": publish.Header.Get("ETag")})
 	if archive.StatusCode != http.StatusOK {
 		t.Fatalf("管理端归档文章失败：%d", archive.StatusCode)
 	}
@@ -93,32 +93,32 @@ func Test_E2E_public_reads_hide_drafts(t *testing.T) {
 	}
 }
 
-func Test_E2E_allow_all_performs_real_crud(t *testing.T) {
-	h := newHarness(t, allowAll{})
+func Test_E2E_authenticated_performs_real_crud(t *testing.T) {
+	h := newHarness(t, nil)
 	h.restartPerRequest = true
 	defer h.close()
 	articleType, tag := createContent(t, h)
 	article := createArticle(t, h, articleType, tag, "crud", articleStatusDraft)
 	for _, location := range []string{articleType.Header.Get("Location"), tag.Header.Get("Location"), article.Header.Get("Location")} {
-		if got := h.request(http.MethodGet, location, "", nil); got.StatusCode != http.StatusOK && location != article.Header.Get("Location") {
+		if got := h.authenticatedRequest(http.MethodGet, location, "", nil); got.StatusCode != http.StatusOK {
 			t.Fatalf("读取已创建资源失败：%s status=%d", location, got.StatusCode)
 		}
 	}
-	articlePatch := h.request(http.MethodPatch, article.Header.Get("Location"), "{\"title\":\"e2e-crud-updated\"}", map[string]string{"If-Match": article.Header.Get("ETag")})
+	articlePatch := h.authenticatedRequest(http.MethodPatch, article.Header.Get("Location"), "{\"title\":\"e2e-crud-updated\"}", map[string]string{"If-Match": article.Header.Get("ETag")})
 	if articlePatch.StatusCode != http.StatusOK {
 		t.Fatalf("更新 Article 失败：%d", articlePatch.StatusCode)
 	}
-	if deleted := h.request(http.MethodDelete, article.Header.Get("Location"), "", map[string]string{"If-Match": articlePatch.Header.Get("ETag")}); deleted.StatusCode != http.StatusNoContent {
+	if deleted := h.authenticatedRequest(http.MethodDelete, article.Header.Get("Location"), "", map[string]string{"If-Match": articlePatch.Header.Get("ETag")}); deleted.StatusCode != http.StatusNoContent {
 		t.Fatalf("删除 Article 失败：%d", deleted.StatusCode)
 	}
 	for _, resource := range []*http.Response{tag, articleType} {
-		if deleted := h.request(http.MethodDelete, resource.Header.Get("Location"), "", map[string]string{"If-Match": resource.Header.Get("ETag")}); deleted.StatusCode != http.StatusNoContent {
+		if deleted := h.authenticatedRequest(http.MethodDelete, resource.Header.Get("Location"), "", map[string]string{"If-Match": resource.Header.Get("ETag")}); deleted.StatusCode != http.StatusNoContent {
 			t.Fatalf("删除 taxonomy 失败：%d", deleted.StatusCode)
 		}
 	}
 }
 
-func Test_E2E_production_denies_writes(t *testing.T) {
+func Test_E2E_deny_all_rejects_authenticated_writes(t *testing.T) {
 	seed := newHarness(t, allowAll{})
 	articleType, tag := createContent(t, seed)
 	article := createArticle(t, seed, articleType, tag, "denied", articleStatusDraft)
@@ -128,11 +128,11 @@ func Test_E2E_production_denies_writes(t *testing.T) {
 	}
 	seed.app = nil
 
-	production := newHarnessWithDatabase(t, nil, seed)
+	production := newHarnessWithDatabase(t, content.DenyAll{}, seed)
 	defer production.close()
 	for _, write := range deniedWrites(seedType, seedTag, seedArticle) {
 		before := snapshotDatabase(t, production.ctx, production.dsn)
-		response := production.request(write.Method, write.Path, write.Body, write.Headers)
+		response := production.authenticatedRequest(write.Method, write.Path, write.Body, write.Headers)
 		if response.StatusCode != http.StatusForbidden {
 			t.Fatalf("%s 未返回403：%d", write.Name, response.StatusCode)
 		}
@@ -144,13 +144,38 @@ func Test_E2E_production_denies_writes(t *testing.T) {
 	}
 }
 
+func Test_E2E_production_rejects_unauthenticated_writes(t *testing.T) {
+	seed := newHarness(t, allowAll{})
+	articleType, tag := createContent(t, seed)
+	article := createArticle(t, seed, articleType, tag, "unauthenticated", articleStatusDraft)
+	seedType, seedTag, seedArticle := resourceSeed(t, articleType), resourceSeed(t, tag), resourceSeed(t, article)
+	if err := seed.app.Shutdown(seed.ctx); err != nil {
+		t.Fatalf("关闭 seed 应用失败：%v", err)
+	}
+	seed.app = nil
+	production := newHarnessWithDatabase(t, nil, seed)
+	defer production.close()
+	for _, write := range deniedWrites(seedType, seedTag, seedArticle) {
+		before := snapshotDatabase(t, production.ctx, production.dsn)
+		response := production.request(write.Method, write.Path, write.Body, write.Headers)
+		if response.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("%s 未返回401：%d", write.Name, response.StatusCode)
+		}
+		assertUnauthenticatedProblem(t, response)
+		after := snapshotDatabase(t, production.ctx, production.dsn)
+		if !reflect.DeepEqual(before, after) {
+			t.Fatalf("%s 的401后数据库发生变化：before=%+v after=%+v", write.Name, before, after)
+		}
+	}
+}
+
 func Test_E2E_stale_etag_is_rejected(t *testing.T) {
 	h := newHarness(t, allowAll{})
 	defer h.close()
 	_, tag := createContent(t, h)
 	location := tag.Header.Get("Location")
 	oldETag := tag.Header.Get("ETag")
-	success := h.request(http.MethodPatch, location, `{"name":"fresh"}`, map[string]string{"If-Match": oldETag})
+	success := h.authenticatedRequest(http.MethodPatch, location, `{"name":"fresh"}`, map[string]string{"If-Match": oldETag})
 	if success.StatusCode != http.StatusOK {
 		t.Fatalf("建立 stale 前置更新失败：%d", success.StatusCode)
 	}
@@ -159,7 +184,7 @@ func Test_E2E_stale_etag_is_rejected(t *testing.T) {
 		t.Fatalf("构造 stale ETag 序列失败：%v", sequenceErr)
 	}
 	before := snapshotTag(t, h.ctx, h.dsn, locationID(t, tag))
-	response := h.request(http.MethodPatch, location, `{"name":"stale"}`, map[string]string{"If-Match": replayETag})
+	response := h.authenticatedRequest(http.MethodPatch, location, `{"name":"stale"}`, map[string]string{"If-Match": replayETag})
 	if response.StatusCode != http.StatusPreconditionFailed {
 		failureBody, readErr := io.ReadAll(response.Body)
 		if readErr != nil {
@@ -197,10 +222,10 @@ func Test_E2E_restart_preserves_committed_data(t *testing.T) {
 		t.Fatalf("重启前关闭失败：%v", err)
 	}
 	h.start(allowAll{})
-	response := h.request(http.MethodGet, "/api/v1/tags", "", nil)
+	response := h.authenticatedRequest(http.MethodGet, "/api/v1/manage/tags?page=1&pageSize=20", "", nil)
 	body, _ := io.ReadAll(response.Body)
-	if !strings.Contains(string(body), "e2e-tag") {
-		t.Fatalf("重启后数据丢失：%s", body)
+	if response.StatusCode != http.StatusOK || !strings.Contains(string(body), "e2e-tag") {
+		t.Fatalf("重启后读取持久化数据失败：status=%d body=%s", response.StatusCode, body)
 	}
 }
 
@@ -210,8 +235,17 @@ func Test_E2E_sigterm_closes_runtime(t *testing.T) {
 
 func createContent(t *testing.T, h *harness) (*http.Response, *http.Response) {
 	t.Helper()
-	typeResponse := h.request(http.MethodPost, "/api/v1/article-types", `{"name":"e2e-type","meun":1}`, nil)
-	tagResponse := h.request(http.MethodPost, "/api/v1/tags", `{"name":"e2e-tag"}`, nil)
+	typeResponse := h.authenticatedRequest(http.MethodPost, "/api/v1/manage/article-types", `{"name":"e2e-type","menu":1}`, nil)
+	tagResponse := h.authenticatedRequest(http.MethodPost, "/api/v1/manage/tags", `{"name":"e2e-tag"}`, nil)
+	for _, response := range []*http.Response{typeResponse, tagResponse} {
+		if response.StatusCode != http.StatusCreated || response.Header.Get("Location") == "" || response.Header.Get("ETag") == "" {
+			body, err := io.ReadAll(response.Body)
+			if err != nil {
+				t.Fatalf("读取 taxonomy 创建失败响应失败：%v", err)
+			}
+			t.Fatalf("创建 taxonomy 失败：status=%d location=%s etag=%s body=%s", response.StatusCode, response.Header.Get("Location"), response.Header.Get("ETag"), body)
+		}
+	}
 	return typeResponse, tagResponse
 }
 
@@ -236,7 +270,7 @@ func staleReplayETag(created, updated string) (string, error) {
 func createArticle(t *testing.T, h *harness, articleType, tag *http.Response, suffix string, status articleStatus) *http.Response {
 	t.Helper()
 	body := articleCreatePayload(suffix, locationID(t, articleType), locationID(t, tag), status)
-	response := h.request(http.MethodPost, "/api/v1/manage/articles", body, nil)
+	response := h.authenticatedRequest(http.MethodPost, "/api/v1/manage/articles", body, nil)
 	if response.StatusCode != http.StatusCreated {
 		failureBody, readErr := io.ReadAll(response.Body)
 		if readErr != nil {

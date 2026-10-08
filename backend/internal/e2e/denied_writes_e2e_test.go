@@ -13,7 +13,7 @@ import (
 	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content"
 )
 
-// writeCase 描述一个在生产 DenyAll 下必须以403拒绝的合法 REST 写请求。
+// writeCase 描述用于验证认证与授权拒绝的合法 REST 写请求。
 type writeCase struct {
 	Name, Method, Path, Body string
 	Headers                  map[string]string
@@ -25,7 +25,7 @@ type seedResource struct {
 	ID             int64
 }
 
-// newHarnessWithDatabase 在同一随机数据库上重新组合生产 DenyAll 应用。
+// newHarnessWithDatabase 在同一随机数据库上重新组合指定授权策略的应用。
 func newHarnessWithDatabase(t *testing.T, authorizer content.Authorizer, seed *harness) *harness {
 	t.Helper()
 	h := &harness{t: t, ctx: seed.ctx, cancel: seed.cancel, adminDSN: seed.adminDSN, dsn: seed.dsn, name: seed.name, client: &http.Client{Timeout: seed.client.Timeout, Transport: &http.Transport{DisableKeepAlives: true}}, authorizer: authorizer}
@@ -52,8 +52,8 @@ func resourceSeed(t *testing.T, response *http.Response) seedResource {
 func deniedWrites(articleType, tag, article seedResource) []writeCase {
 	articleBody := fmt.Sprintf(`{"title":"denied","slug":"denied","digest":"digest","content":"content","articleTypeId":%d,"tagIds":[%d],"status":1}`, articleType.ID, tag.ID)
 	return []writeCase{
-		{"创建 ArticleType", http.MethodPost, "/api/v1/article-types", `{"name":"denied-type","meun":2}`, nil},
-		{"创建 Tag", http.MethodPost, "/api/v1/tags", `{"name":"denied-tag"}`, nil},
+		{"创建 ArticleType", http.MethodPost, "/api/v1/manage/article-types", `{"name":"denied-type","menu":2}`, nil},
+		{"创建 Tag", http.MethodPost, "/api/v1/manage/tags", `{"name":"denied-tag"}`, nil},
 		{"创建 Article", http.MethodPost, "/api/v1/manage/articles", articleBody, nil},
 		{"更新 ArticleType", http.MethodPatch, articleType.Location, `{"name":"changed-type"}`, ifMatch(articleType.ETag)},
 		{"删除 ArticleType", http.MethodDelete, articleType.Location, "", ifMatch(articleType.ETag)},
@@ -80,5 +80,22 @@ func assertForbiddenProblem(t *testing.T, response *http.Response) {
 	}
 	if problem.Status != http.StatusForbidden || !strings.HasSuffix(problem.Type, "/permission_denied") || problem.Title == "" || problem.Detail == "" {
 		t.Fatalf("403 RFC9457不完整：%+v", problem)
+	}
+}
+
+// assertUnauthenticatedProblem 验证默认保护路由返回完整的认证失败 Problem。
+func assertUnauthenticatedProblem(t *testing.T, response *http.Response) {
+	t.Helper()
+	var problem struct {
+		Status int    `json:"status"`
+		Type   string `json:"type"`
+		Title  string `json:"title"`
+		Detail string `json:"detail"`
+	}
+	if err := json.NewDecoder(response.Body).Decode(&problem); err != nil {
+		t.Fatalf("解析401 RFC9457失败：%v", err)
+	}
+	if problem.Status != http.StatusUnauthorized || !strings.HasSuffix(problem.Type, "/unauthenticated") || problem.Title == "" || problem.Detail == "" {
+		t.Fatalf("401 RFC9457不完整：%+v", problem)
 	}
 }

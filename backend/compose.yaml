@@ -19,6 +19,28 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  migrate:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+    entrypoint: ["/migrate", "-config=", "up"]
+    restart: "no"
+    environment:
+      SCYG_APP_ENV: production
+      SCYG_DATABASE_DSN: ${SCYG_DATABASE_DSN:?必须设置 SCYG_DATABASE_DSN}
+      SCYG_AUTH_JWT_SECRET: ${SCYG_AUTH_JWT_SECRET:?Set Blog JWT signing secret}
+      SCYG_DOCS_ENABLED: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      disable: true
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+
   api:
     build:
       context: ..
@@ -39,6 +61,8 @@ services:
       postgres:
         condition: service_healthy
         restart: true
+      migrate:
+        condition: service_completed_successfully
     ports:
       - "127.0.0.1:${SCYG_API_PORT:-8080}:8080"
     read_only: true

@@ -19,6 +19,8 @@ import (
 
 	"github.com/PengYuee/SCYG.Blog/backend/internal/bootstrap"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content"
+	identityauth "github.com/PengYuee/SCYG.Blog/backend/internal/modules/identity/auth"
+	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/identity/user"
 	qaconfig "github.com/PengYuee/SCYG.Blog/backend/internal/qa/config"
 	qadatabase "github.com/PengYuee/SCYG.Blog/backend/internal/qa/database"
 	"github.com/PengYuee/SCYG.Blog/backend/migrations"
@@ -29,6 +31,11 @@ type allowAll struct{}
 
 // Authorize 允许真实 E2E 数据库执行写入。
 func (allowAll) Authorize(context.Context, content.Action, content.Resource) error { return nil }
+
+const (
+	e2eJWTSecret = "e2e-only-jwt-secret-not-for-production-32-bytes"
+	e2eJWTIssuer = "scyg-e2e"
+)
 
 // harness 持有每个叙事独享的真实 PostgreSQL、应用与 HTTP 客户端。
 type harness struct {
@@ -42,6 +49,8 @@ type harness struct {
 	client   *http.Client
 	baseURL  string
 	observer bootstrap.LifecycleObserver
+
+	accessToken string
 	// authorizer 在隔离请求间重建应用时保持授权语义。
 	authorizer content.Authorizer
 	// restartPerRequest 禁止同一 Gin Engine 处理相邻 CRUD 请求。
@@ -95,7 +104,7 @@ func (h *harness) start(authorizer content.Authorizer) {
 		h.t.Fatalf("释放 E2E 预留端口失败：%v", err)
 	}
 	configFile := filepath.Join(h.t.TempDir(), "runtime.yaml")
-	runtimeConfig := fmt.Sprintf("app:\n  env: test\nhttp:\n  host: 127.0.0.1\n  port: %d\ndatabase:\n  dsn: %s\ndocs:\n  enabled: true\n", port, h.dsn)
+	runtimeConfig := fmt.Sprintf("app:\n  env: test\nauth:\n  jwt_secret: %s\n  issuer: %s\nhttp:\n  host: 127.0.0.1\n  port: %d\ndatabase:\n  dsn: %s\ndocs:\n  enabled: true\n", e2eJWTSecret, e2eJWTIssuer, port, h.dsn)
 	if err = os.WriteFile(configFile, []byte(runtimeConfig), 0o600); err != nil {
 		h.t.Fatalf("写入 E2E 运行配置失败：%v", err)
 	}
@@ -107,6 +116,32 @@ func (h *harness) start(authorizer content.Authorizer) {
 		h.t.Fatalf("启动 E2E 应用失败：%v", err)
 	}
 	h.baseURL = "http://" + h.app.Address().String()
+	tokens, err := identityauth.NewTokenService([]byte(e2eJWTSecret), e2eJWTIssuer, time.Hour, time.Now)
+	if err != nil {
+		h.t.Fatalf("构造 E2E JWT 服务失败：%v", err)
+	}
+	id, err := user.ParseID("0123456789abcdef0123456789abcdef")
+	if err != nil {
+		h.t.Fatalf("构造 E2E 用户标识失败：%v", err)
+	}
+	h.accessToken, _, err = tokens.Issue(identityauth.Principal{UserID: id, Username: "e2e-author"})
+	if err != nil {
+		h.t.Fatalf("签发 E2E JWT 失败：%v", err)
+	}
+}
+
+// authenticatedRequest 使用真实签发的 JWT，且不修改调用者的条件请求 Header。
+func (h *harness) authenticatedRequest(method, path, body string, headers map[string]string) *http.Response {
+	h.t.Helper()
+	if h.app == nil {
+		h.start(h.authorizer)
+	}
+	authenticatedHeaders := make(map[string]string, len(headers)+1)
+	for key, value := range headers {
+		authenticatedHeaders[key] = value
+	}
+	authenticatedHeaders["Authorization"] = "Bearer " + h.accessToken
+	return h.request(method, path, body, authenticatedHeaders)
 }
 
 // request 通过真实 TCP HTTP 边界发送请求并返回响应。

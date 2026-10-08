@@ -175,7 +175,7 @@ CONFIG      普通运行时 YAML
 QA_CONFIG   严格 QA-only YAML
 ```
 
-本地迁移默认使用 `go run ./cmd/migrate -config <YAML> up`，YAML 模式不接受环境变量覆盖数据库目标。容器初始化复用 `migrate -config= up`：必须显式提供 `SCYG_DATABASE_DSN`，并满足普通运行时配置校验（production 包括非默认 JWT secret）；数据库须已存在。该环境模式不会自动借用管理员身份建库，缺库时改用包含 `qa.postgres_admin_dsn` 的显式 YAML。根集成 Compose 已通过一次性 `blog-setup` 执行该模式，常驻 API 只检查迁移版本。
+本地迁移默认使用 `go run ./cmd/migrate -config <YAML> up`，YAML 模式不接受环境变量覆盖数据库目标。容器初始化复用 `migrate -config= up`：必须显式提供 `SCYG_DATABASE_DSN`，并满足普通运行时配置校验（production 包括非默认 JWT secret）；数据库须已存在。该环境模式不会自动借用管理员身份建库，缺库时改用包含 `qa.postgres_admin_dsn` 的显式 YAML。根集成 Compose 的一次性 `blog-setup` 和独立 Backend Compose 的一次性 `migrate` 均在数据库健康后执行该模式；API 只有在迁移成功退出后才启动，常驻进程仍严格检查迁移版本。重复 `up` 在已处于当前版本的数据库上无变更成功，不清空已有数据；迁移失败或 dirty 状态不会放行 API。
 
 QA 配置示例：
 
@@ -197,6 +197,11 @@ task qa:database QA_CONFIG=./config.qa.yaml
 ```
 
 `task qa:database` 负责 migration roundtrip、integration、E2E 和临时数据库清理。
+
+E2E 管理请求必须携带真实签发的 Bearer JWT；注入 `AllowAll` 只替换内容授权策略，不绕过 HTTP 认证。类型与标签写入使用 `/api/v1/manage/article-types`、`/api/v1/manage/tags`，创建后的管理读取使用返回的 `Location`。默认认证策略的未认证写入验证 `401`，显式注入 `DenyAll` 后的已认证写入验证 `403`；两者均断言 Problem 响应及数据库无副作用。
+
+公开类型与标签列表必须显式提供 `page`、`pageSize`，且只返回关联已发布文章的资源。验证未关联公开文章的分类或标签重启后仍持久化时，应读取管理端资源，不能以公开列表的可见性替代持久化断言。
+
 
 ## 7. 测试门禁选择
 

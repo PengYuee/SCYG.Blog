@@ -52,7 +52,7 @@ tasks:
           "\$files = @({{.GOFUMPT_CMD}} -l .); if (\$files.Count -gt 0) { \$files | ForEach-Object { Write-Output \$_ }; exit 1 }"
         platforms: [windows]
       - cmd: >-
-          sh -c 'files="$({{.GOFUMPT_CMD}} -l .)"; if [ -n "\$files" ]; then printf "%s\n" "\$files"; exit 1; fi'
+          sh -c 'files="$({{.GOFUMPT_CMD}} -l .)" || exit $?; if [ -n "$files" ]; then printf "%s\n" "$files"; exit 1; fi'
         platforms: [linux, darwin]
 
   lint:
@@ -217,7 +217,7 @@ tasks:
       - docker build --pull=false --tag {{.IMAGE}} -f Dockerfile ..
 
   compose:smoke:
-    desc: Start Compose and wait for PostgreSQL and API healthchecks
+    desc: Wait for PostgreSQL health, successful migration and API healthchecks
     cmds:
       - docker compose up --detach --wait --wait-timeout 120
       - cmd: >-
@@ -296,8 +296,8 @@ tasks:
     desc: Run image build and Compose health smoke gates
     cmds:
       - task: container:build
-      - task: compose:smoke
       - defer: task compose:down
+      - task: compose:smoke
 
   ci:
     desc: Run the local backend quality gate shared with CI
