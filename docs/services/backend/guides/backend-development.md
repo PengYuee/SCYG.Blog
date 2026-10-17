@@ -36,7 +36,7 @@ internal/modules/content/
 - feature Service 和 application 不依赖 Gin、HTTP 或 generated OpenAPI 类型。
 - feature Repository 只访问所属 feature 的表。
 - 跨 feature 的同事务操作进入 `application/`，由 application 持有事务边界，并调用各 feature 的 `InTx` 方法。
-- 文章 REST 响应由 `application.ArticleResponses` 协调 article/taxonomy；读写快照、摘要装配及失败语义见[当前架构](../architecture/current-state-architecture.zh-CN.md#http-与-openapi)，不在 REST 或 feature Repository 中另建跨表装配。
+- 文章 REST 响应由 `application.ArticleResponses` 协调 article/taxonomy；事务装配技术见[当前架构](../architecture/current-state-architecture.zh-CN.md#http-与-openapi)，业务一致性与失败结果见[文章管理](../../../modules/articles.md)。REST 或 feature Repository 不另建跨表装配。
 - 数据库结构由 migration 管理；不使用 `AutoMigrate`、`gorm.Model` 或 `gorm.DeletedAt`。
 - 运行时对象由 bootstrap 构造；不要在 Handler 或业务模块中自行创建全局数据库连接。
 

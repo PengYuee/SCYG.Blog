@@ -2,7 +2,7 @@
 
 ## 当前运行路径
 
-当前生产执行路径为 Recipe AgentRunner；旧 RuntimeRouter、producer、浏览器 Run HTTP/SSE 和 service JWT 入口已删除。Blog 是浏览器唯一 JWT 入口，经内部 AgentControlService 控制 Agent；Agent 通过 BlogContentService 访问管理端内容，生产 Tool 授权仍仅开放读取。源码职责见[架构](architecture.md)，公开流式合同见[streaming](streaming.md)。
+Recipe AgentRunner 是唯一生产路径；Blog 是浏览器作者/匿名认证与 HTTP/SSE 入口，经内部 AgentControl 控制任务。BlogContent 按冻结 author/public 范围读取，生产 Tool 仍只开放读取。源码职责见 [架构](architecture.md)，流式合同见 [streaming](streaming.md)，公共额度与预算见 [公共搜索控制](public-search.md)。
 
 ## 静态检查入口
 
@@ -86,4 +86,4 @@ Compose 拓扑使用未跟踪的 `agent/.env` 为 PostgreSQL 初始化、setup �
 
 ## 交付边界
 
-当前代码装配 Recipe AgentRunner、Redis 流、health-only HTTP、五 RPC AgentControlService、HITL 与租约 Worker；Blog 提供八个 JWT HTTP/SSE 入口和八 RPC BlogContentService。本页仅维护 Agent 与 Blog 后端集成，不覆盖前端 AI 页面实现。内部 gRPC 只信任回环或隔离网络，网络可达者可代填 `user_id`，不得直接公网暴露；浏览器 JWT、Run owner 和 Blog 资源权限校验保持不变。
+当前装配 Recipe AgentRunner、Redis 流及公共控制、health-only HTTP、五 RPC AgentControl、三类写作 HITL 和租约 Worker。Blog 提供四作者能力、两个匿名入口及共同 Run 生命周期，并有八 RPC BlogContent。前端流程见 [AI 使用说明](../frontend/ai.md)。内部 gRPC 仅限回环或隔离网络；网络可达者可代填可信主体和范围，不能公开端口，浏览器 owner 和 Blog 内容授权保持服务端校验。

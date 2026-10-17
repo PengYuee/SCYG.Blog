@@ -16,9 +16,9 @@
 
 ## External ACL
 
-当前 Agent ACL 位于 `internal/adapters/agent/`，翻译五 RPC 的 Run、事件和公开错误；领域/application 不导入 gRPC 生成 DTO。新增确定的外部集成才创建相应窄适配器；即时调用必须 deadline-bound，双方不得读取对方数据库。BlogContent 写入先在事务外预备 Blob 与图片校验，再通过 `operation_id` 仲裁业务事务，不在持锁事务中执行 Blob 或网络 I/O。
+当前 Agent ACL 位于 `internal/adapters/agent/`，翻译五 RPC 的 Run、事件和公开错误；领域/application 不导入 gRPC 生成 DTO。新增确定的外部集成才创建窄适配器；即时调用必须 deadline-bound，双方不读取对方数据库。BlogContent 写入适配到现有 application 事务，不能在持锁事务中执行 Blob 或网络 I/O。
 
-成功重放读取文章和标签时使用同一条 SQL 的快照，不能拼接不同提交版本。REST 文章与分类摘要的跨 feature 快照规则统一由[当前架构](../architecture/current-state-architecture.zh-CN.md#http-与-openapi)维护，mapper 不再二次查询分类。
+业务成功幂等、重放当前文章与错误结果归[文章模块](../../../modules/articles.md)；跨 feature 响应装配的技术落点见[当前架构](../architecture/current-state-architecture.zh-CN.md#http-与-openapi)。adapter 只做转换，不在 mapper 中二次拼接不同提交版本。
 
 ## Outbox
 

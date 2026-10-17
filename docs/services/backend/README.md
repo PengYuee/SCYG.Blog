@@ -2,6 +2,8 @@
 
 `backend/` 是仓库唯一的 Go 模块，提供 REST/HTTP；启用 Agent 集成时，同一进程还提供内部 BlogContent gRPC。除根级集成 Compose 外，本页命令均从 `backend/` 执行。
 
+本服务承载[登录会话](../../modules/authentication.md)、[文章](../../modules/articles.md)、[分类标签](../../modules/taxonomy.md)和[正文图片](../../modules/article-images.md)，并参与 [AI 任务](../../modules/ai-assistance.md)及[公共搜索](../../modules/public-ai-search.md)。完整业务规则在模块页维护，本页只提供工具、配置与运行入口。
+
 ## 前置条件
 
 - Go `1.26.8`、Task `v3.49.1`。
@@ -44,7 +46,7 @@
 
 先填写 `config.local.yaml`，执行 `CONFIG=config.local.yaml task migrate:up`，再执行 `go run ./cmd/api -config config.local.yaml`。API 的 `-config` 缺省值就是 `config.local.yaml`。该命令会长期监听 HTTP，应在交互式终端运行并以 `Ctrl+C` 触发有界优雅关闭。生产组合允许公开读取；身份模块已接入用户登录与 JWT 认证，受保护的写入通过认证上下文进行授权，不再采用身份模块未实现时的统一拒绝写入策略。
 
-`agent.enabled` 默认 `false`，此时八个 Agent HTTP/SSE 路由整组返回 404，且不创建 Agent client 或 BlogContent listener。启用时默认连接 `127.0.0.1:9090`，BlogContent 默认监听 `127.0.0.1:50051`；内部 gRPC 不使用 service JWT，不应公开端口。Agent 离线不阻止 Blog 启动或 `/ready` 就绪；本地 BlogContent listener 绑定失败则启动失败。关闭时先排空 HTTP/SSE，再以独立的 `agent.grpc_shutdown_timeout` 排空 gRPC。接口及业务语义见[协议与外部集成](guides/protocol-integration-extension.md)。
+`agent.enabled` 默认 `false`，此时 Agent 相关 HTTP/SSE 组返回 404，且不创建 Agent client 或 BlogContent listener。启用时默认连接 `127.0.0.1:9090`，BlogContent 默认监听 `127.0.0.1:50051`；内部 gRPC 不使用 service JWT，不应公开端口。Agent 离线不阻止 Blog 启动或 `/ready` 就绪；本地 BlogContent listener 绑定失败则启动失败。关闭时先排空 HTTP/SSE，再以独立 `agent.grpc_shutdown_timeout` 排空 gRPC。协议适配见[外部集成指南](guides/protocol-integration-extension.md)，业务语义见模块页。
 
 Docker 开发路径为 `task compose:smoke`，结束后必须执行 `task compose:down`。`task qa:container` 自带 finally/defer 清理。
 

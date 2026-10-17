@@ -2,7 +2,7 @@
 
 ## 适用范围
 
-本手册面向 Agent 单进程、PostgreSQL 真相库、checkpoint 及 Redis 流。Blog 统一承接浏览器 JWT、业务 HTTP 与透明 SSE，Agent 仅提供内部 gRPC 和 health HTTP；当前路径与源码依据见[架构](architecture.md)。
+本手册面向 Agent 单进程、PostgreSQL 真相库/checkpoint，以及 Redis 流和公共额度/执行租约。Blog 承接作者 JWT、独立匿名凭证、业务 HTTP 与透明 SSE，Agent 仅提供内部 gRPC 和 health HTTP；组件职责见 [架构](architecture.md)，公共控制配置与故障边界见 [public-search](public-search.md)。
 
 ## 运行前检查
 
@@ -16,13 +16,15 @@
 
 ## 认证与内部网络边界
 
-Blog 管理浏览器登录 JWT 的签发、校验与轮换。Agent 不消费 RSA 公钥、Run JWT 或 service JWT，也不承接浏览器业务认证。AgentControl 与 BlogContent 两个方向的 gRPC 只通过内部网络使用，携带显式可信 `user_id` 并逐次检查所有权或管理权限；不得暴露到公网。
+Blog 管理作者登录 JWT 和独立用途的匿名搜索凭证。Agent 不承接浏览器凭证，也不消费 Run JWT 或 service JWT；内部 AgentControl/BlogContent 明确携带可信主体和内容范围，逐次校验 owner/范围或现有 Blog 授权，不得暴露到公网。
 
 本地 [Agent Compose](../../../agent/compose.yaml) 只映射 PostgreSQL 与 health HTTP 的 loopback 端口，不映射 Agent gRPC；根 [Compose](../../../compose.yaml) 提供 Blog↔Agent 集成，Blog 指向 `agent:9090`，Agent 指向 `blog:9091`，两个 gRPC 端口均不映射宿主。运行 JWT 的旧公钥挂载及环境变量已不属于当前配置。
 
 根集成拓扑使用根 `.env.example`，独立 Agent 拓扑使用 `agent/.env.example`，两者的数据库主机名与 Blog 配置不同，不互换模板。根目录运行 `Copy-Item .env.example .env`，填写其中必填值后执行 `docker compose up --build --wait`。本机 Provider 的容器 URL 使用 `host.docker.internal`；模型名称须来自该 Provider 的实际支持列表。
 
 根拓扑先以一次性 `blog-setup` 和 `agent-setup` 完成各自数据库初始化，两个任务成功后才启动对应常驻服务。Blog 初始化复用镜像内 `/migrate -config= up`；重复启动应用尚未完成的迁移，不清除已有业务数据。Blog 常驻进程仍只检查迁移版本，不自动修改 schema。
+
+公共搜索启用前，核对所有副本的输入限制、环境前缀及租约配置。根 Redis 使用 AOF、持久卷和 noeviction；额度及名额没有本地无限放行兜底。升级到当前 Run 内容范围和执行截止时间迁移后再启动；既有 Run 回填 author，不删除业务数据。配置与故障操作详情见 [公共搜索控制](public-search.md)。
 
 ## SSE 重连与流过期
 

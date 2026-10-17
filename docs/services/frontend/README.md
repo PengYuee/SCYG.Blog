@@ -4,6 +4,8 @@
 
 公共阅读与作者界面均可在生产环境使用。真实登录、Bearer 会话恢复和本地退出由 [`auth-session.ts`](../../../frontend/src/services/auth-session.ts) 提供，作者读写通过 [`author-runtime.ts`](../../../frontend/src/services/author-runtime.ts) 连接真实管理 API；不需要非生产环境开关。管理后台尚未启用。
 
+作者 AI 工作台与公共 AI 搜索已接入 Blog HTTP/SSE；完整业务分别见 [AI 任务](../../modules/ai-assistance.md)与[公共搜索](../../modules/public-ai-search.md)，前端组件和请求映射见 [AI 前端接入](ai.md)。依赖与目标部署状态应按运行手册核对。
+
 ## 最短启动路径
 
 `frontend/package.json` 固定使用 `pnpm@10.13.1`。在仓库的 `frontend/` 目录执行：
@@ -30,11 +32,11 @@ pnpm check
 pnpm test:e2e
 ```
 
-`pnpm check` 先重新生成并检查 API 类型与 Zod Schema 无漂移，再执行类型检查、单元测试、组件测试和生产构建，不包含端到端测试。端到端测试会自行启动开发服务器，本地默认使用 Microsoft Edge。
+`pnpm check` 在独立临时目录生成 API 类型与 Zod Schema，并与当前工作区按字节比较，然后执行类型检查、单元测试、组件测试和生产构建，不依赖 Git 暂存状态，也不包含端到端测试。端到端测试会自行启动开发服务器，统一使用已安装 Microsoft Edge。
 
 ## 服务边界
 
-- 公共域提供首页、文章列表、文章详情、登录页和公共错误页，通过配置的后端读取数据。
+- 公共域提供首页、文章列表、文章详情、登录页、公共 AI 搜索和错误页，通过配置的 Blog 地址读取数据。
 - 作者域使用后端短期 Bearer JWT，匿名访问会跳转 `/login` 并保留站内返回地址。
 - 管理域保留 `/admin` 路由边界，当前统一呈现不可用状态。
 - 登录会话在浏览器持久化；退出、过期或后端返回 `401` 时清除，不实现后端尚未提供的 refresh/logout API。
@@ -45,4 +47,5 @@ pnpm test:e2e
 - [服务架构](architecture.md)：系统边界、启动链路、模块职责和关键失败路径。
 - [开发指南](development.md)：本地开发、目录职责、修改路径和验证命令。
 - [部署与运行手册](operations.md)：构建产物、运行时配置、发布验证和故障处理。
+- [AI 前端接入](ai.md)：组件、请求、状态与错误的技术映射；完整业务从[模块总览](../../modules/README.md)进入。
 - [设计系统](design.md)：主题、视觉 Token、布局和交互规范。该文档不承担服务运行说明。

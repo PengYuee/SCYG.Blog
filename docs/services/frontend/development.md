@@ -41,7 +41,7 @@ pnpm dev
 2. 在后端数据库准备可登录的活动用户；前端不内置用户名或密码。
 3. 打开 `/login`，成功后返回原作者地址或默认写作台。
 
-浏览器将短期 Bearer 会话保存到 localStorage 的 `scyg.auth.session`。恢复时会校验生成的 `LoginResponse` Schema 和 `expiresAt`；过期、畸形或收到后端 `401` 的会话会被清除。后端当前没有 refresh 或 logout 端点，因此退出登录只删除浏览器会话。
+登录、恢复、失效与退出的业务规则由[登录与会话模块](../../modules/authentication.md)维护；本指南只说明联调前置与开发入口。认证实现使用统一会话控制器和请求认证策略，不在页面建立第二套规则。
 
 ## 目录职责
 
@@ -123,6 +123,8 @@ frontend/
 5. 通过 `createApiServices` 暴露需要的能力；页面不读取原始响应，也不在页面层兼容错误结构。
 6. 验证成功响应、主要错误、不兼容响应以及请求路径和参数。
 
+AI 的适配器、生命周期、控件及结果边界见[前端实现映射](ai.md)，业务场景分别见 [AI 任务](../../modules/ai-assistance.md)与[公共搜索](../../modules/public-ai-search.md)。请求必须明确选择认证策略，SSE 与普通错误统一经过请求边界，不让页面依赖原始 Axios 错误。
+
 ### 引入或升级 Hey API
 
 当前 Hey API 生成配置以 [`frontend/openapi-ts.config.ts`](../../../frontend/openapi-ts.config.ts) 为准，启用 TypeScript 与 Zod definitions，不生成 operation client。修改 API 契约时，先更新 [`backend/api/openapi.yaml`](../../../backend/api/openapi.yaml)，在 `frontend/` 执行 `pnpm generate:api`，同步必要的领域适配器、mock、fixture 和调用方，再按本文执行验证；生成目录禁止手工修改。既往实施计划是临时存档，不作为正式开发规则。
@@ -146,7 +148,7 @@ frontend/
 | `pnpm test:unit` | `tests/unit/**/*.test.ts`，Node 环境 | 无后端 |
 | `pnpm test:component` | `tests/component/**/*.test.ts`，jsdom 环境 | 默认使用测试替身或注入依赖 |
 | `pnpm build` | 类型检查并生成 `dist/` 生产产物 | 无后端 |
-| `pnpm check` | 重新生成并检查 API 类型与 Zod Schema 无漂移，然后执行类型检查、单元测试、组件测试和生产构建 | 无后端、无浏览器 |
+| `pnpm check` | 在临时目录重新生成 API 类型与 Zod Schema，按字节检查当前工作区无漂移，再执行类型检查、单元测试、组件测试和生产构建 | 无后端、无浏览器 |
 | `pnpm test:e2e` | Playwright 开发验收桌面视口，自动启动 development Vite server，排除 `tests/e2e/t13` | 本地 Microsoft Edge |
 | `pnpm test:e2e:production` | `tests/e2e/t13` 对预构建产物执行生产验收 | 先执行 `pnpm build`；本地 Microsoft Edge |
 | `pnpm test:coverage` | Vitest V8 覆盖率报告 | 无浏览器 |
@@ -169,6 +171,10 @@ pnpm test:e2e
 pnpm build
 pnpm test:e2e:production
 ```
+
+生产认证验收位于 `tests/e2e/t13/auth-session.spec.ts`，覆盖登录成功与失败、深链返回、Bearer 注入、刷新恢复、本地退出和会话过期；受保护请求返回 `401` 后清除会话，下一次作者导航重新要求登录。共享读取 fixture 自动安装意外非 GET 请求阻断器；专用登录 mock 仅接受 POST，分类 `401` mock 仅接受 GET，其他方法交回阻断器。接口响应使用受控 fixture，不能替代活动用户对真实后端的文章保存与图片上传联调。
+
+AI 确定性 Edge 场景位于 `tests/e2e/ai-workflows.spec.ts`，验证独立匿名身份、主题及三类写作回应；这些隔离 fixture 不替代真实 Blog→Agent→Provider 验收。真实验收还须观察实际 Run、SSE、模型结果、待交互响应、取消与账号隔离，并回归文章、草稿、图片和分类标签。
 
 ## 常见失败
 

@@ -2,7 +2,7 @@
 
 ## 目标与范围
 
-本文帮助前端维护者和集成人员理解 SCYG Blog 前端的运行边界、模块职责和关键失败路径。下文源码路径均相对于 [`frontend/`](../../../frontend/)；业务页面规则、完整 API 字段和视觉 Token 不在本文展开，它们分别由业务实现、请求适配器和 [设计系统](design.md) 维护。
+本文帮助前端维护者和集成人员理解 SCYG Blog 前端的运行边界、组件职责和关键失败接点。下文源码路径均相对于 [`frontend/`](../../../frontend/)；完整业务规则见[业务模块](../../modules/README.md)，视觉 Token 见[设计系统](design.md)。接口以 OpenAPI 为源契约，不能用服务架构替代模块说明。
 
 ## 系统上下文
 
@@ -37,7 +37,7 @@ flowchart LR
 | 路由 | `src/router/` | 组合路由域、处理旧地址、同步标题并协调导航滚动。 |
 | 页面与布局 | `src/views/`、`src/layouts/` | 呈现路由页面及公共、作者布局，不拥有 HTTP 基础设施。 |
 | 客户端状态 | `src/stores/` | 管理文章流、编辑草稿、分类标签、认证状态和 UI 状态。 |
-| 服务层 | `src/services/` | 封装作者运行时、写入门禁、图片生命周期和滚动恢复等跨组件机制。 |
+| 服务层 | `src/services/` | 封装作者运行时、写入门禁、图片生命周期、AI Run／会话隔离和滚动恢复等跨组件机制。 |
 | 请求边界 | `src/request/` | 提供共享 HTTP 客户端、类型化 API 适配器、响应解析和稳定错误结构。 |
 | 内容安全 | `src/security/` | 使用独立 DOMPurify 策略清理 Markdown HTML。 |
 | 主题与样式 | `src/theme/`、`src/assets/` | 管理主题状态、语义 Token 和全局样式。 |
@@ -74,8 +74,8 @@ flowchart TD
 
 | 路由域 | 当前行为 | 所有者 |
 | --- | --- | --- |
-| 公共域 | `/`、`/articles`、`/articles/:id`、`/login`、旧地址重定向和公共 404。公共文章数据来自后端 API。 | `src/router/modules/public.ts` |
-| 作者域 | `/author/articles/new`、`/author/articles/:id/edit`、`/author/taxonomy`。匿名访问跳转登录页，已认证会话使用真实管理 API。 | `src/router/modules/author.ts` |
+| 公共域 | `/` 集中文章浏览、分类标签筛选、普通搜索和公共 AI 搜索；`/articles/:id` 保留详情，`/login` 保留登录。旧 `/articles`、`/ai/search` 及公共任务地址转到对应首页状态。公共 AI 使用独立匿名凭证，普通文章读取不依赖它。 | `src/router/modules/public.ts` |
+| 作者域 | 文章新建／编辑、分类标签、`/author/ai`及其任务页。匿名访问跳转登录页，已认证会话使用真实管理及 AI API。 | `src/router/modules/author.ts` |
 | 管理域 | `/admin` 及其后代统一呈现“管理后台暂不可用”，不会进入公共 404。 | `src/router/modules/admin.ts` |
 
 旧地址兼容仅负责把合法标识映射到当前路由；非法标识停留在类型化错误页面。路由成功后根据 `meta.title` 更新唯一文档标题。
@@ -88,23 +88,25 @@ flowchart TD
 页面或 Store → 注入的 API Services → 领域 API 适配器 → HttpTransport → 后端
 ```
 
-- `src/request/http.ts` 维护唯一共享 Axios 实例，默认超时 10 秒并请求 JSON。
+- `src/request/http.ts` 维护唯一共享 Axios，按调用方明确的 author／anonymous／none 策略选择 Bearer；普通请求默认超时 10 秒。
 - API 适配器负责 URL、查询参数、请求体和外部响应到前端模型的转换。
 - 外部响应以 `unknown` 进入边界，由 Zod Schema 或类型解析器验证后才能进入页面和 Store。
-- Axios 失败统一转换为 `HttpRequestError`，保留稳定的 `status`、`code` 和可展示消息；调用方决定页面反馈。
+- Axios 和 SSE 建立前失败统一为 `HttpRequestError`，保留状态、公开 Problem 及经过校验的等待秒数；旧请求的 `401` 不失效新凭证，匿名错误不登出作者。
 - `createApiServices` 在应用挂载时创建一次，并通过 Vue Injection 提供；缺少提供者会立即抛出错误。
 
 完整端点和字段以 `src/request/api/`、`src/types/` 及后端接口定义为准，本文不复制易变化的业务契约。
 
 ## 状态与能力边界
 
-Pinia Store 显式区分匿名、恢复中、已认证和已过期。`src/services/auth-session.ts` 使用生成的 `LoginResponse` Schema 校验 localStorage，会话过期或后端返回 `401` 时清除令牌；前端不解析或信任 JWT payload。
+`src/services/auth-session.ts` 是作者会话的统一控制器，由应用装配注入路由、请求和写入门禁；控制器使用生成 Schema 校验浏览器存储，不让组件解析 JWT payload。跨 tab 的 storage 事件也由装配层接入。状态迁移、退出与失效后的业务结果统一见[登录与会话](../../modules/authentication.md)。
 
-作者路由守卫和写入门禁都读取同一会话状态。后端当前只提供 login 和短期访问令牌，因此本地退出只清除浏览器会话，不伪造 refresh、me 或服务端 logout 能力。
+AI 经 `ApiServices.ai` 进入共享请求边界，SSE 使用 fetch/ReadableStream 并复用认证域和错误归一化。Run 生命周期集中到 `src/services/ai-run.ts`，generation、AbortController、单飞查询及通知合并用于隔离旧实例和迟到响应。具体组件映射见 [AI 前端接入](ai.md)，完整场景分别见 [AI 任务](../../modules/ai-assistance.md)与[公共搜索](../../modules/public-ai-search.md)。
+
+首页由首屏与内容区两个互斥显示、保持挂载的状态组成；首屏下滑或点击进入内容，内容只能通过顶部“主页”回到首屏。两处完整搜索共享草稿、模式和选项，切换不发起模型请求，也不取消已有 Run；固定导航不再承载搜索。当前历史条目记录显示状态，刷新和详情返回可以恢复内容与阅读位置。`home-articles.ts` 负责服务端文章流和应用 API 实例内的已加载页缓存，`public-ai-search.ts` 负责匿名创建与未知操作恢复，`PublicSearchResult.vue` 按显式任务标识展示结果。普通查询条件和 AI 任务标识保存在 URL，匿名凭证仍仅属于当前 tab。
 
 ## 安全边界
 
-- 共享 Axios 客户端只通过认证会话服务读取 Bearer Token，不在页面或 Store 拼接 `Authorization`。
+- 共享请求边界按明确认证域读取 Bearer，页面和 Store 不拼接认证头；SSE 仅允许配置的 Blog 来源，不将凭证放 Cookie 或 URL。
 - 文章、分类和图片写入通过共享 mutation guard 在调用适配器前判定已认证状态；后端鉴权仍是最终边界。
 - Markdown HTML 通过私有 DOMPurify 实例、标签与属性白名单及 URL 规则清理；页面不得另建宽松策略。
 - 外部 API 数据在请求适配层校验，页面不得把未解析的 `unknown` 当作领域对象。

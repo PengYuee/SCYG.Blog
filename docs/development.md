@@ -2,7 +2,7 @@
 
 ## 环境与工作目录
 
-博客主路径要求前端、后端与 Blog PostgreSQL，不以 Agent 为前置条件。后端使用 Go 1.26.0、Task v3.49.1；前端使用 pnpm 10.13.1；Agent 使用 Python 3.12，根质量任务固定 uv 0.11.28。完整依赖、配置字段及命令由服务指南维护。
+博客主路径要求前端、后端与 Blog PostgreSQL，不以 Agent 为前置条件。AI 功能额外要求 Agent、Redis 和可用 Provider。工具链与完整命令分别由[后端入口](services/backend/README.md)、[前端开发指南](services/frontend/development.md)及 [Agent 入口](services/agent/README.md)维护，根质量任务以 Taskfile.yml 为准。
 
 下面的启动命令从仓库根目录执行；其他文档中的服务命令从相应服务目录执行。
 
@@ -19,7 +19,7 @@
    go run ./cmd/api -config config.local.yaml
    ```
 
-   第 4 版迁移创建默认活动用户 `admin`，初始密码为 `666666`，只保存 bcrypt 哈希，见[迁移源](../backend/migrations/000004_users.up.sql)。凭据仅适用于未另行修改的本地种子用户；迁移不会覆盖已有同名用户。健康入口为 `/live` 与 `/ready`，接口定义见 [OpenAPI](../backend/api/openapi.yaml)。
+   第 4 版迁移创建默认活动种子用户，只保存 bcrypt 哈希，见[迁移源](../backend/migrations/000004_users.up.sql)；迁移不会覆盖已有同名用户。本地联调账号统一见[根规则](../AGENTS.md#本地开发与联调账号)，不作为生产部署凭据。健康入口为 `/live` 与 `/ready`，接口定义见 [OpenAPI](../backend/api/openapi.yaml)。
 3. 在另一个终端启动前端：
 
    ```powershell
@@ -33,9 +33,11 @@
 
 ## Agent 独立运行
 
-按 [Agent 入口](services/agent/README.md)准备 PostgreSQL、Redis、公钥、Provider 和配置，在 agent/ 执行 --check、setup、run，或使用现有 Compose。--check 不监听、不连接数据库，不是 readiness 证明。
+按 [Agent 入口](services/agent/README.md)准备 Agent PostgreSQL、Redis、Provider 和内部 Blog gRPC 地址，先完成合同生成与非 editable 安装，再在 agent/ 使用 --no-sync 执行 --check、setup、run。--check 不监听、不连接数据库，不是 readiness 证明；Agent 不再要求浏览器或 service JWT 公钥。
 
-Blog 与前端 AI 路径尚未接通。正常停机保留数据库卷，不把 --volumes 数据删除作为日常操作。
+需要完整 AI 链路时，从仓库根使用 compose.yaml，按[联合运行说明](services/agent/operations.md)配置并启动 Blog、Agent 及依赖；不要把独立 Agent 的对端地址直接当作浏览器入口。正常停机保留数据库卷，不把 --volumes 数据删除作为日常操作。
+
+前端 serverUrl 始终指向浏览器可访问的 Blog HTTP 地址。作者登录后进入 /author/ai，访客入口为 /ai/search；两者的凭证、内容范围和恢复规则见 [AI 使用说明](services/frontend/ai.md)。生成内容当前只提供预览和复制，不自动保存或回填编辑器。
 
 ## 按改动范围验证
 

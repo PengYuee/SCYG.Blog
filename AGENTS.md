@@ -23,6 +23,10 @@
 - **日志边界**：明文配置是允许的，但密码和 API key 不应被主动拼接到错误信息或普通运行日志中；这不是当前的密钥管理系统，只是避免无意义泄露。
 - **兼容范围**：当前简化版以新建本地数据库和开发环境为主，不为旧的双角色数据库保留整套复杂兼容层；需要迁移时只做必要的 schema/权限转换，不自动删除已有数据。
 
+## 本地开发与联调账号
+
+- 默认后端登录账号为 `admin`，密码为 `666666`；初始化当前开发测试数据库时按此设置，仅用于本地开发与联调，不作为生产部署凭据，不将密码或访问令牌输出到普通日志。
+
 ## Backend
 
 修改 `backend/` 前先阅读 [`backend/AGENTS.md`](backend/AGENTS.md)。
@@ -34,4 +38,4 @@
 ## Playwright E2E
 
 - **浏览器**：凡使用 Playwright（包括 E2E、冒烟、调试和临时验证）均必须使用已安装的 Microsoft Edge，不使用 Playwright 下载的 Chromium。运行前清除 `CI` 环境变量，例如：`$env:CI = ""; pnpm exec playwright test`。
-- **验证**：项目 Playwright 配置在非 CI 环境选择 `channel: "msedge"`；若 `CI=true`，配置会切换到 Chromium，仅适用于具备 Playwright Chromium 浏览器的 CI 环境。
+- **验证**：普通 E2E 和生产 t13 配置始终使用 `channel: "msedge"`，不按 `CI` 切换 Chromium；执行环境必须预先安装 Microsoft Edge。

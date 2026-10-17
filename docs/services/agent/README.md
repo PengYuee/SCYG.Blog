@@ -1,6 +1,8 @@
 # SCYG Agent
 
-Agent 是 Python 3.12 服务，提供内部五 RPC gRPC 控制面、health HTTP、Worker 和持久化执行。Recipe AgentRunner 是唯一生产执行路径；PostgreSQL 保存 Run、持久事件和公开订阅，Redis 服务 Worker 瞬时流。Blog 是浏览器 JWT 与业务 HTTP/SSE 的唯一入口，不向 Agent 传递运行或 service JWT；职责详见[架构](architecture.md)，验证入口见[开发指南](development.md)。
+Agent 是 Python 3.12 服务，提供内部五 RPC 控制面、health HTTP、Worker 和持久执行。Recipe AgentRunner 是唯一生产路径；PostgreSQL 保存 Run、交互、持久事件与结果，Redis 服务 Worker 瞬时流及公共日额度/执行名额。Blog 是浏览器作者和匿名 HTTP/SSE 的唯一入口，不向 Agent 传递 service JWT。职责见 [架构](architecture.md)，公共控制见 [public-search](public-search.md)，验证入口见 [开发指南](development.md)。
+
+作者任务与公共搜索的业务规则分别由 [AI 任务模块](../../modules/ai-assistance.md)和[公共 AI 搜索模块](../../modules/public-ai-search.md)维护；本入口及服务文档只保留运行、实现映射与验证要求。
 
 首次生成和安装从仓库根目录执行；安装完成后，本页其余本机命令从 `agent/` 执行，使用 `--no-sync` 保留已安装的非 editable 包。Compose 命令也从 `agent/` 执行；根集成拓扑另有说明。
 

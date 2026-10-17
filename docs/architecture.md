@@ -1,28 +1,37 @@
 # 项目架构
 
-SCYG.Blog 包含 Vue 浏览器应用、Go Blog API 与 Python Agent。浏览器已通过 HTTP API 使用博客内容和作者功能；Agent 有独立实现，但 Blog 到 Agent 的产品链路和前端 AI 页面尚未接通。
+SCYG.Blog 包含 Vue 浏览器应用、Go Blog API 与 Python Agent。浏览器通过 Blog 使用博客、作者功能与 AI 工作台；访客公共 AI 搜索使用独立匿名身份，作者 AI 沿现有登录会话授权。
 
 ## 服务与合同
 
 | 对象 | 职责与权威入口 |
 | --- | --- |
-| frontend | 公共阅读、真实登录、浏览器会话、作者编辑和 taxonomy 管理；[服务文档](services/frontend/README.md) |
-| backend | 用户认证、内容业务、图片和 PostgreSQL 持久化；REST 由 [OpenAPI](../backend/api/openapi.yaml)定义；[现行架构](services/backend/architecture/current-state-architecture.zh-CN.md) |
-| agent | gRPC、HTTP/SSE、Worker、Recipe/Runtime 执行与恢复；[服务架构](services/agent/architecture.md) |
+| frontend | 公共阅读、真实登录、作者编辑、AI 工作台及匿名搜索；[服务文档](services/frontend/README.md) |
+| backend | 用户认证、内容与图片业务、浏览器 HTTP/SSE 边界和内部 BlogContent gRPC；REST 以 [OpenAPI](../backend/api/openapi.yaml)为准；[现行架构](services/backend/architecture/current-state-architecture.zh-CN.md) |
+| agent | 内部 gRPC 控制面、health HTTP、Worker、Recipe 执行与恢复；[服务架构](services/agent/architecture.md) |
 | contracts | [protobuf/gRPC 源合同](../contracts/proto/)；合同存在不代表调用端已实现 |
 
-当前链路是“浏览器 → Blog HTTP API → Blog 数据库与图片文件”。Agent 独立连接自己的 PostgreSQL、Redis 和模型 Provider。现有 Agent HTTP/SSE 不等于浏览器已有 AI 入口。
+```mermaid
+flowchart LR
+    Web[浏览器] -->|HTTP / SSE| Blog[Blog API]
+    Blog -->|AgentControlService gRPC| Agent[Agent]
+    Agent -->|BlogContentService gRPC| Blog
+```
+
+Blog 是浏览器 AI 业务的唯一入口；Agent HTTP 只提供健康检查。两个内部 gRPC 服务分别负责 Run 控制和 Blog 业务调用，不供浏览器直接访问。Agent 独立连接自己的 PostgreSQL、Redis 和模型 Provider。
+
+完整业务说明从[模块总览](modules/README.md)进入：登录与会话、文章、分类标签、正文图片、AI 任务和公共搜索。下列数据及身份说明只界定服务归属，不替代各模块规则。
 
 ## 数据与身份归属
 
 Blog 拥有用户、文章、分类、标签、图片元数据及文件生命周期。Agent 不读取 Blog 数据库，不持有 Blog DSN；跨服务调用经过合同边界。
 
-Agent truth 保存 Run、状态、lease、持久事件与命令；LangGraph checkpoint 保存执行恢复状态，二者在同一应用数据库使用同一账号和 DSN。Redis 保存当前流式路径的瞬时事件，不替代 PostgreSQL 业务真相。游标区别见 [Agent 流式合同](services/agent/streaming.md)。
+Agent PostgreSQL 保存 Run、状态、lease、持久事件、交互和最终结果；LangGraph checkpoint 保存执行恢复状态，二者使用同一应用数据库、账号和 DSN。浏览器 SSE 来自 PostgreSQL 持久事件，Redis 用于 Worker 瞬时流、公共额度和执行名额，不替代业务真相或公开游标。具体边界见 [Agent 架构](services/agent/architecture.md)与[流式合同](services/agent/streaming.md)。
 
-浏览器使用 Blog 短期 Bearer JWT；本地退出和过期清理不代表有服务端 refresh/logout API。Agent Run 鉴权与博客登录是不同边界，不直接混用令牌。
+作者使用 Blog 短期 Bearer JWT，公共 AI 搜索使用独立匿名凭证；本地退出和过期清理不代表有服务端 refresh/logout API。Blog 将可信主体及内容范围传入内部 RPC，Agent 逐次校验 Run 所有权和冻结范围；模型参数不能放宽资源权限。
 
 ## 实现与验收边界
 
-管理后台只保留不可用路由边界；前端支持桌面 Microsoft Edge，布局下限 1024px。Agent 当前工作区同时装配 Recipe AgentRunner 与 SIMPLE/DEEP Router，不能将重构目标写成旧运行时已完全移除。
+管理后台只保留不可用路由边界；前端支持桌面 Microsoft Edge，布局下限 1024px。Recipe AgentRunner 是 Agent 唯一生产执行路径；写作交互、结果及文章副作用的完整约定见 [AI 任务模块](modules/ai-assistance.md)，不在项目架构页重述。
 
-运行与检查见[开发指南](development.md)。本次整理依据源码、配置和合同，不宣称真实数据库、Provider、容器或浏览器端到端验收已通过。正式需求和设计须标注目标状态，不能用实施计划覆盖现行说明。
+运行与检查见[开发指南](development.md)。本文描述当前源码、合同与配置对应的结构，不代表任意目标环境已经部署或验收。真实业务回执按版本与验证范围保存在任务材料中；正式需求和设计须区分目标状态与实现状态。
