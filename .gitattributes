@@ -1,2 +1,4 @@
 # Keep generated contract bytes identical to deterministic Buf output on Windows.
 agent/src/scyg_agent/generated/** text eol=lf
+# Keep OpenAPI TypeScript/Zod generation byte comparisons stable on Windows.
+frontend/src/request/generated/** text eol=lf

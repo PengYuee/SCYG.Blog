@@ -93,6 +93,7 @@ def test_historical_revision03_cycle_preserves_rows_and_null_semantics() -> None
         anyio.run(_phase, environment, _prepare_historical_row)
         seeded = True
         _alembic(["upgrade", "head"], environment)
+        anyio.run(_phase, environment, _assert_scope_backfill)
         count, comment = anyio.run(_phase, environment, _column_state)
         is_null = anyio.run(_phase, environment, _cancellation_is_null)
         assert (count, comment, is_null) == (1, OWNERSHIP_COMMENT, True)
@@ -133,6 +134,12 @@ async def _prepare_historical_row(engine: AsyncEngine) -> None:
     async with engine.begin() as connection:
         _ = await connection.execute(
             text("ALTER TABLE agent_runs DROP COLUMN IF EXISTS cancellation_requested_at")
+        )
+        _ = await connection.execute(
+            text("ALTER TABLE agent_runs DROP COLUMN IF EXISTS content_scope CASCADE")
+        )
+        _ = await connection.execute(
+            text("ALTER TABLE agent_runs DROP COLUMN IF EXISTS public_execution_deadline")
         )
         _ = await connection.execute(
             text(
@@ -187,3 +194,18 @@ async def _hide_run_table(engine: AsyncEngine) -> None:
 async def _restore_run_table(engine: AsyncEngine) -> None:
     async with engine.begin() as connection:
         _ = await connection.execute(text("ALTER TABLE agent_runs_hidden RENAME TO agent_runs"))
+
+
+async def _assert_scope_backfill(engine: AsyncEngine) -> None:
+    async with engine.connect() as connection:
+        row = (
+            await connection.execute(
+                text(
+                    """
+                    SELECT content_scope, public_execution_deadline FROM agent_runs
+                    WHERE run_id = 'run_migration01'
+                    """
+                )
+            )
+        ).one()
+        assert row == ("author", None)

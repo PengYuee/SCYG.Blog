@@ -16,12 +16,16 @@ test("后端 5xx 与离线错误呈现可恢复界面", async ({ page }) => {
   // Given: 列表接口在导航前固定为服务端错误。
   const health = observePageHealth(page)
   await installReadFixtures(page, { listStatus: 503 })
-  const retry = page.getByRole("button", { name: "重试", exact: true })
+  const retry = page.getByTestId("feed-retry")
   // When: 打开文章列表。
   await gotoReady(page, "/articles", retry)
   // Then: 503 是唯一预期控制台失败，且用户获得明确重试操作。
-  await expect(page.getByRole("heading", { name: "文章归档", level: 1 })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "文章加载失败", exact: true })).toBeVisible()
+  await expect(page).toHaveURL((url) => url.pathname === "/" && url.hash === "#home-results")
   await expect(retry).toBeVisible()
+  await expect(page.locator(".public-hero")).toBeHidden()
+  await expect(page.locator("#content-search-input")).toBeVisible()
+  await expect(page.getByRole("banner").getByRole("search")).toHaveCount(0)
   expectExpectedHealth(health, {
     consoleErrors: [/^Failed to load resource: the server responded with a status of 503 \(Service Unavailable\)$/],
   })
@@ -69,28 +73,8 @@ test("Hero 图片失败使用项目自有可访问回退", async ({ page }) => {
   await gotoReady(page, "/", fallback)
   // Then: 回退图语义存在且 Hero 仍为精确视口高度。
   await expect(fallback).toHaveAttribute("aria-label", "星空背景暂时无法显示")
+  await expect(page.locator("#blog-content")).toBeHidden()
   const heroHeight = await page.locator(".public-hero").evaluate((element) => element.getBoundingClientRect().height)
   expect(Math.abs(heroHeight - (page.viewportSize()?.height ?? 0))).toBeLessThanOrEqual(1)
-  expectHealthy(health)
-})
-
-test("不支持的认证不发请求也不伪造登录表单", async ({ page }) => {
-  // Given: 仅监视 XHR/fetch 认证 API，排除 /login HTML document 导航。
-  const health = observePageHealth(page)
-  const authRequests: string[] = []
-  page.on("request", (request) => {
-    const resourceType = request.resourceType()
-    const pathname = new URL(request.url()).pathname
-    if ((resourceType === "xhr" || resourceType === "fetch") && /\/(?:api\/)?(?:auth|login|token|session)(?:\/|$)/i.test(pathname)) authRequests.push(`${request.method()} ${pathname}`)
-  })
-  const unavailable = page.getByRole("heading", { name: "登录功能暂不可用", level: 1 })
-  // When: 打开生产登录地址。
-  await gotoReady(page, "/login", unavailable)
-  // Then: 明确 unsupported，且不存在表单、令牌或认证 API 请求。
-  await expect(unavailable).toBeVisible()
-  await expect(page.locator("form")).toHaveCount(0)
-  expect(authRequests).toEqual([])
-  const storedKeys = await page.evaluate(() => [...Object.keys(localStorage), ...Object.keys(sessionStorage)])
-  expect(storedKeys.filter((key) => /auth|token|session/i.test(key))).toEqual([])
   expectHealthy(health)
 })

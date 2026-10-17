@@ -17,4 +17,6 @@ output-options:
     - agentEvents
     - agentResume
     - agentCancel
+    - agentPublicSession
+    - agentPublicSearch
 output: internal/generated/openapi/openapi.gen.go

@@ -15,7 +15,14 @@ from scyg_agent.adapters.database.run_results import (
     release_result,
     renew_result,
 )
-from scyg_agent.domain.runs import ExecutionOwnerId, Run, RunId, RunStatus, RuntimeKind
+from scyg_agent.domain.runs import (
+    ContentScope,
+    ExecutionOwnerId,
+    Run,
+    RunId,
+    RunStatus,
+    RuntimeKind,
+)
 from scyg_agent.domain.runs.repository import (
     ClaimRequest,
     Completed,
@@ -60,7 +67,9 @@ def test_get_maps_valid_row() -> None:
 def test_claim_mutates_fence_and_preserves_cancellation() -> None:
     row = _record(RunStatus.PENDING)
     row.cancellation_requested_at = NOW
-    request = ClaimRequest(1, WORKER, RuntimeKind.SIMPLE, NOW, timedelta(minutes=5))
+    request = ClaimRequest(
+        1, WORKER, RuntimeKind.SIMPLE, NOW, timedelta(minutes=5), content_scope=ContentScope.AUTHOR
+    )
     lease = claim_results((row,), request, lambda: TOKEN.value)[0]
     assert lease.revision == 2
     assert lease.attempt == 1
@@ -180,4 +189,5 @@ def _record(status: RunStatus) -> RunRecord:
         error_code=None,
         error_message=None,
         error_metadata=None,
+        content_scope=ContentScope.AUTHOR.value,
     )

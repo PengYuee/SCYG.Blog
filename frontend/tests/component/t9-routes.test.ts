@@ -32,6 +32,9 @@ describe("T9 production route contract", () => {
     ["/article/42", "/articles/42"],
     ["/writeBlog", "/author/articles/new"],
     ["/writeBlog?id=42", "/author/articles/42/edit"],
+    ["/articles?q=Vue&tagId=3", "/?q=Vue&tagId=3#home-results"],
+    ["/ai/search", "/?mode=ai"],
+    ["/ai/search/runs/public-run", "/?mode=ai&runId=public-run#home-results"],
   ])("redirects exact legacy URL %s to %s", async (legacy, expected) => {
     // Given / When: 重定向执行需要真实导航；全并发冷懒加载使用受限的局部预算。
     await navigate(legacy)
@@ -86,7 +89,7 @@ describe("T9 production route contract", () => {
     // Given / When: 用户进入文章发现页。
     await navigate("/articles")
     // Then: 浏览器标题使用路由元数据与统一站点后缀。
-    expect(document.title).toBe("文章 · SCYG Blog")
+    expect(document.title).toBe("首页 · SCYG Blog")
   })
   it("renders a deep-linked route through RouterView", async () => {
     // Given: 应用外壳挂载生产路由。

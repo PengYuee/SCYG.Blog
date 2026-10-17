@@ -32,7 +32,7 @@ from scyg_agent.agents.tool_gateway import (
     BlogToolFailureError,
     ToolAccessDeniedError,
 )
-from scyg_agent.domain.runs import UserId
+from scyg_agent.domain.runs import ContentScope, UserId
 
 RUN_ID = "run_gateway001"
 CONFIG: RunnableConfig = {"configurable": {"thread_id": RUN_ID}}
@@ -116,6 +116,7 @@ def context(guard: Guard) -> AgentRequestContext:
         "zh-CN",
         Quality.STANDARD,
         execution_guard=guard,
+        content_scope=ContentScope.AUTHOR,
     )
 
 

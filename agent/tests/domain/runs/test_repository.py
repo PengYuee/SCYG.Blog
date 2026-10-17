@@ -6,6 +6,7 @@ from uuid import UUID
 import pytest
 
 from scyg_agent.domain.runs import (
+    ContentScope,
     ExecutionOwnerId,
     InteractionId,
     RunId,
@@ -32,22 +33,40 @@ GUARD = LeaseGuard(RunId("run_12345678"), WORKER, TOKEN, 1, NOW)
 @pytest.mark.parametrize("limit", [0, -1])
 def test_claim_rejects_nonpositive_limit(limit: int) -> None:
     with pytest.raises(InvalidRepositoryInputError, match="limit"):
-        _ = ClaimRequest(limit, WORKER, RuntimeKind.SIMPLE, NOW, timedelta(minutes=1))
+        _ = ClaimRequest(
+            limit,
+            WORKER,
+            RuntimeKind.SIMPLE,
+            NOW,
+            timedelta(minutes=1),
+            content_scope=ContentScope.AUTHOR,
+        )
 
 
 def test_claim_rejects_naive_time() -> None:
     naive = datetime(2026, 7, 12, tzinfo=None)  # noqa: DTZ001
     with pytest.raises(InvalidRepositoryInputError, match="now"):
-        _ = ClaimRequest(1, WORKER, RuntimeKind.SIMPLE, naive, timedelta(minutes=1))
+        _ = ClaimRequest(
+            1,
+            WORKER,
+            RuntimeKind.SIMPLE,
+            naive,
+            timedelta(minutes=1),
+            content_scope=ContentScope.AUTHOR,
+        )
 
 
 def test_claim_rejects_nonpositive_duration() -> None:
     with pytest.raises(InvalidRepositoryInputError, match="lease duration"):
-        _ = ClaimRequest(1, WORKER, RuntimeKind.SIMPLE, NOW, timedelta(0))
+        _ = ClaimRequest(
+            1, WORKER, RuntimeKind.SIMPLE, NOW, timedelta(0), content_scope=ContentScope.AUTHOR
+        )
 
 
 def test_claim_accepts_exact_runtime_kind() -> None:
-    request = ClaimRequest(2, WORKER, RuntimeKind.DEEP, NOW, timedelta(minutes=1))
+    request = ClaimRequest(
+        2, WORKER, RuntimeKind.DEEP, NOW, timedelta(minutes=1), content_scope=ContentScope.AUTHOR
+    )
     assert request.runtime_kind is RuntimeKind.DEEP
 
 

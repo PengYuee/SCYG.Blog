@@ -33,6 +33,7 @@ from scyg_agent.domain.ports.tool_store import ToolOperation, ToolOutcomeStatus
 from scyg_agent.domain.runs import (
     CancelRun,
     CommandId,
+    ContentScope,
     EventId,
     InteractionId,
     OperationId,
@@ -202,6 +203,7 @@ def run(status: str = "pending", interaction: InteractionId | None = None) -> Ru
         error_code=None,
         error_message=None,
         error_metadata=None,
+        content_scope=ContentScope.AUTHOR.value,
     )
 
 

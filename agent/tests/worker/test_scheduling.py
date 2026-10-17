@@ -2,14 +2,15 @@
 
 from datetime import UTC, datetime, timedelta
 from typing import final, override
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import anyio
 import pytest
 from sqlalchemy.exc import SQLAlchemyError
 
+from scyg_agent.config import PublicSearchSettings
 from scyg_agent.domain.ports.terminal_commit import TerminalCommitRequest, TerminalCommitResult
-from scyg_agent.domain.runs import ExecutionOwnerId, RunId, RuntimeKind
+from scyg_agent.domain.runs import ContentScope, ExecutionOwnerId, RunId, RuntimeKind
 from scyg_agent.domain.runs.repository import (
     ClaimRequest,
     GetResult,
@@ -41,10 +42,12 @@ class QueueRepository:
             RuntimeKind.DEEP: self._leases(RuntimeKind.DEEP, 3),
         }
         self.claim_limits: list[tuple[RuntimeKind, int]] = []
+        self.claim_scopes: list[ContentScope] = []
 
     async def claim(self, request: ClaimRequest) -> tuple[RunLease, ...]:
         """只返回请求容量内的租约."""
         self.claim_limits.append((request.runtime_kind, request.limit))
+        self.claim_scopes.append(request.content_scope)
         queue = self.queues[request.runtime_kind]
         claimed = tuple(queue[: request.limit])
         del queue[: request.limit]
@@ -254,4 +257,74 @@ async def test_terminal_database_error_isolated_to_one_execution(
         await failed.wait()
         await worker.stop()
 
+    assert worker.state is WorkerState.STOPPED
+
+
+@final
+class PublicLeaseControls:
+    """Exercise worker token ownership without a second scheduling implementation."""
+
+    def __init__(self, *, busy: bool = False) -> None:
+        self.settings = PublicSearchSettings()
+        self.busy = busy
+        self.released: list[str] = []
+        self.token = uuid4().hex
+
+    async def acquire_execution(self) -> str | None:
+        return None if self.busy else self.token
+
+    async def renew_execution(self, token: str) -> bool:
+        return token == self.token
+
+    async def release_execution(self, token: str) -> None:
+        self.released.append(token)
+
+
+@pytest.mark.anyio
+async def test_busy_public_slot_never_claims_public_or_blocks_author() -> None:
+    repository = QueueRepository()
+    repository.queues = {kind: [] for kind in RuntimeKind}
+    controls = PublicLeaseControls(busy=True)
+    worker = Worker(
+        ExecutionOwnerId("worker_public001"),
+        WorkerDependencies(
+            repository,
+            UnusedCommitter(),
+            lambda: NOW,
+            StructuredRunner(),
+            public_controls=controls,
+        ),
+    )
+    async with anyio.create_task_group() as tasks:
+        _ = tasks.start_soon(worker.start)
+        await worker.wait_for_heartbeat()
+        await worker.stop()
+    assert repository.claim_scopes
+    assert set(repository.claim_scopes) == {ContentScope.AUTHOR}
+
+
+@pytest.mark.anyio
+async def test_empty_public_candidate_releases_token_without_local_capacity() -> None:
+    repository = QueueRepository()
+    repository.queues[RuntimeKind.DEEP] = []
+    repository.queues[RuntimeKind.SIMPLE] = []
+    controls = PublicLeaseControls()
+    worker = Worker(
+        ExecutionOwnerId("worker_public002"),
+        WorkerDependencies(
+            repository,
+            UnusedCommitter(),
+            lambda: NOW,
+            StructuredRunner(),
+            public_controls=controls,
+        ),
+    )
+    async with anyio.create_task_group() as tasks:
+        _ = tasks.start_soon(worker.start)
+        await worker.wait_for_heartbeat()
+        await worker.stop()
+    assert repository.claim_scopes[0] is ContentScope.PUBLIC
+    assert repository.claim_limits[0] == (RuntimeKind.DEEP, 1)
+    assert controls.released
+    assert set(controls.released) == {controls.token}
     assert worker.state is WorkerState.STOPPED

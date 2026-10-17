@@ -1,4 +1,4 @@
-// Package blogcontent adapts internal Blog management capabilities to gRPC.
+// Package blogcontent adapts explicitly scoped Blog content capabilities to gRPC.
 package blogcontent
 
 import (
@@ -19,8 +19,10 @@ import (
 	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/identity/user"
 )
 
-// ArticleReader is the management projection consumed by this adapter.
+// ArticleReader exposes the public and authorized management projections.
 type ArticleReader interface {
+	List(context.Context, article.List) (article.Page, error)
+	Get(context.Context, article.Get) (article.Result, error)
 	ListManage(context.Context, article.List) (article.Page, error)
 	GetManage(context.Context, article.Get) (article.Result, error)
 }
@@ -53,7 +55,7 @@ type Dependencies struct {
 	Users      ActiveUsers
 }
 
-// Server exposes the eight Blog management RPCs to the trusted internal caller.
+// Server exposes Blog content RPCs to the trusted internal caller.
 type Server struct {
 	blogv1.UnimplementedBlogContentServiceServer
 	dependencies Dependencies
@@ -74,6 +76,9 @@ func Register(server *grpc.Server, dependencies Dependencies) (*health.Server, e
 }
 
 func (server *Server) businessContext(ctx context.Context, raw string) (context.Context, error) {
+	if strings.HasPrefix(raw, "anonymous:") {
+		return nil, status.Error(codes.Unauthenticated, "active user required")
+	}
 	id, err := user.ParseID(raw)
 	if err != nil {
 		return nil, status.Error(codes.InvalidArgument, "invalid user_id")
@@ -87,6 +92,19 @@ func (server *Server) businessContext(ctx context.Context, raw string) (context.
 	}
 	// This principal is an internal business identity, not proof of JWT authentication.
 	return identityauth.WithPrincipal(ctx, identityauth.Principal{UserID: id}), nil
+}
+
+// publicContext validates an independent anonymous subject without installing an
+// author principal or looking up an account in the author registry.
+func publicContext(ctx context.Context, raw string) (context.Context, error) {
+	const prefix = "anonymous:"
+	if !strings.HasPrefix(raw, prefix) || operationID(strings.TrimPrefix(raw, prefix)) != nil {
+		return nil, status.Error(codes.InvalidArgument, "public user_id must be anonymous:UUIDv4")
+	}
+	if _, present := identityauth.PrincipalFromContext(ctx); present {
+		return nil, status.Error(codes.InvalidArgument, "public content cannot use an author principal")
+	}
+	return ctx, nil
 }
 
 func operationID(raw string) error {

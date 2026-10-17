@@ -87,6 +87,34 @@ class FeatureFlags(BaseSettings):
     http: bool = True
 
 
+class PublicSearchSettings(BaseSettings):
+    """Server-owned public execution limits, shared by all replicas."""
+
+    model_config: ClassVar[SettingsConfigDict] = SettingsConfigDict(frozen=True, extra="forbid")
+    key_prefix: Annotated[
+        str, Field(min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9:_-]+$")
+    ] = "scyg:public"
+    query_max_chars: Annotated[int, Field(ge=1, le=16_000)] = 2_000
+    max_results: Annotated[int, Field(ge=1, le=20)] = 5
+    model_max_output_tokens: PositiveSeconds = 2_048
+    graph_recursion_limit: PositiveBoundedIterations = 16
+    max_tool_calls_per_attempt: PositiveSeconds = 6
+    max_read_chars_per_attempt: PositiveSeconds = 24_000
+    run_timeout_seconds: PositiveSeconds = 180
+    daily_creations: PositiveSeconds = 100
+    execution_concurrency: Annotated[int, Field(ge=1, le=1)] = 1
+    lease_seconds: PositiveSeconds = 60
+    heartbeat_seconds: PositiveSeconds = 15
+
+    @model_validator(mode="after")
+    def validate_lease(self) -> Self:
+        """Keep renewal comfortably inside the authoritative lease window."""
+        if self.heartbeat_seconds >= self.lease_seconds:
+            message = "heartbeat_seconds must be less than lease_seconds"
+            raise ValueError(message)
+        return self
+
+
 class ApplicationSettings(BaseSettings):
     """Parse and freeze Agent process configuration from TOML and environment."""
 
@@ -117,6 +145,7 @@ class ApplicationSettings(BaseSettings):
     blog_deadline_seconds: PositiveSeconds = 10
     worker_concurrency: Annotated[int, Field(ge=1, le=64)] = 4
     models: ModelSettings
+    public_search: PublicSearchSettings = PublicSearchSettings()
     lease_seconds: PositiveSeconds = 60
     heartbeat_seconds: PositiveSeconds = 15
     shutdown_seconds: PositiveSeconds = 30
@@ -124,6 +153,14 @@ class ApplicationSettings(BaseSettings):
     worker_error_backoff_seconds: PositiveSeconds = 1
     worker_drain_seconds: PositiveSeconds = 10
     feature_flags: FeatureFlags = FeatureFlags()
+
+    @model_validator(mode="after")
+    def validate_public_capacity(self) -> Self:
+        """Reserve local capacity for author work while public work executes."""
+        if self.worker_concurrency <= self.public_search.execution_concurrency:
+            message = "worker_concurrency must reserve an author slot"
+            raise ValueError(message)
+        return self
 
     @model_validator(mode="after")
     def validate_database_url(self) -> Self:

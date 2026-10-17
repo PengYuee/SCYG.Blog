@@ -32,6 +32,7 @@ describe("HTTP error characterization", () => {
     configureAuthTokenProvider(() => "signed-token")
 
     await http.get("/api/v1/manage/articles", {
+      authPolicy: "author",
       adapter: async (config) => {
         observed(config.headers.get("Authorization"))
         return { data: {}, status: 200, statusText: "OK", headers: new AxiosHeaders(), config }

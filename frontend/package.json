@@ -15,7 +15,7 @@
     "test:e2e": "playwright test",
     "test:e2e:production": "pnpm build && playwright test --config playwright.t13.config.ts",
     "test:coverage": "vitest run --coverage",
-    "check:api": "pnpm generate:api && git diff --exit-code -- src/request/generated",
+    "check:api": "node scripts/check-api.mjs",
     "check": "pnpm check:api && pnpm typecheck && pnpm test:unit && pnpm test:component && pnpm build"
   },
   "dependencies": {

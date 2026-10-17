@@ -7,6 +7,8 @@ export const authorRoutes: readonly RouteRecordRaw[] = [
     component: () => import("@/layouts/AuthorLayout.vue"),
     meta: { requiresAuth: true },
     children: [
+      { path: "ai", name: "author-ai", component: () => import("@/views/author/AiWorkspaceView.vue"), meta: { title: "AI 工作台" } },
+      { path: "ai/runs/:runId", name: "author-ai-run", component: () => import("@/views/author/AiRunPage.vue"), meta: { title: "AI 任务" } },
       {
         path: "articles/new",
         name: "author-article-new",

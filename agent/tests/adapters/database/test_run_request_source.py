@@ -15,7 +15,7 @@ from scyg_agent.agents.input import decode_agent_input
 from scyg_agent.agents.recipes import default_recipe_registry
 from scyg_agent.application.control import ControlApplication
 from scyg_agent.application.event_subscription import EventSubscriptionService
-from scyg_agent.domain.runs import RunId
+from scyg_agent.domain.runs import ContentScope, RunId
 from scyg_agent.domain.runs.input import MissingRunInput
 
 type DatabaseFixture = tuple[AsyncEngine, async_sessionmaker[AsyncSession]]
@@ -44,7 +44,9 @@ async def test_created_capability_snapshot_decodes_for_real_runner(
         open_listener_connection,
     )
     control = ControlApplication(sessions, "agent_events", EventSubscriptionService(store))
-    created = await control.create("owner", str(uuid4()), capability, payload)
+    created = await control.create(
+        "owner", str(uuid4()), capability, payload, content_scope=ContentScope.AUTHOR
+    )
     persisted = await PostgreSQLRunInputSource(sessions).get_input(RunId(created.run_id))
     assert not isinstance(persisted, MissingRunInput)
     snapshot = decode_agent_input(persisted, default_recipe_registry())

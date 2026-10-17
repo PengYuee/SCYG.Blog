@@ -17,9 +17,10 @@ export class HttpRequestError extends Error {
   readonly requestId: string | undefined
   /** 结构化字段错误。 */
   readonly errors: ProblemDetails["errors"] | undefined
+  readonly retryAfterSeconds: number | undefined
 
   /** 创建包含稳定状态码、错误码、结构化问题和原始原因的 HTTP 错误。 */
-  constructor(message: string, status: number | undefined, code: string, cause: unknown, problem?: ProblemDetails) {
+  constructor(message: string, status: number | undefined, code: string, cause: unknown, problem?: ProblemDetails, retryAfterSeconds?: number) {
     super(message, { cause })
     this.status = status
     this.code = code
@@ -27,11 +28,26 @@ export class HttpRequestError extends Error {
     this.detail = problem?.detail
     this.requestId = problem?.requestId
     this.errors = problem?.errors
+    this.retryAfterSeconds = retryAfterSeconds
   }
 }
 
 /** 仅接受完整 RFC 9457 响应，畸形错误继续走通用回退。 */
 export function parseProblemDetails(input: unknown): ProblemDetails | undefined {
   const result = zProblem.safeParse(input)
-  return result.success ? result.data : undefined
+  if (!result.success) return undefined
+  const { code, ...problem } = result.data
+  return code === undefined ? problem : { ...problem, code }
+}
+
+/** Blog Retry-After uses only non-negative safe integer seconds, not dates. */
+export function parseRetryAfter(value: unknown): number | undefined {
+  if (typeof value !== "string" || !/^\d+$/.test(value)) return undefined
+  const seconds = Number(value)
+  return Number.isSafeInteger(seconds) ? seconds : undefined
+}
+
+export function responseHttpError(status: number, body: unknown, retryAfter: unknown): HttpRequestError {
+  const problem = parseProblemDetails(body)
+  return new HttpRequestError(problem?.detail ?? "服务请求失败，请检查状态后重试", status, problem?.code ?? "HTTP_ERROR", undefined, problem, parseRetryAfter(retryAfter))
 }

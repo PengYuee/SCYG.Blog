@@ -18,7 +18,7 @@ from scyg_agent.adapters.database.operation_records import AuditEventRecord, Too
 from scyg_agent.adapters.database.run_records import InteractionRecord, RunRecord
 from scyg_agent.domain.ports.command_store import CommandSubmission
 from scyg_agent.domain.ports.idempotency import AuditMetadata, RequestDigest
-from scyg_agent.domain.runs import CancelRun, CommandId, EventId, RunId
+from scyg_agent.domain.runs import CancelRun, CommandId, ContentScope, EventId, RunId
 from tests.acceptance_settings import require_test_settings
 
 NOW = datetime(2026, 7, 12, 14, tzinfo=UTC)
@@ -88,6 +88,7 @@ async def seed_run(sessions: async_sessionmaker[AsyncSession]) -> None:
                 error_code=None,
                 error_message=None,
                 error_metadata=None,
+                content_scope=ContentScope.AUTHOR.value,
             )
         )
 

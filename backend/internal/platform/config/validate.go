@@ -39,7 +39,11 @@ func validate(raw rawConfig) (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	return Config{app: App{environment: environment, logLevel: level}, http: HTTP{host: raw.HTTP.Host, port: raw.HTTP.Port, readHeaderTimeout: raw.HTTP.ReadHeaderTimeout, readTimeout: raw.HTTP.ReadTimeout, writeTimeout: raw.HTTP.WriteTimeout, idleTimeout: raw.HTTP.IdleTimeout, shutdownTimeout: raw.HTTP.ShutdownTimeout, trustedProxies: append([]string(nil), raw.HTTP.TrustedProxies...), corsAllowedOrigins: append([]string(nil), raw.HTTP.CORSAllowedOrigins...)}, database: Database{dsn: DSN{value: raw.Database.DSN}, maxOpenConns: raw.Database.MaxOpenConns, maxIdleConns: raw.Database.MaxIdleConns, connMaxLifetime: raw.Database.ConnMaxLifetime}, docs: Docs{enabled: raw.Docs.Enabled}, telemetry: Telemetry{otlpEndpoint: raw.Telemetry.OTLPEndpoint}, auth: auth, articleImages: articleImages, agent: agent}, nil
+	publicSearch, err := validatePublicSearch(raw.PublicSearch)
+	if err != nil {
+		return Config{}, err
+	}
+	return Config{app: App{environment: environment, logLevel: level}, http: HTTP{host: raw.HTTP.Host, port: raw.HTTP.Port, readHeaderTimeout: raw.HTTP.ReadHeaderTimeout, readTimeout: raw.HTTP.ReadTimeout, writeTimeout: raw.HTTP.WriteTimeout, idleTimeout: raw.HTTP.IdleTimeout, shutdownTimeout: raw.HTTP.ShutdownTimeout, trustedProxies: append([]string(nil), raw.HTTP.TrustedProxies...), corsAllowedOrigins: append([]string(nil), raw.HTTP.CORSAllowedOrigins...)}, database: Database{dsn: DSN{value: raw.Database.DSN}, maxOpenConns: raw.Database.MaxOpenConns, maxIdleConns: raw.Database.MaxIdleConns, connMaxLifetime: raw.Database.ConnMaxLifetime}, docs: Docs{enabled: raw.Docs.Enabled}, telemetry: Telemetry{otlpEndpoint: raw.Telemetry.OTLPEndpoint}, auth: auth, articleImages: articleImages, agent: agent, publicSearch: publicSearch}, nil
 }
 
 func validateHTTP(raw rawHTTP) error {

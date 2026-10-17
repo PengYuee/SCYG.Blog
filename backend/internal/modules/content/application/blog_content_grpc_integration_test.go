@@ -14,6 +14,7 @@ import (
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
 
+	agentv1 "github.com/PengYuee/SCYG.Blog/backend/internal/generated/proto/scyg/agent/v1"
 	blogv1 "github.com/PengYuee/SCYG.Blog/backend/internal/generated/proto/scyg/blog/v1"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/taxonomy"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/identity/user"
@@ -84,17 +85,71 @@ func TestBlogContentGRPCManagementLifecycle(t *testing.T) {
 	if err != nil || archived.GetArticle().GetStatus() != blogv1.ArticleStatus_ARTICLE_STATUS_ARCHIVED {
 		t.Fatalf("archive=%+v err=%v", archived, err)
 	}
-	got, err := client.GetArticle(ctx, &blogv1.GetArticleRequest{UserId: operationUser, ArticleId: first.Id})
+	got, err := client.GetArticle(ctx, &blogv1.GetArticleRequest{UserId: operationUser, ArticleId: first.Id, ContentScope: agentv1.ContentScope_CONTENT_SCOPE_AUTHOR})
 	if err != nil || got.GetArticle().GetTitle() != "grpc-patched" {
 		t.Fatalf("get=%+v err=%v", got, err)
 	}
-	found, err := client.SearchArticles(ctx, &blogv1.SearchArticlesRequest{UserId: operationUser, Page: 1, PageSize: 1, Query: "grpc", Status: blogv1.ArticleStatus_ARTICLE_STATUS_ARCHIVED, ArticleTypeId: fixture.typeID, Sort: "title"})
+	found, err := client.SearchArticles(ctx, &blogv1.SearchArticlesRequest{UserId: operationUser, ContentScope: agentv1.ContentScope_CONTENT_SCOPE_AUTHOR, Page: 1, PageSize: 1, Query: "grpc", Status: blogv1.ArticleStatus_ARTICLE_STATUS_ARCHIVED, ArticleTypeId: fixture.typeID, Sort: "title"})
 	if err != nil || found.GetTotalItems() != 1 || len(found.GetArticles()) != 1 || found.GetTotalPages() != 1 {
 		t.Fatalf("search=%+v err=%v", found, err)
 	}
-	drafts, err := client.SearchArticles(ctx, &blogv1.SearchArticlesRequest{UserId: operationUser, Status: blogv1.ArticleStatus_ARTICLE_STATUS_DRAFT})
+	drafts, err := client.SearchArticles(ctx, &blogv1.SearchArticlesRequest{UserId: operationUser, ContentScope: agentv1.ContentScope_CONTENT_SCOPE_AUTHOR, Status: blogv1.ArticleStatus_ARTICLE_STATUS_DRAFT})
 	if err != nil || drafts.GetTotalItems() != 0 {
 		t.Fatalf("status filter=%+v err=%v", drafts, err)
+	}
+	// Real public reads must exclude archived, draft and soft-deleted content,
+	// including their bodies, even though the author can still read private rows.
+	publicArticle, err := client.CreateArticle(ctx, &blogv1.CreateArticleRequest{UserId: operationUser, OperationId: "50000000-0000-4000-8000-000000000010", Status: blogv1.ArticleStatus_ARTICLE_STATUS_PUBLISHED, ArticleTypeId: fixture.typeID, Title: "grpc-public", Slug: "grpc-public", Digest: "grpc public digest", Content: "public body", TagIds: []int64{fixture.tagID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	privateArticle, err := client.CreateArticle(ctx, &blogv1.CreateArticleRequest{UserId: operationUser, OperationId: "50000000-0000-4000-8000-000000000011", Status: blogv1.ArticleStatus_ARTICLE_STATUS_DRAFT, ArticleTypeId: fixture.typeID, Title: "grpc-private", Slug: "grpc-private", Digest: "grpc private digest", Content: "private body", TagIds: []int64{fixture.tagID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	deletedArticle, err := client.CreateArticle(ctx, &blogv1.CreateArticleRequest{UserId: operationUser, OperationId: "50000000-0000-4000-8000-000000000012", Status: blogv1.ArticleStatus_ARTICLE_STATUS_PUBLISHED, ArticleTypeId: fixture.typeID, Title: "grpc-deleted", Slug: "grpc-deleted", Digest: "grpc deleted digest", Content: "deleted body", TagIds: []int64{fixture.tagID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.db.GORM().Exec(`UPDATE articles SET is_deleted=true, deleted_at=CURRENT_TIMESTAMP WHERE id=?`, deletedArticle.Article.Id).Error; err != nil {
+		t.Fatal(err)
+	}
+	const anonymous = "anonymous:12345678-1234-4234-8234-123456789abc"
+	policy.denied.Store(true)
+	for _, state := range []blogv1.ArticleStatus{blogv1.ArticleStatus_ARTICLE_STATUS_UNSPECIFIED, blogv1.ArticleStatus_ARTICLE_STATUS_PUBLISHED} {
+		visible, err := client.SearchArticles(ctx, &blogv1.SearchArticlesRequest{UserId: anonymous, ContentScope: agentv1.ContentScope_CONTENT_SCOPE_PUBLIC, Query: "grpc", Status: state, ArticleTypeId: fixture.typeID, TagId: fixture.tagID, Page: 1, PageSize: 1, Sort: "title"})
+		if err != nil || visible.GetTotalItems() != 1 || visible.GetTotalPages() != 1 || len(visible.GetArticles()) != 1 || visible.Articles[0].Id != publicArticle.Article.Id || visible.Articles[0].Content != "public body" {
+			t.Fatalf("public search=%+v err=%v", visible, err)
+		}
+	}
+	publicGet, err := client.GetArticle(ctx, &blogv1.GetArticleRequest{UserId: anonymous, ContentScope: agentv1.ContentScope_CONTENT_SCOPE_PUBLIC, ArticleId: publicArticle.Article.Id})
+	if err != nil || publicGet.GetArticle().GetContent() != "public body" || len(publicGet.GetArticle().GetTags()) != 1 {
+		t.Fatalf("public get=%+v err=%v", publicGet, err)
+	}
+	for _, id := range []int64{first.Id, privateArticle.Article.Id, deletedArticle.Article.Id} {
+		if got, err := client.GetArticle(ctx, &blogv1.GetArticleRequest{UserId: anonymous, ContentScope: agentv1.ContentScope_CONTENT_SCOPE_PUBLIC, ArticleId: id}); status.Code(err) != codes.NotFound || got != nil {
+			t.Fatalf("private/deleted public get id=%d result=%+v err=%v", id, got, err)
+		}
+	}
+	policy.denied.Store(false)
+	for _, id := range []int64{first.Id, privateArticle.Article.Id} {
+		if got, err := client.GetArticle(ctx, &blogv1.GetArticleRequest{UserId: operationUser, ContentScope: agentv1.ContentScope_CONTENT_SCOPE_AUTHOR, ArticleId: id}); err != nil || got.GetArticle().GetId() != id {
+			t.Fatalf("author private get id=%d result=%+v err=%v", id, got, err)
+		}
+	}
+	if got, err := client.GetArticle(ctx, &blogv1.GetArticleRequest{UserId: operationUser, ContentScope: agentv1.ContentScope_CONTENT_SCOPE_AUTHOR, ArticleId: deletedArticle.Article.Id}); status.Code(err) != codes.NotFound || got != nil {
+		t.Fatalf("author deleted get=%+v err=%v", got, err)
+	}
+	// Moving published content to archived must immediately remove it from public
+	// reads; neither the RPC nor the public repository may return stale content.
+	if _, err := client.ArchiveArticle(ctx, &blogv1.ArchiveArticleRequest{UserId: operationUser, OperationId: "50000000-0000-4000-8000-000000000013", ArticleId: publicArticle.Article.Id, ExpectedVersion: publicArticle.Article.Version}); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := client.GetArticle(ctx, &blogv1.GetArticleRequest{UserId: anonymous, ContentScope: agentv1.ContentScope_CONTENT_SCOPE_PUBLIC, ArticleId: publicArticle.Article.Id}); status.Code(err) != codes.NotFound || got != nil {
+		t.Fatalf("newly archived public get=%+v err=%v", got, err)
+	}
+	if visible, err := client.SearchArticles(ctx, &blogv1.SearchArticlesRequest{UserId: anonymous, ContentScope: agentv1.ContentScope_CONTENT_SCOPE_PUBLIC, Query: "grpc"}); err != nil || visible.GetTotalItems() != 0 || len(visible.GetArticles()) != 0 {
+		t.Fatalf("newly archived public search=%+v err=%v", visible, err)
 	}
 	tags, err := client.ListTags(ctx, &blogv1.ListTagsRequest{UserId: operationUser, Query: "application-test-tag", Page: 1, PageSize: 1})
 	if err != nil || tags.GetTotalItems() != 1 || tags.Tags[0].Id != fixture.tagID {
@@ -129,7 +184,7 @@ func TestBlogContentGRPCManagementLifecycle(t *testing.T) {
 	if status.Code(err) != codes.Unauthenticated {
 		t.Fatalf("inactive replay=%v", err)
 	}
-	_, err = client.GetArticle(ctx, &blogv1.GetArticleRequest{UserId: "22222222222222222222222222222222", ArticleId: first.Id})
+	_, err = client.GetArticle(ctx, &blogv1.GetArticleRequest{UserId: "22222222222222222222222222222222", ArticleId: first.Id, ContentScope: agentv1.ContentScope_CONTENT_SCOPE_AUTHOR})
 	if status.Code(err) != codes.Unauthenticated {
 		t.Fatalf("unknown identity=%v", err)
 	}

@@ -44,6 +44,15 @@ class RunRecord(Base):
     __table_args__: tuple[SchemaItem, ...] = (
         CheckConstraint("revision >= 1", name="revision_positive"),
         CheckConstraint("attempt >= 0", name="attempt_nonnegative"),
+        CheckConstraint("content_scope IN ('author','public')", name="content_scope_valid"),
+        CheckConstraint(
+            "public_execution_deadline IS NULL OR content_scope = 'public'",
+            name="public_deadline_scope",
+        ),
+        CheckConstraint(
+            "content_scope <> 'public' OR (capability IS NOT NULL AND capability = 'search')",
+            name="public_search_only",
+        ),
         CheckConstraint(
             RUN_STATUS_CHECK,
             name="status_valid",
@@ -76,6 +85,8 @@ class RunRecord(Base):
     run_id: Mapped[str] = mapped_column(String(68), primary_key=True)
     owner_user_id: Mapped[str] = mapped_column(String(128), index=True)
     operation_id: Mapped[str] = mapped_column(String(128))
+    content_scope: Mapped[str] = mapped_column(String(16), nullable=False)
+    public_execution_deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     capability: Mapped[str | None] = mapped_column(String(32), index=True)
     recipe_id: Mapped[str | None] = mapped_column(String(64))
     recipe_version: Mapped[str | None] = mapped_column(String(32))

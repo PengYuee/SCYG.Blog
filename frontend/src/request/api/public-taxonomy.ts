@@ -40,17 +40,17 @@ export function createPublicTaxonomyApi(client: HttpTransport, serverUrl: string
     async listArticleTypes(filter?: string): Promise<readonly PublicArticleTypeView[]> {
       const query = filter?.trim()
       const base: Omit<NonNullable<ListPublicArticleTypesData["query"]>, "page"> = { pageSize: PUBLIC_PAGE_SIZE, ...(query === undefined || query.length === 0 ? {} : { q: query }) }
-      const first = articleTypePage((await client.get(PUBLIC_ARTICLE_TYPE_ROUTE, { params: { ...base, page: 1 } })).data, serverUrl)
+      const first = articleTypePage((await client.get(PUBLIC_ARTICLE_TYPE_ROUTE, { authPolicy: "none", params: { ...base, page: 1 } })).data, serverUrl)
       const items = [...first.items]
-      for (let page = 2; page <= first.totalPages; page += 1) items.push(...articleTypePage((await client.get(PUBLIC_ARTICLE_TYPE_ROUTE, { params: { ...base, page } })).data, serverUrl).items)
+      for (let page = 2; page <= first.totalPages; page += 1) items.push(...articleTypePage((await client.get(PUBLIC_ARTICLE_TYPE_ROUTE, { authPolicy: "none", params: { ...base, page } })).data, serverUrl).items)
       return items
     },
     async listTags(filter?: string): Promise<readonly PublicTagView[]> {
       const query = filter?.trim()
       const base: Omit<NonNullable<ListPublicTagsData["query"]>, "page"> = { pageSize: PUBLIC_PAGE_SIZE, ...(query === undefined || query.length === 0 ? {} : { q: query }) }
-      const first = tagPage((await client.get(PUBLIC_TAG_ROUTE, { params: { ...base, page: 1 } })).data)
+      const first = tagPage((await client.get(PUBLIC_TAG_ROUTE, { authPolicy: "none", params: { ...base, page: 1 } })).data)
       const items = [...first.items]
-      for (let page = 2; page <= first.totalPages; page += 1) items.push(...tagPage((await client.get(PUBLIC_TAG_ROUTE, { params: { ...base, page } })).data).items)
+      for (let page = 2; page <= first.totalPages; page += 1) items.push(...tagPage((await client.get(PUBLIC_TAG_ROUTE, { authPolicy: "none", params: { ...base, page } })).data).items)
       return items
     },
   }

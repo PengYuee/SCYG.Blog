@@ -17,8 +17,10 @@ function resolveLegacyWrite(to: RouteLocationGeneric) {
 /** 公共域路由；catch-all 必须由总路由放在 admin 与 author 之后。 */
 export const publicRoutes: readonly RouteRecordRaw[] = [
   { path: "/", name: "home", component: () => import("@/views/public/HomeView.vue"), meta: { title: "首页" } },
-  { path: "/articles", name: "article-list", component: () => import("@/views/public/ArticleListView.vue"), meta: { title: "文章" } },
+  { path: "/articles", name: "article-list", redirect: (to) => ({ path: "/", query: to.query, hash: "#home-results" }) },
   { path: "/articles/:id", name: "article-detail", component: () => import("@/views/public/ArticleDetailView.vue"), meta: { title: "文章详情" } },
+  { path: "/ai/search", name: "public-ai-search", redirect: (to) => ({ path: "/", query: { ...to.query, mode: "ai" } }) },
+  { path: "/ai/search/runs/:runId", name: "public-ai-search-run", redirect: (to) => ({ path: "/", query: { ...to.query, mode: "ai", runId: to.params["runId"] }, hash: "#home-results" }) },
   {
     path: "/login",
     name: "login",

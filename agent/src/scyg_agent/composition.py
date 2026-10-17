@@ -17,7 +17,8 @@ from scyg_agent.adapters.database.terminal_commit import PostgreSQLTerminalCommi
 from scyg_agent.adapters.langgraph.checkpointer import CheckpointStore
 from scyg_agent.adapters.langgraph.values import CheckpointerConfig
 from scyg_agent.adapters.redis import RedisSettings, RedisStreamClient, RedisStreamStore
-from scyg_agent.application.control import ControlApplication
+from scyg_agent.adapters.redis.public_controls import RedisPublicControls
+from scyg_agent.application.control import ControlApplication, PublicControlConfig
 from scyg_agent.application.event_subscription import EventSubscriptionService
 from scyg_agent.composition_redis import RedisResource
 from scyg_agent.composition_resources import (
@@ -145,13 +146,15 @@ class ProductionApplicationFactory:
     ) -> None:
         """按 gRPC、Worker、HTTP 顺序追加已启用表面."""
         if self.settings.feature_flags.grpc:
-            components.append(self.decorate(self._grpc(sessions)))
+            components.append(self.decorate(self._grpc(sessions, redis)))
         if self.settings.feature_flags.worker:
             components.append(self.decorate(self._worker(sessions, runner, redis.client)))
         if self.settings.feature_flags.http:
             components.append(self.decorate(self._http(lifecycle_slot)))
 
-    def _grpc(self, sessions: async_sessionmaker[AsyncSession]) -> LifecycleComponent:
+    def _grpc(
+        self, sessions: async_sessionmaker[AsyncSession], redis: RedisResource
+    ) -> LifecycleComponent:
         def build() -> LifecycleComponent:
             events = PostgreSQLEventStore(
                 sessions,
@@ -160,7 +163,13 @@ class ProductionApplicationFactory:
                 open_listener_connection,
             )
             control = ControlApplication(
-                sessions, NOTIFICATION_CHANNEL, EventSubscriptionService(events)
+                sessions,
+                NOTIFICATION_CHANNEL,
+                EventSubscriptionService(events),
+                public=PublicControlConfig(
+                    settings=self.settings.public_search,
+                    controls=self._public_controls(redis.client),
+                ),
             )
             return GrpcServerComponent(
                 AgentControlServicer(control),
@@ -173,6 +182,13 @@ class ProductionApplicationFactory:
             )
 
         return DeferredComponent("grpc", build)
+
+    def _public_controls(self, stream_store: RedisStreamStore) -> RedisPublicControls:
+        """Reuse the stream connection pool for public control scripts."""
+        if not isinstance(stream_store, RedisStreamClient):
+            message = "Public controls require the production Redis client"
+            raise TypeError(message)
+        return RedisPublicControls(stream_store.client, self.settings.public_search)
 
     def _worker(
         self,
@@ -189,6 +205,7 @@ class ProductionApplicationFactory:
                     utc_now,
                     runner.require_agent_runner(),
                     stream_store,
+                    public_controls=self._public_controls(stream_store),
                 ),
                 WorkerConfig(
                     capacity=self.settings.worker_concurrency,

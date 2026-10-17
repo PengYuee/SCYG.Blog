@@ -121,6 +121,7 @@ func cors(origins []string) gin.HandlerFunc {
 			ctx.Header("Vary", "Origin")
 			ctx.Header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
 			ctx.Header("Access-Control-Allow-Headers", "Authorization, Content-Type, If-Match, X-Request-ID, Idempotency-Key, Last-Event-ID")
+			ctx.Header("Access-Control-Expose-Headers", "Retry-After")
 		}
 		if ctx.Request.Method == http.MethodOptions {
 			if _, ok := allowed[origin]; ok {
@@ -187,7 +188,7 @@ func (body *requestBody) Read(buffer []byte) (int, error) {
 }
 
 func isAgentPath(path string) bool {
-	if path == "/api/v1/ai/search" || path == "/api/v1/ai/write" || path == "/api/v1/ai/polish" || path == "/api/v1/ai/chat" {
+	if path == "/api/v1/ai/search" || path == "/api/v1/ai/write" || path == "/api/v1/ai/polish" || path == "/api/v1/ai/chat" || path == "/api/v1/public/ai/search" || path == "/api/v1/public/ai/session" {
 		return true
 	}
 	return path == "/api/v1/runs/:runId" || path == "/api/v1/runs/:runId/events" || path == "/api/v1/runs/:runId/resume" || path == "/api/v1/runs/:runId/cancel"

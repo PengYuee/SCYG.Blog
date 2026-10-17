@@ -6,8 +6,10 @@ import { createArticleTypeApi, type ArticleTypeApi } from "@/request/api/article
 import { createPublicTaxonomyApi, type PublicTaxonomyApi } from "@/request/api/public-taxonomy"
 import { createTagApi, type TagApi } from "@/request/api/tag"
 import type { HttpTransport } from "@/request/transport"
+import { createAiApi, type AiApi } from "@/request/api/ai"
 
 export type ApiServices = {
+  readonly ai: AiApi
   /** 用户名密码登录 API。 */ readonly auth: AuthApi
   /** 文章 API 适配器。 */ readonly article: ArticleApi
   /** 正文图片 API 适配器。 */ readonly articleImage: ArticleImageApi
@@ -22,6 +24,7 @@ export const apiServicesKey: InjectionKey<ApiServices> = Symbol("api-services")
 /** 使用显式传入的传输层和服务地址创建一次 API 服务容器。 */
 export function createApiServices(client: HttpTransport, serverUrl: string): ApiServices {
   return {
+    ai: createAiApi(client, serverUrl),
     auth: createAuthApi(client),
     article: createArticleApi(client),
     articleImage: createArticleImageApi(client, serverUrl),

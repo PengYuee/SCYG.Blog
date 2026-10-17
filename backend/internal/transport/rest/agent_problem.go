@@ -2,6 +2,7 @@ package rest
 
 import (
 	"net/http"
+	"strconv"
 
 	"github.com/gin-gonic/gin"
 	"google.golang.org/grpc/codes"
@@ -55,6 +56,9 @@ func agentFailure(ctx *gin.Context, err error) {
 		if public, ok := item.(*pb.PublicError); ok {
 			detail = public.Message
 			code = public.Code
+			if public.RetryAfterSeconds != nil {
+				ctx.Header("Retry-After", strconv.FormatUint(uint64(*public.RetryAfterSeconds), 10))
+			}
 			break
 		}
 	}

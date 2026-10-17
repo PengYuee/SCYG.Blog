@@ -18,6 +18,7 @@ from scyg_agent.domain.runs import (
     ClaimRun,
     CommandId,
     CommandKind,
+    ContentScope,
     EventId,
     ExecutionOwnerId,
     FailRun,
@@ -133,4 +134,5 @@ def _run(status: RunStatus) -> RunRecord:
         error_code=None,
         error_message=None,
         error_metadata=None,
+        content_scope=ContentScope.AUTHOR.value,
     )

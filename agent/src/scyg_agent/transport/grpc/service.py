@@ -12,6 +12,7 @@ from grpc_status import rpc_status
 from scyg_agent.adapters.database.event_subscription import SubscriptionCursorError
 from scyg_agent.agents.contracts import Capability
 from scyg_agent.application.control import ControlError, ControlSnapshot, ResumeCommand
+from scyg_agent.domain.runs import ContentScope
 from scyg_agent.generated.proto.scyg.agent.v1 import agent_control_service_pb2 as service_pb2
 from scyg_agent.generated.proto.scyg.agent.v1 import agent_control_service_pb2_grpc as service_grpc
 from scyg_agent.generated.proto.scyg.agent.v1 import common_pb2
@@ -19,6 +20,7 @@ from scyg_agent.generated.proto.scyg.agent.v1 import common_pb2
 from .conversion import (
     InvalidGrpcRequestError,
     parse_capability,
+    parse_content_scope,
     run_to_proto,
     validate_cursor,
     validate_interaction,
@@ -71,24 +73,38 @@ class ControlFacade(Protocol):
     """The complete control application contract, without transport credentials."""
 
     async def create(
-        self, user_id: str, key: str, capability: Capability, raw_json: bytes
+        self,
+        user_id: str,
+        key: str,
+        capability: Capability,
+        raw_json: bytes,
+        *,
+        content_scope: ContentScope,
     ) -> ControlSnapshot:
         """Create or replay a Run in one successful-key transaction."""
         ...
 
-    async def get(self, user_id: str, run_id: str) -> ControlSnapshot:
+    async def get(
+        self, user_id: str, run_id: str, *, content_scope: ContentScope
+    ) -> ControlSnapshot:
         """Read one owner-authorized public snapshot."""
         ...
 
-    async def resume(self, user_id: str, key: str, command: ResumeCommand) -> ControlSnapshot:
+    async def resume(
+        self, user_id: str, key: str, command: ResumeCommand, *, content_scope: ContentScope
+    ) -> ControlSnapshot:
         """Resolve the current interaction or replay a successful key."""
         ...
 
-    async def cancel(self, user_id: str, key: str, run_id: str) -> ControlSnapshot:
+    async def cancel(
+        self, user_id: str, key: str, run_id: str, *, content_scope: ContentScope
+    ) -> ControlSnapshot:
         """Set cancellation admission fences or replay a successful key."""
         ...
 
-    async def open_events(self, user_id: str, run_id: str, cursor: str | None) -> OpenedFrames:
+    async def open_events(
+        self, user_id: str, run_id: str, cursor: str | None, *, content_scope: ContentScope
+    ) -> OpenedFrames:
         """Authorize and open a cursor-validated subscription before readiness."""
         ...
 
@@ -111,7 +127,9 @@ class AgentControlServicer(service_grpc.AgentControlServiceServicer):
         except (InvalidGrpcRequestError, UnicodeError):
             await _abort(context, grpc.StatusCode.INVALID_ARGUMENT, "Invalid request")
         except ControlError as error:
-            await _abort(context, grpc.StatusCode[error.code], error.message)
+            await _abort(
+                context, grpc.StatusCode[error.code], error.message, error.retry_after_seconds
+            )
         except TimeoutError:
             await _abort(context, grpc.StatusCode.DEADLINE_EXCEEDED, "Request deadline exceeded")
         except Exception:  # noqa: BLE001  # BROAD_EXCEPT_OK: sanitize all infrastructure failures at the public boundary.
@@ -130,6 +148,7 @@ class AgentControlServicer(service_grpc.AgentControlServiceServicer):
                     validate_key(request.idempotency_key),
                     parse_capability(request.capability),
                     validate_json(request.json_payload),
+                    content_scope=parse_content_scope(request.content_scope),
                 )
             )
 
@@ -144,6 +163,7 @@ class AgentControlServicer(service_grpc.AgentControlServiceServicer):
                 await self._facade.get(
                     validate_user(request.user_id),
                     validate_run_id(request.run_id),
+                    content_scope=parse_content_scope(request.content_scope),
                 )
             )
 
@@ -171,6 +191,7 @@ class AgentControlServicer(service_grpc.AgentControlServiceServicer):
                         request.decision,
                         payload,
                     ),
+                    content_scope=parse_content_scope(request.content_scope),
                 )
             )
 
@@ -188,6 +209,7 @@ class AgentControlServicer(service_grpc.AgentControlServiceServicer):
                     validate_user(request.user_id),
                     validate_key(request.idempotency_key),
                     validate_run_id(request.run_id),
+                    content_scope=parse_content_scope(request.content_scope),
                 )
             )
 
@@ -206,7 +228,9 @@ class AgentControlServicer(service_grpc.AgentControlServiceServicer):
                 request.after_event_id if request.HasField("after_event_id") else None
             )
             try:
-                return await self._facade.open_events(user, run_id, cursor)
+                return await self._facade.open_events(
+                    user, run_id, cursor, content_scope=parse_content_scope(request.content_scope)
+                )
             except ValueError:
                 raise InvalidGrpcRequestError from None
             except SubscriptionCursorError:
@@ -218,7 +242,9 @@ class AgentControlServicer(service_grpc.AgentControlServiceServicer):
             async for frame in opened.frames():
                 yield service_pb2.RunEventFrame(frame=frame.encode("utf-8"))
         except ControlError as error:
-            await _abort(context, grpc.StatusCode[error.code], error.message)
+            await _abort(
+                context, grpc.StatusCode[error.code], error.message, error.retry_after_seconds
+            )
         except Exception:  # noqa: BLE001  # BROAD_EXCEPT_OK: terminate the public stream without exposing internals.
             await _abort(context, grpc.StatusCode.INTERNAL, "Internal service error")
         finally:
@@ -226,9 +252,13 @@ class AgentControlServicer(service_grpc.AgentControlServiceServicer):
                 await opened.aclose()
 
 
-async def _abort(context: Context, code: grpc.StatusCode, message: str) -> NoReturn:
+async def _abort(
+    context: Context, code: grpc.StatusCode, message: str, retry_after_seconds: int | None = None
+) -> NoReturn:
     """Pack a sanitized canonical public status detail for the Blog gateway."""
     public_error = common_pb2.PublicError(code=code.name, message=message)
+    if retry_after_seconds is not None:
+        public_error.retry_after_seconds = retry_after_seconds
     detail = Any(
         type_url="type.googleapis.com/scyg.agent.v1.PublicError",
         value=public_error.SerializeToString(),

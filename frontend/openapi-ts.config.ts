@@ -2,7 +2,7 @@ import { defineConfig } from "@hey-api/openapi-ts"
 
 export default defineConfig({
   input: "../backend/api/openapi.yaml",
-  output: "src/request/generated",
+  output: process.env.SCYG_API_OUTPUT ?? "src/request/generated",
   plugins: [
     "@hey-api/typescript",
     {

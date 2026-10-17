@@ -99,10 +99,6 @@
     scroll-margin-top: var(--layout-nav-height);
   }
 
-  /* Hero 的原生下滑锚点必须精确贴齐视口顶部，正文内边距负责避让固定头部。 */
-  main#blog-content {
-    scroll-margin-top: 0;
-  }
 
 }
 

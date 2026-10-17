@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Protocol
 
 from .cancellation import CancellationQueued, CancellationRequested, CancellationTerminal
 from .errors import InvalidTimestampError
 from .models import (
+    ContentScope,
     ExecutionOwnerId,
     InteractionId,
     OperationId,
@@ -49,6 +50,8 @@ class ClaimRequest:
     runtime_kind: RuntimeKind
     now: datetime
     lease_duration: timedelta
+    content_scope: ContentScope = field(kw_only=True)
+    public_timeout: timedelta = timedelta(seconds=180)
 
     def __post_init__(self) -> None:
         """Reject malformed capacity and time inputs before SQL execution."""
@@ -56,6 +59,10 @@ class ClaimRequest:
             _reject("limit", "must be positive")
         if type(self.runtime_kind) is not RuntimeKind:
             _reject("runtime kind", "must be an exact RuntimeKind")
+        if type(self.content_scope) is not ContentScope:
+            _reject("content scope", "must be an exact ContentScope")
+        if self.public_timeout <= timedelta(0):
+            _reject("public timeout", "must be positive")
         try:
             validate_utc_timestamp(self.now, "now")
         except InvalidTimestampError:

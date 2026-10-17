@@ -72,10 +72,10 @@ describe("author runtime authentication boundary", () => {
 
     // Then: 分类命中真实适配器。
     expect(listed).toEqual([{ id: 9, name: "架构", imageUrl: null, menu: 2, version: 4 }])
-    expect(client.get).toHaveBeenCalledWith("/api/v1/manage/article-types", { params: { pageSize: 100, page: 1 } })
+    expect(client.get).toHaveBeenCalledWith("/api/v1/manage/article-types", { authPolicy: "author", params: { pageSize: 100, page: 1 } })
     expect(created).toEqual({ id: 9, name: "架构", imageUrl: null, menu: 2, version: 4 })
     expect(client.post).toHaveBeenCalledTimes(1)
-    expect(client.delete).toHaveBeenCalledWith("/api/v1/manage/article-types/9", { headers: { "If-Match": "\"4\"" } })
+    expect(client.delete).toHaveBeenCalledWith("/api/v1/manage/article-types/9", { authPolicy: "author", headers: { "If-Match": "\"4\"" } })
   })
 
   it("wires real tag list, create, and delete for an authenticated author", async () => {
@@ -94,8 +94,8 @@ describe("author runtime authentication boundary", () => {
     // Then: 三项操作均直接命中真实标签适配器。
     expect(listed).toEqual([{ id: 7, name: "Vue", version: 3 }])
     expect(created).toEqual({ id: 7, name: "Vue", version: 3 })
-    expect(client.get).toHaveBeenCalledWith("/api/v1/manage/tags", { params: { pageSize: 100, page: 1 } })
-    expect(client.post).toHaveBeenCalledWith("/api/v1/manage/tags", { name: "Vue" })
-    expect(client.delete).toHaveBeenCalledWith("/api/v1/manage/tags/7", { headers: { "If-Match": "\"3\"" } })
+    expect(client.get).toHaveBeenCalledWith("/api/v1/manage/tags", { authPolicy: "author", params: { pageSize: 100, page: 1 } })
+    expect(client.post).toHaveBeenCalledWith("/api/v1/manage/tags", { name: "Vue" }, { authPolicy: "author" })
+    expect(client.delete).toHaveBeenCalledWith("/api/v1/manage/tags/7", { authPolicy: "author", headers: { "If-Match": "\"3\"" } })
   })
 })

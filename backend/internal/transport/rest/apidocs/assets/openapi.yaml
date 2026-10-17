@@ -802,6 +802,78 @@ paths:
           $ref: '#/components/responses/NotFound'
         '500':
           $ref: '#/components/responses/InternalError'
+  /api/v1/public/ai/session:
+    post:
+      operationId: agentPublicSession
+      tags: [Agent]
+      summary: "签发匿名公共搜索凭证"
+      description: "无需登录，不接受请求体。签发只用于公共 AI 搜索及该匿名主体自己的 Run 查询、事件和取消的短期 opaque Bearer；不能用于作者 AI、Resume 或文章管理。客户端在当前 tab 的 sessionStorage 保存凭证，不解码、不放 URL、Cookie 或日志；凭证丢失或过期不能恢复原匿名身份，不自动以新身份重建结果未知的旧操作。响应同时给出当前公共搜索的输入限制。公共搜索或 Agent 集成关闭时返回 404。"
+      security: []
+      responses:
+        '200':
+          description: "凭证已签发，返回有效期和公共搜索输入限制。"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PublicSearchSession'
+        '400':
+          $ref: '#/components/responses/AgentError'
+        '404':
+          $ref: '#/components/responses/AgentError'
+        '413':
+          $ref: '#/components/responses/AgentError'
+        '429':
+          $ref: '#/components/responses/AgentRateLimited'
+        '503':
+          $ref: '#/components/responses/AgentError'
+        '500':
+          $ref: '#/components/responses/AgentError'
+        default:
+          $ref: '#/components/responses/AgentError'
+  /api/v1/public/ai/search:
+    post:
+      operationId: agentPublicSearch
+      tags: [Agent]
+      summary: "创建匿名公共搜索 Run"
+      description: "只接受匿名公共搜索 Bearer，不接受作者 JWT，即使作者已登录也使用独立匿名凭证。服务端固定 capability=search 和公开内容范围，客户端不能选择或覆盖；只读取已发布且未删除的公开文章。query 和 max_results 还须遵守凭证签发响应的 queryMaxChars 和 maxResults，超限返回 400。成功返回 202 和统一 Run 快照，不表示执行完成；公共搜索或 Agent 集成关闭时返回 404。请求频率、每日额度或公共接纳容量不足返回 429；依赖不可用返回 503，不降级为不受限制的搜索。结果未知时只用原凭证、原 key 和原 body 重试，不自动创建新操作。"
+      security:
+        - PublicSearchBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/AgentIdempotencyKey'
+      requestBody:
+        required: true
+        description: "必须携带 application/json（允许 charset 参数）；合法 UTF-8 JSON object，最大 1 MiB；空体、非法 JSON 或业务输入不合法返回 400，超限返回 413，媒体类型缺失或不支持返回 415。业务字段沿 Agent SearchInput 的 snake_case。"
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SearchInput'
+      responses:
+        '202':
+          description: "创建请求已接受，返回统一 Run 快照。"
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentRun'
+        '400':
+          $ref: '#/components/responses/AgentError'
+        '401':
+          $ref: '#/components/responses/AgentError'
+        '404':
+          $ref: '#/components/responses/AgentError'
+        '409':
+          $ref: '#/components/responses/AgentError'
+        '413':
+          $ref: '#/components/responses/AgentError'
+        '415':
+          $ref: '#/components/responses/AgentError'
+        '429':
+          $ref: '#/components/responses/AgentRateLimited'
+        '503':
+          $ref: '#/components/responses/AgentError'
+        '500':
+          $ref: '#/components/responses/AgentError'
+        default:
+          $ref: '#/components/responses/AgentError'
   /api/v1/ai/search:
     post:
       operationId: agentSearch
@@ -834,7 +906,7 @@ paths:
         '409':
           $ref: '#/components/responses/AgentError'
         '429':
-          $ref: '#/components/responses/AgentError'
+          $ref: '#/components/responses/AgentRateLimited'
         '503':
           $ref: '#/components/responses/AgentError'
         '500':
@@ -877,7 +949,7 @@ paths:
         '409':
           $ref: '#/components/responses/AgentError'
         '429':
-          $ref: '#/components/responses/AgentError'
+          $ref: '#/components/responses/AgentRateLimited'
         '503':
           $ref: '#/components/responses/AgentError'
         '500':
@@ -920,7 +992,7 @@ paths:
         '409':
           $ref: '#/components/responses/AgentError'
         '429':
-          $ref: '#/components/responses/AgentError'
+          $ref: '#/components/responses/AgentRateLimited'
         '503':
           $ref: '#/components/responses/AgentError'
         '500':
@@ -963,7 +1035,7 @@ paths:
         '409':
           $ref: '#/components/responses/AgentError'
         '429':
-          $ref: '#/components/responses/AgentError'
+          $ref: '#/components/responses/AgentRateLimited'
         '503':
           $ref: '#/components/responses/AgentError'
         '500':
@@ -979,7 +1051,10 @@ paths:
       operationId: agentGet
       tags: [Agent]
       summary: "查询 Run 和最终结果"
-      description: "使用 Blog Bearer JWT 查询当前 Run；Agent 校验 owner，Run 不存在和非 owner 均返回 404。最终结果在此响应中读取，不提供独立 result 接口。Agent 集成关闭时返回 404。"
+      description: "使用 Blog Bearer JWT 或匿名公共搜索 Bearer 查询当前 Run；服务端校验主体、owner 和冻结的内容范围，匿名凭证只允许自己的公共搜索 Run。Run 不存在、非 owner 或范围不允许均返回 404。最终结果在此响应中读取，不提供独立 result 接口；HTTP 快照不暴露内部 contentScope。Agent 集成关闭时返回 404。"
+      security:
+        - bearerAuth: []
+        - PublicSearchBearerAuth: []
       parameters:
         - $ref: '#/components/parameters/AgentRunID'
       responses:
@@ -998,7 +1073,7 @@ paths:
         '409':
           $ref: '#/components/responses/AgentError'
         '429':
-          $ref: '#/components/responses/AgentError'
+          $ref: '#/components/responses/AgentRateLimited'
         '503':
           $ref: '#/components/responses/AgentError'
         '500':
@@ -1010,7 +1085,10 @@ paths:
       operationId: agentEvents
       tags: [Agent]
       summary: "订阅 Run 事件流"
-      description: "使用 fetch 和 ReadableStream 携带 Blog Bearer JWT 读取 SSE，不使用 Cookie、URL token 或原生 EventSource。先查询 Run 完成授权，再订阅；Agent 确认订阅建立后才提交 HTTP 200，不等待首条业务事件，建立前失败返回 Problem Details。Agent 的完整 SSE frame（含 event、id、data、注释和 heartbeat）原样转发并逐条 flush；Blog 不重建事件、不生成序号或 heartbeat，不把 gRPC metadata/trailers 转为 HTTP headers。订阅建立后连续未收到任何 frame 达 idle timeout、流结束或异常时直接关闭，不生成 stream_error。断线后查询 Run：非终态重新订阅，终态停止订阅。Agent 集成关闭时返回 404。"
+      description: "使用 fetch 和 ReadableStream 携带 Blog Bearer JWT 或匿名公共搜索 Bearer 读取 SSE，不使用 Cookie、URL token 或原生 EventSource。先查询 Run 校验主体、owner 和冻结范围，匿名凭证只允许自己的公共搜索 Run，再订阅；Agent 确认订阅建立后才提交 HTTP 200，不等待首条业务事件，建立前失败返回 Problem Details。Agent 的完整 SSE frame（含 event、id、data、注释和 heartbeat）原样转发并逐条 flush；Blog 不重建事件、不生成序号或 heartbeat，不把 gRPC metadata/trailers 转为 HTTP headers。匿名连接还受共享连接租约限制，续租失权时关闭流。订阅建立后连续未收到任何 frame 达 idle timeout、流结束或异常时直接关闭，不生成 stream_error。断线后查询 Run：非终态重新订阅，终态停止订阅。Agent 集成关闭时返回 404。"
+      security:
+        - bearerAuth: []
+        - PublicSearchBearerAuth: []
       parameters:
         - $ref: '#/components/parameters/AgentRunID'
         - $ref: '#/components/parameters/AgentEventCursor'
@@ -1031,7 +1109,7 @@ paths:
         '409':
           $ref: '#/components/responses/AgentError'
         '429':
-          $ref: '#/components/responses/AgentError'
+          $ref: '#/components/responses/AgentRateLimited'
         '503':
           $ref: '#/components/responses/AgentError'
         '500':
@@ -1070,7 +1148,7 @@ paths:
         '409':
           $ref: '#/components/responses/AgentError'
         '429':
-          $ref: '#/components/responses/AgentError'
+          $ref: '#/components/responses/AgentRateLimited'
         '503':
           $ref: '#/components/responses/AgentError'
         '500':
@@ -1086,7 +1164,10 @@ paths:
       operationId: agentCancel
       tags: [Agent]
       summary: "取消 Run"
-      description: "使用 Blog Bearer JWT，请求不得包含 body。Agent 设置取消栅栏后立即返回 cancelled，不再发起新的 Tool 调用；在途 Blog 写入可以完成且结果保留，但不再将 Run 推进为成功。已 cancelled 的 Run 使用新 key 再取消返回当前 Run；已 succeeded 或 failed 的 Run 返回 409。Run 不存在和非 owner 均返回 404。Agent 集成关闭时返回 404。"
+      description: "使用 Blog Bearer JWT 或匿名公共搜索 Bearer，请求不得包含 body。服务端校验主体、owner 和冻结范围，匿名凭证只允许自己的公共搜索 Run。Agent 设置取消栅栏后立即返回 cancelled，不再发起新的 Tool 调用；在途 Blog 写入可以完成且结果保留，但不再将 Run 推进为成功。已 cancelled 的 Run 使用新 key 再取消返回当前 Run；已 succeeded 或 failed 的 Run 返回 409。Run 不存在、非 owner 或范围不允许均返回 404。Agent 集成关闭时返回 404。"
+      security:
+        - bearerAuth: []
+        - PublicSearchBearerAuth: []
       parameters:
         - $ref: '#/components/parameters/AgentRunID'
         - $ref: '#/components/parameters/AgentIdempotencyKey'
@@ -1106,7 +1187,7 @@ paths:
         '409':
           $ref: '#/components/responses/AgentError'
         '429':
-          $ref: '#/components/responses/AgentError'
+          $ref: '#/components/responses/AgentRateLimited'
         '503':
           $ref: '#/components/responses/AgentError'
         '500':
@@ -1121,6 +1202,10 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+    PublicSearchBearerAuth:
+      description: "由公共 AI session 签发的 opaque Bearer，只授权匿名主体自己的公共搜索和 Run 查询、事件、取消；独立用途和验签上下文，不是作者 JWT，不能调用 Resume 或管理接口。"
+      type: http
+      scheme: bearer
   parameters:
     AgentRunID:
       description: "Agent 生成的不透明 URL-safe ASCII 标识，长度 1–128；只允许 A–Z、a–z、0–9、点、下划线、波浪号、连字符，不能等于 . 或 ..。"
@@ -1270,6 +1355,12 @@ components:
         maxLength: 200
         example: Go
   headers:
+    RetryAfter:
+      description: "可选的重试等待秒数，以非负十进制整数字符串返回，不使用 HTTP-date；缺失时客户端不得推断等待时长。"
+      schema:
+        type: string
+        pattern: '^[0-9]+$'
+        example: '60'
     ETag:
       description: "强实体标签，内容为当前正整数版本，例如 `\"1\"`。"
       required: true
@@ -1284,8 +1375,17 @@ components:
         type: string
         format: uri-reference
   responses:
+    AgentRateLimited:
+      description: "HTTP 429，请求频率、匿名连接租约、每日额度或公共接纳容量受限，或 Agent RESOURCE_EXHAUSTED。返回既有 RFC 9457 Problem；有可靠等待时长时可提供 Retry-After，不保证请求随后成功，不自动重试创建操作。"
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '#/components/schemas/Problem'
     AgentError:
-      description: "RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：JWT 无效或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED；503：UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。"
+      description: "RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。"
       content:
         application/problem+json:
           schema:
@@ -1339,6 +1439,47 @@ components:
           schema:
             $ref: '#/components/schemas/Problem'
   schemas:
+    PublicSearchSession:
+      description: "匿名公共搜索短期凭证及当前服务端输入限制；不包含模型、Provider 或执行预算。"
+      type: object
+      additionalProperties: false
+      required: [accessToken, expiresAt, queryMaxChars, maxResults]
+      properties:
+        accessToken:
+          description: "当前匿名主体的 opaque Bearer 凭证。"
+          type: string
+          minLength: 1
+        expiresAt:
+          description: "凭证过期时间。"
+          type: string
+          format: date-time
+        queryMaxChars:
+          description: "本次公共搜索允许的 query 最大字符数，不超过 SearchInput 的业务上限。"
+          type: integer
+          minimum: 1
+          maximum: 16000
+        maxResults:
+          description: "公共搜索允许的最大结果数，不超过 SearchInput 的业务上限。"
+          type: integer
+          minimum: 1
+          maximum: 20
+    SearchInput:
+      description: "Agent 搜索业务输入，保留 snake_case；公共搜索还须遵守 session 返回的动态限制，服务端冻结公开内容范围。"
+      type: object
+      additionalProperties: false
+      required: [query]
+      properties:
+        query:
+          description: "非空搜索问题。"
+          type: string
+          minLength: 1
+          maxLength: 16000
+        max_results:
+          description: "期望结果数，省略时默认 5；公共搜索默认值也不能超过当前 session 的 maxResults。"
+          type: integer
+          minimum: 1
+          maximum: 20
+          default: 5
     AgentRunID:
       description: "Agent 生成的不透明 URL-safe ASCII Run 标识，长度 1–128，不能等于 . 或 ..。"
       type: string

@@ -35,7 +35,9 @@ services:
 
   redis:
     image: redis:7.4-alpine@sha256:fd2f8954a0f6bb24cd8819c9a1bf7e033efe9969d3b571104abb9a58c61e7068
-    command: [redis-server, --appendonly, "no", --save, ""]
+    command: [redis-server, --appendonly, "yes", --appendfsync, everysec, --save, "", --maxmemory-policy, noeviction]
+    volumes:
+      - redis-data:/data
     healthcheck:
       test: [CMD, redis-cli, ping]
       interval: 5s
@@ -78,11 +80,15 @@ services:
       SCYG_AGENT_UNARY_TIMEOUT: 30s
       SCYG_AGENT_SSE_IDLE_TIMEOUT: 90s
       SCYG_AGENT_GRPC_SHUTDOWN_TIMEOUT: 10s
+      SCYG_PUBLIC_SEARCH_REDIS_URL: redis://redis:6379/0
+      SCYG_PUBLIC_SEARCH_PREFIX: ${SCYG_PUBLIC_SEARCH_PREFIX:-scyg:production}
     depends_on:
       blog-db:
         condition: service_healthy
       blog-setup:
         condition: service_completed_successfully
+      redis:
+        condition: service_healthy
     ports:
       - "127.0.0.1:${SCYG_API_PORT:-8080}:8080"
     read_only: true
@@ -170,3 +176,4 @@ volumes:
   blog-data:
   agent-data:
   article-images:
+  redis-data:

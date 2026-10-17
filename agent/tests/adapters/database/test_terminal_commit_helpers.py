@@ -30,6 +30,7 @@ from scyg_agent.domain.ports.terminal_commit import (
 )
 from scyg_agent.domain.runs import (
     CommandId,
+    ContentScope,
     EventId,
     ExecutionOwnerId,
     RunCancelled,
@@ -94,6 +95,7 @@ def _record(
         error_code=None,
         error_message=None,
         error_metadata=None,
+        content_scope=ContentScope.AUTHOR.value,
     )
 
 

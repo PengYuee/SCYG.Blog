@@ -1,6 +1,7 @@
 import { flushPromises, mount } from "@vue/test-utils"
 import { createMemoryHistory, createRouter, type Router } from "vue-router"
 import { describe, expect, it, vi } from "vitest"
+import { defineComponent, ref } from "vue"
 import ArticleSection from "@/components/article/ArticleSection.vue"
 import BlogHeader from "@/components/public/BlogHeader.vue"
 import HeroProfile from "@/components/public/HeroProfile.vue"
@@ -42,54 +43,101 @@ const article = (id: number): ArticleSummary => ({
 })
 
 describe("T6 public desktop primitives", () => {
-  it("routes a trimmed search and scrolls below the hero only from home", async () => {
-    // Given: 首页 Hero 搜索和原生内容边界。
-    const router = await createTestRouter()
-    const scrollIntoView = vi.fn()
-    const contentTarget = document.createElement("main")
-    contentTarget.scrollIntoView = scrollIntoView
-    const wrapper = mount(HeroSearch, { props: { contentTarget }, global: { plugins: [router] } })
-
-    // When: 用户提交带首尾空白的关键词。
+  it("emits normal form submission without a router and keeps independent controlled drafts", async () => {
+    const wrapper = mount(defineComponent({
+      components: { HeroSearch },
+      setup() {
+        return { mode: ref<"normal" | "ai">("normal"), keyword: ref(""), question: ref(""), maxResults: ref(5), submit: vi.fn() }
+      },
+      template: '<HeroSearch v-model:mode="mode" v-model:keyword="keyword" v-model:question="question" v-model:max-results="maxResults" @submit="submit" />',
+    }))
+    const search = wrapper.getComponent(HeroSearch)
     await wrapper.get('input[type="search"]').setValue("  Vue 3  ")
     await wrapper.get("form").trigger("submit")
-    await flushPromises()
-
-    // Then: 路由查询稳定且仅首页内容边界被原生滚动。
-    expect(router.currentRoute.value.fullPath).toBe("/articles?q=Vue+3")
-    expect(scrollIntoView).toHaveBeenCalledOnce()
-    expect(scrollIntoView).toHaveBeenCalledWith({ behavior: "smooth", block: "start" })
+    expect(search.emitted("submit")).toHaveLength(1)
+    expect(search.props("keyword")).toBe("  Vue 3  ")
+    await wrapper.get('[aria-label="搜索方式"] button:nth-child(2)').trigger("click")
+    await wrapper.get("textarea").setValue("第一行\n第二行")
+    await wrapper.get("textarea").trigger("keydown", { key: "Enter" })
+    expect(search.emitted("submit")).toHaveLength(1)
+    await wrapper.get(".search-options-trigger").trigger("click")
+    await wrapper.get('input[type="number"]').setValue("3")
+    expect(search.props("maxResults")).toBe(3)
+    await wrapper.get('[aria-label="搜索方式"] button:nth-child(1)').trigger("click")
+    expect(wrapper.get('input[type="search"]').element).toHaveProperty("value", "  Vue 3  ")
+    await wrapper.get('[aria-label="搜索方式"] button:nth-child(2)').trigger("click")
+    expect(wrapper.get("textarea").element).toHaveProperty("value", "第一行\n第二行")
+    expect(search.emitted("submit")).toHaveLength(1)
+    wrapper.unmount()
   })
 
-  it("does not scroll when search starts outside the homepage", async () => {
-    // Given: 文章列表页中的搜索和可观察的内容边界。
-    const router = await createTestRouter("/articles")
-    const scrollIntoView = vi.fn()
-    const contentTarget = document.createElement("main")
-    contentTarget.scrollIntoView = scrollIntoView
-    const wrapper = mount(HeroSearch, { props: { contentTarget }, global: { plugins: [router] } })
-
-    // When: 用户在非首页提交有效关键词。
-    await wrapper.get('input[type="search"]').setValue("TypeScript")
-    await wrapper.get("form").trigger("submit")
-    await flushPromises()
-
-    // Then: 查询被导航，但不会触发首页专属滚动。
-    expect(router.currentRoute.value.fullPath).toBe("/articles?q=TypeScript")
-    expect(scrollIntoView).not.toHaveBeenCalled()
+  it.each(["ctrlKey", "metaKey"])("submits AI multiline input with %s plus Enter only", async (modifier) => {
+    const wrapper = mount(HeroSearch, { props: { mode: "ai", question: "问题\n补充" } })
+    await wrapper.get("textarea").trigger("keydown", { key: "Enter", [modifier]: true, isComposing: true })
+    expect(wrapper.emitted("submit")).toBeUndefined()
+    await wrapper.get("textarea").trigger("keydown", { key: "Enter" })
+    expect(wrapper.emitted("submit")).toBeUndefined()
+    await wrapper.get("textarea").trigger("keydown", { key: "Enter", [modifier]: true })
+    expect(wrapper.emitted("submit")).toHaveLength(1)
+    wrapper.unmount()
   })
-  it("does nothing when the search query is empty", async () => {
-    // Given: 搜索框只有空白字符。
-    const router = await createTestRouter()
-    const wrapper = mount(HeroSearch, { global: { plugins: [router] } })
-    await wrapper.get('input[type="search"]').setValue("   ")
 
-    // When: 用户提交搜索。
+  it("does not submit unavailable or busy AI searches", async () => {
+    const wrapper = mount(HeroSearch, { props: { mode: "ai", canSubmit: false } })
     await wrapper.get("form").trigger("submit")
+    expect(wrapper.emitted("submit")).toBeUndefined()
+    await wrapper.setProps({ canSubmit: true, busy: true })
+    await wrapper.get("textarea").trigger("keydown", { key: "Enter", ctrlKey: true })
+    expect(wrapper.emitted("submit")).toBeUndefined()
+    wrapper.unmount()
+  })
+  it("restores compact-question focus after keyboard submission", async () => {
+    // Given: 紧凑 AI 问题编辑器获得焦点。
+    const wrapper = mount(HeroSearch, { attachTo: document.body, props: { compact: true, mode: "ai", question: "question" } })
+    await wrapper.get(".compact-question").trigger("click")
     await flushPromises()
-
-    // Then: 地址保持首页。
-    expect(router.currentRoute.value.fullPath).toBe("/")
+    // When: 用户用快捷键提交。
+    await wrapper.get("textarea").trigger("keydown", { key: "Enter", ctrlKey: true })
+    await flushPromises()
+    // Then: 输入区折叠且焦点仍留在对应搜索控件。
+    expect(wrapper.emitted("submit")).toHaveLength(1)
+    expect(document.activeElement).toBe(wrapper.get(".compact-question").element)
+    wrapper.unmount()
+  })
+  it.each([false, true])("closes search options before the editor with Escape (compact=%s)", async (compact) => {
+    // Given: 参考文章数输入框在搜索选项中获得焦点。
+    const wrapper = mount(HeroSearch, { attachTo: document.body, props: { compact, mode: "ai", question: "question" } })
+    if (compact) await wrapper.get(".compact-question").trigger("click")
+    await wrapper.get(".search-options-trigger").trigger("click")
+    wrapper.get('input[type="number"]').element.focus()
+    // When: 用户在数字输入中按 Escape。
+    await wrapper.get('input[type="number"]').trigger("keydown", { key: "Escape" })
+    await flushPromises()
+    // Then: 只关闭选项，焦点回到原触发器，编辑草稿仍在。
+    expect(wrapper.find('input[type="number"]').exists()).toBe(false)
+    expect(document.activeElement).toBe(wrapper.get(".search-options-trigger").element)
+    expect(wrapper.get("textarea").element).toHaveProperty("value", "question")
+    wrapper.unmount()
+  })
+  it("records article navigation before scrolling the destination homepage", async () => {
+    // Given: 详情路由的导航守卫尚未放行。
+    const router = await createTestRouter("/articles/1")
+    const gate = Promise.withResolvers<void>()
+    const entered = Promise.withResolvers<void>()
+    router.beforeEach(() => { entered.resolve(); return gate.promise })
+    const scroll = vi.spyOn(window, "scrollTo").mockImplementation(() => undefined)
+    const wrapper = mount(BlogHeader, { props: { boundary: null }, global: { plugins: [router] } })
+    // When: 点击博客名称，但目标路由还在导航中。
+    await wrapper.get(".blog-shell > a").trigger("click")
+    await entered.promise
+    expect(scroll).not.toHaveBeenCalled()
+    gate.resolve()
+    await flushPromises()
+    // Then: 只有导航完成后才滚动，不覆盖被离开页面的历史位置。
+    expect(router.currentRoute.value.path).toBe("/")
+    expect(scroll).toHaveBeenCalledOnce()
+    wrapper.unmount()
+    scroll.mockRestore()
   })
 
   it("keeps a local quote stable until explicit refresh and protects external links", async () => {
@@ -163,21 +211,94 @@ describe("T6 public desktop primitives", () => {
     expect(layout.attributes("data-layout")).toBe("public")
     expect(layout.get('a.fixed[href="#blog-content"]').text()).toBe("跳到主要内容")
     const scrollCue = layout.get('[data-testid="hero-scroll-cue"]')
-    const scrollIntoView = vi.fn()
-    layout.get("main").element.scrollIntoView = scrollIntoView
-    vi.stubGlobal("matchMedia", vi.fn(() => ({ matches: false })))
     expect(scrollCue.element.tagName).toBe("BUTTON")
     expect(scrollCue.attributes("type")).toBe("button")
     expect(scrollCue.attributes("href")).toBeUndefined()
-    expect(scrollCue.attributes("aria-label")).toBe("向下浏览文章")
+    expect(scrollCue.attributes("aria-label")).toBe("进入内容区")
     expect(scrollCue.get("svg").attributes("aria-hidden")).toBe("true")
-    await scrollCue.trigger("click")
-    expect(scrollIntoView).toHaveBeenCalledWith({ block: "start", behavior: "smooth" })
-    expect(router.currentRoute.value.hash).toBe("")
     expect(layout.find(".wave-divider").exists()).toBe(false)
     expect(layout.get("main").attributes("id")).toBe("blog-content")
     expect(layout.get('[data-testid="hero-fallback"]').attributes("role")).toBe("img")
     expect(section.get('[data-testid="article-grid"]').classes()).toContain("blog-card-grid")
     expect(section.findAll("article")).toHaveLength(3)
+    layout.unmount()
+    section.unmount()
+  })
+
+  it("switches mutually exclusive mounted scenes through the model, CTA and home action", async () => {
+    const router = await createTestRouter()
+    const scroll = vi.spyOn(window, "scrollTo").mockImplementation(() => undefined)
+    const wrapper = mount(defineComponent({
+      components: { BlogLayout },
+      setup: () => ({
+        contentVisible: ref(false),
+        observerFactory: () => ({ observe: vi.fn(), disconnect: vi.fn() }),
+      }),
+      template: '<BlogLayout v-model:content-visible="contentVisible" :observer-factory="observerFactory"><input data-testid="persistent-draft" /></BlogLayout>',
+    }), { attachTo: document.body, global: { plugins: [router] } })
+    const layout = wrapper.getComponent(BlogLayout)
+    const hero = wrapper.get(".public-hero")
+    const content = wrapper.get(".public-lower-page")
+    const draft = wrapper.get('[data-testid="persistent-draft"]')
+    expect(layout.attributes("data-scene")).toBe("hero")
+    expect(hero.isVisible()).toBe(true)
+    expect(content.isVisible()).toBe(false)
+
+    await wrapper.get('[data-testid="hero-scroll-cue"]').trigger("click")
+    await flushPromises()
+    expect(layout.props("contentVisible")).toBe(true)
+    expect(layout.attributes("data-scene")).toBe("content")
+    expect(hero.isVisible()).toBe(false)
+    expect(content.isVisible()).toBe(true)
+    await draft.setValue("保留的草稿")
+    const home = wrapper.findAll("header button").find((button) => button.text() === "主页")
+    expect(home).toBeDefined()
+    await home!.trigger("click")
+    await flushPromises()
+    expect(layout.props("contentVisible")).toBe(false)
+    expect(layout.attributes("data-scene")).toBe("hero")
+    expect(hero.isVisible()).toBe(true)
+    expect(content.isVisible()).toBe(false)
+    expect(wrapper.get('[data-testid="persistent-draft"]').element).toBe(draft.element)
+    wrapper.vm.contentVisible = true
+    await flushPromises()
+    expect(hero.isVisible()).toBe(false)
+    expect(content.isVisible()).toBe(true)
+    expect(draft.element).toHaveProperty("value", "保留的草稿")
+    wrapper.unmount()
+    scroll.mockRestore()
+  })
+
+  it("enters content only for downward hero wheel outside interactive regions and never returns on scroll", async () => {
+    const router = await createTestRouter()
+    const scroll = vi.spyOn(window, "scrollTo").mockImplementation(() => undefined)
+    const layout = mount(BlogLayout, {
+      attachTo: document.body,
+      props: { observerFactory: () => ({ observe: vi.fn(), disconnect: vi.fn() }) },
+      slots: {
+        "hero-search": '<div><form data-wheel="form"><span>表单区域</span></form><input data-wheel="input" /><textarea data-wheel="textarea" /><select data-wheel="select"><option>选项</option></select><button data-wheel="button">按钮</button><a data-wheel="link" href="/">链接</a><div role="dialog" data-wheel="dialog"><span>对话框</span></div><div contenteditable="true" data-wheel="editable">编辑区</div></div>',
+        default: "<p>内容</p>",
+      },
+      global: { plugins: [router] },
+    })
+    expect(layout.props("contentVisible")).toBe(false)
+    await layout.get(".public-hero").trigger("wheel", { deltaY: -100 })
+    expect(layout.attributes("data-scene")).toBe("hero")
+    for (const control of layout.findAll("[data-wheel]")) {
+      await control.trigger("wheel", { deltaY: 100 })
+      expect(layout.attributes("data-scene")).toBe("hero")
+      expect(layout.get(".public-lower-page").isVisible()).toBe(false)
+    }
+    await layout.get(".public-hero").trigger("wheel", { deltaY: 100 })
+    expect(layout.attributes("data-scene")).toBe("content")
+    expect(layout.get(".public-hero").isVisible()).toBe(false)
+    expect(layout.get(".public-lower-page").isVisible()).toBe(true)
+    await layout.get(".public-lower-page").trigger("wheel", { deltaY: -100 })
+    window.dispatchEvent(new Event("scroll"))
+    await layout.vm.$nextTick()
+    expect(layout.attributes("data-scene")).toBe("content")
+    expect(layout.get(".public-lower-page").isVisible()).toBe(true)
+    layout.unmount()
+    scroll.mockRestore()
   })
 })

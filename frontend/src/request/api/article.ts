@@ -55,7 +55,7 @@ export function createArticleApi(client: HttpTransport): ArticleApi {
   }
 
   async function listFromRoute(route: ListArticlesData["url"] | ListManageArticlesData["url"], params: ArticleReadListQuery): Promise<PageResult<ArticleDetail>> {
-    const response = await client.get(route, { params })
+    const response = await client.get(route, { params, authPolicy: route === MANAGE_ARTICLE_ROUTE ? "author" : "none" })
     return parseArticleList(response.data)
   }
   return {
@@ -66,17 +66,17 @@ export function createArticleApi(client: HttpTransport): ArticleApi {
     },
     async detail(id: GetArticleData["path"]["articleId"]) {
       const path: GetArticleData["path"] = { articleId: id }
-      const response = await client.get(`${ARTICLE_ROUTE}/${path.articleId}`)
+      const response = await client.get(`${ARTICLE_ROUTE}/${path.articleId}`, { authPolicy: "none" })
       return parseArticleDetail(response.data)
     },
     async manageDetail(id: GetManageArticleData["path"]["articleId"]) {
       const path: GetManageArticleData["path"] = { articleId: id }
-      const response = await client.get(`${MANAGE_ARTICLE_ROUTE}/${path.articleId}`)
+      const response = await client.get(`${MANAGE_ARTICLE_ROUTE}/${path.articleId}`, { authPolicy: "author" })
       return parseArticleDetail(response.data)
     },
     async create(request: ArticleCreateRequest): Promise<ArticleDetail> {
       const payload: CreateManageArticleData["body"] = { title: request.title, slug: request.slug, digest: request.digest, content: request.markdown, articleTypeId: request.articleTypeId, tagIds: [...request.tagIds], status: request.status }
-      const response = await client.post(MANAGE_ARTICLE_ROUTE, payload)
+      const response = await client.post(MANAGE_ARTICLE_ROUTE, payload, { authPolicy: "author" })
       return parseArticleDetail(response.data)
     },
     async update(request: ArticleUpdateRequest): Promise<ArticleDetail> {
@@ -89,24 +89,24 @@ export function createArticleApi(client: HttpTransport): ArticleApi {
       if (request.changes.tagIds !== undefined) changes.tagIds = [...request.changes.tagIds]
       const path: PatchManageArticleData["path"] = { articleId: request.id }
       const headers: PatchManageArticleData["headers"] = { "If-Match": `"${request.version}"` }
-      const response = await client.patch(`${MANAGE_ARTICLE_ROUTE}/${path.articleId}`, changes, { headers })
+      const response = await client.patch(`${MANAGE_ARTICLE_ROUTE}/${path.articleId}`, changes, { headers, authPolicy: "author" })
       return parseArticleDetail(response.data)
     },
     async deleteManage(target: ArticleVersionTarget): Promise<void> {
       const path: DeleteManageArticleData["path"] = { articleId: target.id }
       const headers: DeleteManageArticleData["headers"] = { "If-Match": `"${target.version}"` }
-      await client.delete(`${MANAGE_ARTICLE_ROUTE}/${path.articleId}`, { headers })
+      await client.delete(`${MANAGE_ARTICLE_ROUTE}/${path.articleId}`, { headers, authPolicy: "author" })
     },
     async publish(target: ArticleVersionTarget): Promise<ArticleDetail> {
       const path: PublishManageArticleData["path"] = { articleId: target.id }
       const headers: PublishManageArticleData["headers"] = { "If-Match": `"${target.version}"` }
-      const response = await client.post(`${MANAGE_ARTICLE_ROUTE}/${path.articleId}/publish`, undefined, { headers })
+      const response = await client.post(`${MANAGE_ARTICLE_ROUTE}/${path.articleId}/publish`, undefined, { headers, authPolicy: "author" })
       return parseArticleDetail(response.data)
     },
     async archive(target: ArticleVersionTarget): Promise<ArticleDetail> {
       const path: ArchiveManageArticleData["path"] = { articleId: target.id }
       const headers: ArchiveManageArticleData["headers"] = { "If-Match": `"${target.version}"` }
-      const response = await client.post(`${MANAGE_ARTICLE_ROUTE}/${path.articleId}/archive`, undefined, { headers })
+      const response = await client.post(`${MANAGE_ARTICLE_ROUTE}/${path.articleId}/archive`, undefined, { headers, authPolicy: "author" })
       return parseArticleDetail(response.data)
     },
   }

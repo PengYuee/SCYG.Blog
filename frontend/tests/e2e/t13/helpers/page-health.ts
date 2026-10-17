@@ -28,11 +28,27 @@ export function observePageHealth(page: Page): PageHealth {
   return { consoleErrors, pageErrors, failedRequests }
 }
 
-/** 使用 DOMContentLoaded 与调用方提供的唯一语义 Locator 完成导航。 */
+/** 等待语义内容及公共 Hero 背景，后续交互不会中断当前页的图片下载。 */
 export async function gotoReady(page: Page, url: string, ready: Locator): Promise<void> {
   await page.goto(url, { waitUntil: "domcontentloaded" })
   await expect(ready).toHaveCount(1)
   await expect(ready).toBeVisible()
+  if (await page.locator(".blog-hero").count() > 0) await waitForHeroBackground(page)
+}
+
+/** 等待当前主题的 CSS 背景加载，避免 SPA 的旧 networkidle 状态提前放行。 */
+export async function waitForHeroBackground(page: Page): Promise<void> {
+  const hero = page.locator(".blog-hero")
+  await hero.waitFor({ state: "attached" })
+  await expect(hero).toHaveCount(1)
+  const background = await hero.evaluate((element) => getComputedStyle(element).getPropertyValue("--hero-background-image").trim())
+  const source = /^url\(["']?(.*?)["']?\)$/.exec(background)?.[1]
+  if (source === undefined) throw new Error("Hero 主题背景不是有效 URL")
+  await page.evaluate(async (url) => {
+    const image = new Image()
+    image.src = url
+    await image.decode()
+  }, source)
 }
 
 /** 在有界时间内等待字体与图片终态，并结束有限动画、取消无限动画。 */

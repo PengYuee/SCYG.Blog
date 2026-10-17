@@ -43,7 +43,11 @@ async def serve(facade: ScenarioFacade) -> AsyncIterator[rpc.AgentControlService
 async def test_subscription_metadata_precedes_frames_and_closed_resource() -> None:
     facade = ScenarioFacade()
     async with serve(facade) as stub:
-        call = stub.StreamRunEvents(pb.StreamRunEventsRequest(user_id="user", run_id="safe-run"))
+        call = stub.StreamRunEvents(
+            pb.StreamRunEventsRequest(
+                content_scope=common.CONTENT_SCOPE_AUTHOR, user_id="user", run_id="safe-run"
+            )
+        )
         assert ("scyg-subscription-ready", "1") in tuple(await call.initial_metadata())
         frames = [frame.frame async for frame in call]
     assert frames == [b": heartbeat\n\n"]
@@ -54,7 +58,11 @@ async def test_subscription_metadata_precedes_frames_and_closed_resource() -> No
 async def test_stream_failure_has_no_ready_marker_and_public_detail() -> None:
     facade = ScenarioFacade(error=ControlError("NOT_FOUND", "Run not found"))
     async with serve(facade) as stub:
-        call = stub.StreamRunEvents(pb.StreamRunEventsRequest(user_id="user", run_id="safe-run"))
+        call = stub.StreamRunEvents(
+            pb.StreamRunEventsRequest(
+                content_scope=common.CONTENT_SCOPE_AUTHOR, user_id="user", run_id="safe-run"
+            )
+        )
         headers = tuple(await call.initial_metadata())
         assert ("scyg-subscription-ready", "1") not in headers
         with pytest.raises(aio.AioRpcError) as caught:
@@ -74,6 +82,7 @@ async def test_transport_invalid_json_never_calls_business_and_unknown_errors_sa
         with pytest.raises(aio.AioRpcError) as invalid:
             _ = await stub.CreateRun(
                 pb.CreateRunRequest(
+                    content_scope=common.CONTENT_SCOPE_AUTHOR,
                     user_id="user",
                     idempotency_key=KEY,
                     capability=common.AGENT_CAPABILITY_CHAT,
@@ -84,7 +93,11 @@ async def test_transport_invalid_json_never_calls_business_and_unknown_errors_sa
         assert not facade.calls
         facade.error = RuntimeError("database password secret")
         with pytest.raises(aio.AioRpcError) as internal:
-            _ = await stub.GetRun(pb.GetRunRequest(user_id="user", run_id="safe-run"))
+            _ = await stub.GetRun(
+                pb.GetRunRequest(
+                    content_scope=common.CONTENT_SCOPE_AUTHOR, user_id="user", run_id="safe-run"
+                )
+            )
         assert internal.value.code() is grpc.StatusCode.INTERNAL
         details = internal.value.details()
         assert details is not None
@@ -110,9 +123,36 @@ def test_transport_accepts_any_json_shape_without_business_parsing(raw: bytes) -
 async def test_ready_does_not_wait_for_first_frame_and_cancel_closes_subscription() -> None:
     facade = ScenarioFacade(opened=OpenedStream(ready_to_emit=anyio.Event()))
     async with serve(facade) as stub:
-        call = stub.StreamRunEvents(pb.StreamRunEventsRequest(user_id="user", run_id="safe-run"))
+        call = stub.StreamRunEvents(
+            pb.StreamRunEventsRequest(
+                content_scope=common.CONTENT_SCOPE_AUTHOR, user_id="user", run_id="safe-run"
+            )
+        )
         with anyio.fail_after(1):
             headers = tuple(await call.initial_metadata())
         assert ("scyg-subscription-ready", "1") in headers
         assert call.cancel()
     assert facade.opened.closed
+
+
+@pytest.mark.anyio
+async def test_scope_is_required_and_quota_retry_is_rich_status() -> None:
+    facade = ScenarioFacade(error=ControlError("RESOURCE_EXHAUSTED", "Daily quota exhausted", 42))
+    async with serve(facade) as stub:
+        with pytest.raises(aio.AioRpcError) as missing:
+            _ = await stub.GetRun(pb.GetRunRequest(user_id="user", run_id="safe-run"))
+        assert missing.value.code() is grpc.StatusCode.INVALID_ARGUMENT
+        assert not facade.calls
+        with pytest.raises(aio.AioRpcError) as quota:
+            _ = await stub.GetRun(
+                pb.GetRunRequest(
+                    user_id="user", run_id="safe-run", content_scope=common.CONTENT_SCOPE_PUBLIC
+                )
+            )
+        assert quota.value.code() is grpc.StatusCode.RESOURCE_EXHAUSTED
+        status = rpc_status.from_call(quota.value)
+        assert status is not None
+        detail = common.PublicError()
+        assert status.details[0].Unpack(detail)
+        assert detail.HasField("retry_after_seconds")
+        assert detail.retry_after_seconds == 42

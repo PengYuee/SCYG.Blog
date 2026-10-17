@@ -7,6 +7,7 @@ from typing import Protocol
 
 from scyg_agent.adapters.redis import RedisStreamStore
 from scyg_agent.agents.runner import AgentRunner
+from scyg_agent.config import PublicSearchSettings
 from scyg_agent.domain.ports.terminal_commit import TerminalCommitRequest, TerminalCommitResult
 from scyg_agent.domain.runs import RunId
 from scyg_agent.domain.runs.repository import (
@@ -42,6 +43,27 @@ class TerminalCommitter(Protocol):
         ...
 
 
+class PublicExecutionControls(Protocol):
+    """Borrow only the distributed execution lease operations the Worker uses."""
+
+    @property
+    def settings(self) -> PublicSearchSettings:
+        """Return immutable lease and total execution policy."""
+        ...
+
+    async def acquire_execution(self) -> str | None:
+        """Acquire without blocking an author scheduling round."""
+        ...
+
+    async def renew_execution(self, token: str) -> bool:
+        """Renew only an unexpired token owned by this execution."""
+        ...
+
+    async def release_execution(self, token: str) -> None:
+        """Release the token once all its local work has exited."""
+        ...
+
+
 @dataclass(frozen=True, slots=True)
 class WorkerDependencies:
     """绑定 Worker 借用但不关闭的外部持久化依赖图."""
@@ -51,3 +73,4 @@ class WorkerDependencies:
     clock: Callable[[], datetime]
     agent_runner: AgentRunner
     stream_store: RedisStreamStore | None = None
+    public_controls: PublicExecutionControls | None = None

@@ -4,6 +4,7 @@ import { zLoginResponse } from "@/request/generated/zod.gen"
 import type { AuthApi } from "@/request/api/auth"
 import type { AuthState } from "@/stores/auth"
 import type { AuthSession, LoginRequest } from "@/types/auth"
+import { clearAuthorAiState } from "@/services/ai-session-state"
 
 const SESSION_STORAGE_KEY = "scyg.auth.session"
 const EXPIRED_REASON = "登录会话已过期，请重新登录"
@@ -48,6 +49,7 @@ export function createAuthSessionController(
   now: () => number = Date.now,
 ): AuthSessionController {
   function discard(): void {
+    clearAuthorAiState()
     storage.removeItem(SESSION_STORAGE_KEY)
   }
 
@@ -64,12 +66,14 @@ export function createAuthSessionController(
 
   return {
     restore(): AuthState {
+      const previousToken = store.state.kind === "authenticated" ? store.state.session.accessToken : undefined
       store.markRestoring()
       const raw = storage.getItem(SESSION_STORAGE_KEY)
-      if (raw === null) return store.markAnonymous()
+      if (raw === null) { if (previousToken !== undefined) clearAuthorAiState(); return store.markAnonymous() }
       try {
         const session = zLoginResponse.parse(JSON.parse(raw))
         if (Date.parse(session.expiresAt) <= now()) return expire()
+        if (previousToken !== undefined && previousToken !== session.accessToken) clearAuthorAiState()
         return store.markAuthenticated(session)
       } catch {
         discard()
@@ -83,6 +87,7 @@ export function createAuthSessionController(
         throw new Error("服务端返回了已过期的登录会话")
       }
       storage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session))
+      clearAuthorAiState()
       store.markAuthenticated(session)
       return session
     },

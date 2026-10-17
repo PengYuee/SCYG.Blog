@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import HomeView from "@/views/public/HomeView.vue"
 import { createArticleFeed, type ArticleFeedApi } from "@/stores/article-feed"
 import { createTaxonomy, type TaxonomyApi } from "@/stores/taxonomy"
@@ -8,9 +8,9 @@ import type { PageResult } from "@/types/api"
 /** T8 浏览器验收场景。 */
 type ShowcaseMode = "happy" | "empty" | "failure"
 /** 从独立展示 URL 选择有界验收场景。 */
-const mode: ShowcaseMode = new URLSearchParams(window.location.search).get("mode") === "failure"
+const mode: ShowcaseMode = window.location.hash === "#fixture-failure"
   ? "failure"
-  : new URLSearchParams(window.location.search).get("mode") === "empty" ? "empty" : "happy"
+  : window.location.hash === "#fixture-empty" ? "empty" : "happy"
 
 /** 构建具备真实领域字段的浏览器文章 fixture。 */
 const article = (id: number, articleTypeId: number, visited: number): ArticleDetail => ({
@@ -38,9 +38,12 @@ const articles: readonly ArticleDetail[] = [
 ]
 /** T4 文章流依赖，按场景返回成功、空或失败。 */
 const articleApi: ArticleFeedApi = {
-  async list(): Promise<PageResult<ArticleDetail>> {
+  async list(request): Promise<PageResult<ArticleDetail>> {
     if (mode === "failure") throw new Error("文章服务暂时不可用")
-    const items = mode === "empty" ? [] : articles
+    const items = mode === "empty" ? [] : articles.filter((item) =>
+      (request.articleTypeId === undefined || item.articleTypeId === request.articleTypeId)
+      && (request.tagId === undefined || item.tagIds.includes(request.tagId))
+      && (!request.q || `${item.title} ${item.digest}`.includes(request.q)))
     return { items, pageIndex: 0, pageSize: 20, totalItems: items.length, totalPages: items.length === 0 ? 0 : 1 }
   },
 }

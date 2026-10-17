@@ -18,7 +18,7 @@ from scyg_agent.adapters.blog_grpc import (
     PublishArticle,
     UpdateArticle,
 )
-from scyg_agent.domain.runs import OperationId
+from scyg_agent.domain.runs import ContentScope, OperationId
 
 from .support import FakeBlog, dispatch_call
 from .test_client import identity
@@ -27,7 +27,9 @@ from .test_client import identity
 @pytest.mark.anyio
 async def test_rejected_commands_never_start_rpc(blog_server: tuple[str, FakeBlog]) -> None:
     target, fake = blog_server
-    command = GetArticle(identity(), BlogUserId("admin"), ArticleId(1))
+    command = GetArticle(
+        identity(), BlogUserId("admin"), ArticleId(1), content_scope=ContentScope.AUTHOR
+    )
     async with BlogGrpcClient(target, 1.0) as client:
         assert await client.invoke(
             "unknown",
@@ -85,7 +87,9 @@ async def test_call_is_created_synchronously_inside_dispatch_and_awaited_outside
         result = await client.invoke(
             "get_article",
             "v1",
-            GetArticle(identity(), BlogUserId("admin"), ArticleId(1)),
+            GetArticle(
+                identity(), BlogUserId("admin"), ArticleId(1), content_scope=ContentScope.AUTHOR
+            ),
             dispatch=dispatch,
         )
     assert isinstance(result, ArticleSucceeded)
@@ -107,7 +111,9 @@ async def test_cancelled_dispatch_does_not_create_call(blog_server: tuple[str, F
             _ = await client.invoke(
                 "get_article",
                 "v1",
-                GetArticle(identity(), BlogUserId("admin"), ArticleId(1)),
+                GetArticle(
+                    identity(), BlogUserId("admin"), ArticleId(1), content_scope=ContentScope.AUTHOR
+                ),
                 dispatch=refused,
             )
     assert fake.calls == []

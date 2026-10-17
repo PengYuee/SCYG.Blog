@@ -16,6 +16,9 @@ import (
 
 	pb "github.com/PengYuee/SCYG.Blog/backend/internal/generated/proto/scyg/agent/v1"
 	identityauth "github.com/PengYuee/SCYG.Blog/backend/internal/modules/identity/auth"
+	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/authentication"
+	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/config"
+	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/publicsearch"
 )
 
 const agentBodyLimit = 1 << 20
@@ -39,6 +42,14 @@ type AgentOptions struct {
 	Client       AgentClient
 	ReadyTimeout time.Duration
 	IdleTimeout  time.Duration
+	Public       *PublicSearchOptions
+}
+
+// PublicSearchOptions supplies independent credentials, limits and shared Redis controls.
+type PublicSearchOptions struct {
+	Tokens  *authentication.PublicSearchTokens
+	Control *publicsearch.Control
+	Config  config.PublicSearch
 }
 
 type agentHandler struct{ AgentOptions }
@@ -48,8 +59,27 @@ func validRunID(id string) bool {
 }
 
 func agentUser(ctx *gin.Context) string {
+	if subject, ok := authentication.AnonymousSubject(ctx.Request.Context()); ok {
+		return subject
+	}
 	principal, _ := identityauth.PrincipalFromContext(ctx.Request.Context())
 	return string(principal.UserID)
+}
+
+func agentScope(ctx *gin.Context) pb.ContentScope {
+	if _, ok := authentication.AnonymousSubject(ctx.Request.Context()); ok {
+		return pb.ContentScope_CONTENT_SCOPE_PUBLIC
+	}
+	return pb.ContentScope_CONTENT_SCOPE_AUTHOR
+}
+
+func agentAuthorized(ctx *gin.Context, run *pb.Run) bool {
+	// Agent authorizes the authenticated owner against persistence; Blog independently checks frozen scope.
+	if run == nil || run.ContentScope != agentScope(ctx) || (run.ContentScope == pb.ContentScope_CONTENT_SCOPE_PUBLIC && run.Capability != pb.AgentCapability_AGENT_CAPABILITY_SEARCH) {
+		WriteAgentProblem(ctx, http.StatusNotFound, "Run 不存在", "RUN_NOT_FOUND")
+		return false
+	}
+	return true
 }
 
 func agentBadRequest(ctx *gin.Context) {
@@ -125,7 +155,7 @@ func (h agentHandler) register(engine *gin.Engine) {
 				return
 			}
 			run, err := h.Client.CreateRun(ctx.Request.Context(), &pb.CreateRunRequest{
-				UserId: agentUser(ctx), IdempotencyKey: key, Capability: capability, JsonPayload: raw,
+				UserId: agentUser(ctx), ContentScope: pb.ContentScope_CONTENT_SCOPE_AUTHOR, IdempotencyKey: key, Capability: capability, JsonPayload: raw,
 			})
 			h.respond(ctx, http.StatusAccepted, run, err)
 		})
@@ -134,6 +164,10 @@ func (h agentHandler) register(engine *gin.Engine) {
 	engine.GET("/api/v1/runs/:runId/events", h.events)
 	engine.POST("/api/v1/runs/:runId/resume", h.resume)
 	engine.POST("/api/v1/runs/:runId/cancel", h.cancel)
+	if h.Public != nil {
+		engine.POST("/api/v1/public/ai/session", h.publicSession)
+		engine.POST("/api/v1/public/ai/search", h.publicSearch)
+	}
 }
 
 func (h agentHandler) get(ctx *gin.Context) {
@@ -141,7 +175,10 @@ func (h agentHandler) get(ctx *gin.Context) {
 	if id == "" {
 		return
 	}
-	run, err := h.Client.GetRun(ctx.Request.Context(), &pb.GetRunRequest{UserId: agentUser(ctx), RunId: id})
+	if !h.publicRate(ctx, "read", true) {
+		return
+	}
+	run, err := h.Client.GetRun(ctx.Request.Context(), &pb.GetRunRequest{UserId: agentUser(ctx), ContentScope: agentScope(ctx), RunId: id})
 	h.respond(ctx, http.StatusOK, run, err)
 }
 
@@ -173,7 +210,7 @@ func (h agentHandler) resume(ctx *gin.Context) {
 		return
 	}
 	run, err := h.Client.ResumeRun(ctx.Request.Context(), &pb.ResumeRunRequest{
-		UserId: agentUser(ctx), RunId: id, IdempotencyKey: key,
+		UserId: agentUser(ctx), ContentScope: pb.ContentScope_CONTENT_SCOPE_AUTHOR, RunId: id, IdempotencyKey: key,
 		InteractionId: body.InteractionID, Decision: body.Decision, PayloadJson: body.Payload,
 	})
 	h.respond(ctx, http.StatusOK, run, err)
@@ -196,13 +233,19 @@ func (h agentHandler) cancel(ctx *gin.Context) {
 		agentBadRequest(ctx)
 		return
 	}
-	run, err := h.Client.CancelRun(ctx.Request.Context(), &pb.CancelRunRequest{UserId: agentUser(ctx), RunId: id, IdempotencyKey: key})
+	if !h.publicRate(ctx, "read", true) {
+		return
+	}
+	run, err := h.Client.CancelRun(ctx.Request.Context(), &pb.CancelRunRequest{UserId: agentUser(ctx), ContentScope: agentScope(ctx), RunId: id, IdempotencyKey: key})
 	h.respond(ctx, http.StatusOK, run, err)
 }
 
 func (h agentHandler) respond(ctx *gin.Context, httpStatus int, run *pb.Run, err error) {
 	if err != nil {
 		agentFailure(ctx, err)
+		return
+	}
+	if !agentAuthorized(ctx, run) {
 		return
 	}
 	if run == nil || !validRunID(run.RunId) {

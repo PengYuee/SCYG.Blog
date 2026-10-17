@@ -15,7 +15,7 @@ export function createAuthApi(client: HttpTransport): AuthApi {
   return {
     async login(request): Promise<LoginResponse> {
       const body: LoginData["body"] = { username: request.username.trim(), password: request.password }
-      return parseBoundary(zLoginResponse, (await client.post(LOGIN_ROUTE, body)).data, "login")
+      return parseBoundary(zLoginResponse, (await client.post(LOGIN_ROUTE, body, { authPolicy: "none" })).data, "login")
     },
   }
 }

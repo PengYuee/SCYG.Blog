@@ -721,6 +721,21 @@ type PublicArticleTypeSummary struct {
 	Name string `json:"name"`
 }
 
+// PublicSearchSession 匿名公共搜索短期凭证及当前服务端输入限制；不包含模型、Provider 或执行预算。
+type PublicSearchSession struct {
+	// AccessToken 当前匿名主体的 opaque Bearer 凭证。
+	AccessToken string `json:"accessToken"`
+
+	// ExpiresAt 凭证过期时间。
+	ExpiresAt time.Time `json:"expiresAt"`
+
+	// MaxResults 公共搜索允许的最大结果数，不超过 SearchInput 的业务上限。
+	MaxResults int `json:"maxResults"`
+
+	// QueryMaxChars 本次公共搜索允许的 query 最大字符数，不超过 SearchInput 的业务上限。
+	QueryMaxChars int `json:"queryMaxChars"`
+}
+
 // PublicTag 公开标签资源。
 type PublicTag struct {
 	// ArticleCount 满足公开条件的文章数量。
@@ -740,6 +755,15 @@ type PublicTagList struct {
 
 	// Page 分页页码、每页数量和总量信息。
 	Page PageInfo `json:"page"`
+}
+
+// SearchInput Agent 搜索业务输入，保留 snake_case；公共搜索还须遵守 session 返回的动态限制，服务端冻结公开内容范围。
+type SearchInput struct {
+	// MaxResults 期望结果数，省略时默认 5；公共搜索默认值也不能超过当前 session 的 maxResults。
+	MaxResults *int `json:"max_results,omitempty"`
+
+	// Query 非空搜索问题。
+	Query string `json:"query"`
 }
 
 // Tag 标签资源，包含版本和 UTC 时间。
@@ -832,6 +856,9 @@ type TagID = PositiveID
 // AgentError 错误响应信封，描述请求失败原因。
 type AgentError = Problem
 
+// AgentRateLimited 错误响应信封，描述请求失败原因。
+type AgentRateLimited = Problem
+
 // BadRequest 错误响应信封，描述请求失败原因。
 type BadRequest = Problem
 
@@ -855,6 +882,9 @@ type PreconditionRequired = Problem
 
 // Unauthorized 错误响应信封，描述请求失败原因。
 type Unauthorized = Problem
+
+// publicSearchBearerAuthContextKey is the context key for PublicSearchBearerAuth security scheme
+type publicSearchBearerAuthContextKey string
 
 // bearerAuthContextKey is the context key for bearerAuth security scheme
 type bearerAuthContextKey string
@@ -2237,6 +2267,15 @@ func RegisterHandlersWithOptions(router gin.IRouter, si ServerInterface, options
 }
 
 type AgentErrorApplicationProblemPlusJSONResponse Problem
+
+type AgentRateLimitedResponseHeaders struct {
+	RetryAfter *string
+}
+type AgentRateLimitedApplicationProblemPlusJSONResponse struct {
+	Body Problem
+
+	Headers AgentRateLimitedResponseHeaders
+}
 
 type BadRequestApplicationProblemPlusJSONResponse Problem
 

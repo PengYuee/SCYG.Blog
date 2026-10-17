@@ -65,3 +65,10 @@ class CompiledStateGraph[
     async def aget_state(
         self, config: RunnableConfig, *, subgraphs: bool = False
     ) -> StateSnapshot: ...
+    async def aupdate_state(
+        self,
+        config: RunnableConfig,
+        values: object,
+        as_node: str | None = None,
+        task_id: str | None = None,
+    ) -> RunnableConfig: ...

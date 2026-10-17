@@ -61,7 +61,7 @@ func (s *agentBoundaryServer) StreamRunEvents(_ *pb.StreamRunEventsRequest, stre
 }
 
 func testAgentRun() *pb.Run {
-	return &pb.Run{RunId: "safe-run", Status: pb.RunStatus_RUN_STATUS_QUEUED, Capability: pb.AgentCapability_AGENT_CAPABILITY_CHAT, RecipeId: "chat", RecipeVersion: "1", CreatedAt: "2026-10-07T00:00:00Z", UpdatedAt: "2026-10-07T00:00:00Z"}
+	return &pb.Run{RunId: "safe-run", ContentScope: pb.ContentScope_CONTENT_SCOPE_AUTHOR, Status: pb.RunStatus_RUN_STATUS_QUEUED, Capability: pb.AgentCapability_AGENT_CAPABILITY_CHAT, RecipeId: "chat", RecipeVersion: "1", CreatedAt: "2026-10-07T00:00:00Z", UpdatedAt: "2026-10-07T00:00:00Z"}
 }
 
 func setupAgentBoundary(t *testing.T, s *agentBoundaryServer) string {

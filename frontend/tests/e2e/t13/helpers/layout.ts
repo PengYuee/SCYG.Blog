@@ -2,9 +2,9 @@ import { expect, type Locator, type Page } from "@playwright/test"
 
 /** 首页桌面几何快照。 */
 type DesktopGeometry = {
-  readonly heroHeight: number
   readonly contentTop: number
-  readonly viewportHeight: number
+  readonly bodyTop: number
+  readonly headerBottom: number
   readonly shellWidth: number
   readonly sidebarWidth: number
   readonly columns: number
@@ -13,17 +13,25 @@ type DesktopGeometry = {
 
 /** 验证 T6 锁定的 Hero、内容边界、壳层、侧栏、网格与溢出契约。 */
 export async function expectDesktopGeometry(page: Page): Promise<void> {
+  const hero = page.locator(".public-hero")
+  await expect(hero).toBeVisible()
+  await expect(page.locator("#blog-content")).toBeHidden()
+  const heroHeight = await hero.evaluate((element) => element.getBoundingClientRect().height)
+  expect(Math.abs(heroHeight - (page.viewportSize()?.height ?? 0))).toBeLessThanOrEqual(1)
+  await page.getByTestId("hero-scroll-cue").click()
+  await expect(hero).toBeHidden()
+  await expect(page.locator("#blog-content")).toBeVisible()
   const geometry = await page.evaluate<DesktopGeometry | null>(() => {
-    const hero = document.querySelector<HTMLElement>(".public-hero")
+    const header = document.querySelector<HTMLElement>("header[data-state]")
     const content = document.querySelector<HTMLElement>("#blog-content")
     const shell = content?.querySelector<HTMLElement>(".blog-shell")
     const sidebar = document.querySelector<HTMLElement>(".blog-sidebar")
     const grid = document.querySelector<HTMLElement>("[data-testid='article-grid']")
-    if (hero === null || content === null || shell === undefined || sidebar === null || grid === null) return null
+    if (header === null || content === null || shell == null || sidebar === null || grid === null) return null
     return {
-      heroHeight: hero.getBoundingClientRect().height,
-      contentTop: content.getBoundingClientRect().top + window.scrollY,
-      viewportHeight: window.innerHeight,
+      contentTop: content.getBoundingClientRect().top,
+      bodyTop: shell.getBoundingClientRect().top,
+      headerBottom: header.getBoundingClientRect().bottom,
       shellWidth: shell.getBoundingClientRect().width,
       sidebarWidth: sidebar.getBoundingClientRect().width,
       columns: getComputedStyle(grid).gridTemplateColumns.split(" ").length,
@@ -31,8 +39,9 @@ export async function expectDesktopGeometry(page: Page): Promise<void> {
     }
   })
   expect(geometry).not.toBeNull()
-  expect(Math.abs((geometry?.heroHeight ?? 0) - (geometry?.viewportHeight ?? 1))).toBeLessThanOrEqual(1)
-  expect(Math.abs((geometry?.contentTop ?? 0) - (geometry?.heroHeight ?? 1))).toBeLessThanOrEqual(1)
+  expect(geometry?.contentTop).toBe(0)
+  expect(geometry?.bodyTop).toBeGreaterThanOrEqual(geometry?.headerBottom ?? Number.POSITIVE_INFINITY)
+  expect(await page.evaluate(() => window.scrollY)).toBe(0)
   expect(geometry?.shellWidth).toBeLessThanOrEqual(1220)
   expect(geometry?.sidebarWidth).toBe(300)
   expect(geometry?.columns).toBe(3)

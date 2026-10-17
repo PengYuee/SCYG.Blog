@@ -3,6 +3,7 @@ package rest
 import (
 	"context"
 	"net/http"
+	"sync/atomic"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -41,17 +42,62 @@ func (h agentHandler) events(ctx *gin.Context) {
 		cursor = &value
 	}
 	user := agentUser(ctx)
-	if _, err := h.Client.GetRun(ctx.Request.Context(), &pb.GetRunRequest{UserId: user, RunId: id}); err != nil {
+	if !h.publicRate(ctx, "read", false) {
+		return
+	}
+	run, err := h.Client.GetRun(ctx.Request.Context(), &pb.GetRunRequest{UserId: user, ContentScope: agentScope(ctx), RunId: id})
+	if err != nil {
 		agentFailure(ctx, err)
+		return
+	}
+	if !agentAuthorized(ctx, run) {
 		return
 	}
 	streamContext, cancel := context.WithCancel(ctx.Request.Context())
 	defer cancel()
+	var leaseLost atomic.Bool
+	if agentScope(ctx) == pb.ContentScope_CONTENT_SCOPE_PUBLIC {
+		lease, acquired, acquireErr := h.Public.Control.Acquire(streamContext, id)
+		if acquireErr != nil {
+			WriteAgentProblem(ctx, 503, "公共搜索暂不可用", "public_search_unavailable")
+			return
+		}
+		if !acquired {
+			WriteAgentProblem(ctx, 429, "此 Run 的事件连接已达上限", "connection_limit")
+			return
+		}
+		defer lease.Release()
+		renewContext, stopRenew := context.WithCancel(streamContext)
+		renewDone := make(chan struct{})
+		defer func() { stopRenew(); <-renewDone }()
+		go func() {
+			defer close(renewDone)
+			ticker := time.NewTicker(h.Public.Config.LeaseRenewInterval())
+			defer ticker.Stop()
+			for {
+				select {
+				case <-renewContext.Done():
+					return
+				case <-ticker.C:
+					valid, renewErr := lease.Renew(renewContext)
+					if renewErr != nil || !valid {
+						leaseLost.Store(true)
+						cancel()
+						return
+					}
+				}
+			}
+		}()
+	}
 	timer := time.AfterFunc(h.ReadyTimeout, cancel)
-	stream, err := h.Client.StreamRunEvents(streamContext, &pb.StreamRunEventsRequest{UserId: user, RunId: id, AfterEventId: cursor})
+	stream, err := h.Client.StreamRunEvents(streamContext, &pb.StreamRunEventsRequest{UserId: user, ContentScope: agentScope(ctx), RunId: id, AfterEventId: cursor})
 	if err != nil {
 		if !timer.Stop() && ctx.Request.Context().Err() == nil {
 			err = status.Error(codes.DeadlineExceeded, "subscription timeout")
+		}
+		if leaseLost.Load() {
+			WriteAgentProblem(ctx, 503, "事件连接租约已失效", "public_search_unavailable")
+			return
 		}
 		agentFailure(ctx, err)
 		return
@@ -72,6 +118,10 @@ func (h agentHandler) events(ctx *gin.Context) {
 	stopped := timer.Stop()
 	if !stopped && ctx.Request.Context().Err() == nil {
 		err = status.Error(codes.DeadlineExceeded, "subscription timeout")
+	}
+	if leaseLost.Load() {
+		WriteAgentProblem(ctx, 503, "事件连接租约已失效", "public_search_unavailable")
+		return
 	}
 	if err != nil {
 		agentFailure(ctx, err)

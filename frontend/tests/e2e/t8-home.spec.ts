@@ -13,54 +13,60 @@ const captureErrors = (page: Page): string[] => {
   return errors
 }
 
-test("keeps the first desktop fold hero-only and composes discovery below it", async ({ page }, testInfo) => {
+test("keeps the hero and discovery in exclusive mounted scenes", async ({ page }, testInfo) => {
   // Given: Edge 捕获当前首页全部运行时错误。
   const errors = captureErrors(page)
 
   // When: 打开 T8 Happy 首页并等待真实状态机完成。
   await page.goto("/t8-home.html", { waitUntil: "networkidle" })
   await expect(page.getByTestId("home-announcement")).toContainText("已加载 9 篇")
+  await expect(page.locator("#blog-content")).toBeHidden()
 
   // Then: 首屏严格只有 Hero，内容从视口下方开始且无横向溢出。
   const fold = await page.evaluate(() => {
     const hero = document.querySelector<HTMLElement>(".public-hero")
     const announcement = document.querySelector<HTMLElement>("[data-testid='home-announcement']")
-    const cards = [...document.querySelectorAll<HTMLElement>("#blog-content .blog-card")]
+    const cards = [...document.querySelectorAll<HTMLElement>("#blog-content .blog-card")].filter((card) => card.getClientRects().length > 0)
     return {
       heroHeight: hero?.getBoundingClientRect().height ?? 0,
-      announcementTop: announcement?.getBoundingClientRect().top ?? 0,
-      firstCardTop: Math.min(...cards.map((card) => card.getBoundingClientRect().top)),
+      contentHidden: announcement?.getClientRects().length === 0,
+      visibleCards: cards.length,
       viewportHeight: window.innerHeight,
       overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
     }
   })
   expect(Math.abs(fold.heroHeight - fold.viewportHeight)).toBeLessThanOrEqual(1)
-  expect(fold.announcementTop).toBeGreaterThanOrEqual(fold.viewportHeight)
-  expect(fold.firstCardTop).toBeGreaterThanOrEqual(fold.viewportHeight)
+  expect(fold.contentHidden).toBe(true)
+  expect(fold.visibleCards).toBe(0)
   expect(fold.overflow).toBe(0)
   await page.screenshot({ path: path.join(evidenceDirectory, `${testInfo.project.name}-first-fold.png`), fullPage: false })
 
-  // When: 进入发现内容并检查真实排序、分组和确定性 MORE 查询。
-  await page.locator("#blog-content").scrollIntoViewIfNeeded()
+  // When: 进入发现内容并检查完整且不重复的文章流。
+  await page.getByRole("button", { name: "进入内容区", exact: true }).click()
+  await expect(page.locator(".public-hero")).toBeHidden()
+  expect(await page.evaluate(() => window.scrollY)).toBe(0)
   await expect(page.getByTestId("recommended-articles")).toContainText("给旧接口一层可靠的类型契约")
-  const categorySections = page.getByTestId("category-section")
-  await expect(categorySections).toHaveCount(3)
-  await expect(categorySections.nth(0).locator("h2")).toHaveText("前端工程")
-  await expect(categorySections.nth(0).locator("article")).toHaveCount(6)
-  await expect(categorySections.nth(0).getByRole("link", { name: "更多文章" })).toHaveAttribute("href", "/t8-home.html/articles?articleTypeId=1")
+  const grid = page.getByTestId("article-grid")
+  await expect(grid).toHaveCount(1)
+  await expect(grid.locator("article")).toHaveCount(9)
+  await expect(page.getByRole("heading", { name: "最新文章", exact: true })).toBeVisible()
+  await page.getByRole("button", { name: "前端工程", exact: true }).click()
+  await expect(page).toHaveURL((url) => url.searchParams.get("articleTypeId") === "1")
+  await expect(page.getByRole("button", { name: "前端工程", exact: true })).toHaveAttribute("aria-pressed", "true")
+  await expect(grid.locator("article")).toHaveCount(6)
   const composition = await page.evaluate(() => ({
     sidebarWidth: document.querySelector<HTMLElement>(".blog-sidebar")?.getBoundingClientRect().width ?? 0,
     overflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
-    clippedText: [...document.querySelectorAll<HTMLElement>("h1,h2,h3,p,a,button")].filter((element) => element.scrollWidth > element.clientWidth + 1).length,
+    clippedText: [...document.querySelectorAll<HTMLElement>("h1,h2,h3,p,a,button")].filter((element) => element.getClientRects().length > 0 && element.scrollWidth > element.clientWidth + 1).length,
   }))
-  expect(composition.sidebarWidth).toBe(300)
+  expect(composition.sidebarWidth).toBe(220)
   expect(composition.overflow).toBe(0)
   expect(composition.clippedText).toBe(0)
   await page.screenshot({ path: path.join(evidenceDirectory, `${testInfo.project.name}-composition.png`), fullPage: true })
   expect(errors).toEqual([])
 })
 
-test("routes hero search and scrolls through the isolated homepage router", async ({ page }) => {
+test("routes hero search into the content scene through the isolated homepage router", async ({ page }) => {
   // Given: Happy 首页处于 Hero 首屏。
   const errors = captureErrors(page)
   await page.goto("/t8-home.html", { waitUntil: "networkidle" })
@@ -70,25 +76,31 @@ test("routes hero search and scrolls through the isolated homepage router", asyn
   await page.locator("form[role='search']").first().press("Enter")
 
   // Then: 独立路由保留查询且原生滚动进入内容。
-  await expect(page).toHaveURL(/\/t8-home\.html\/articles\?q=Vue\+%E7%8A%B6%E6%80%81%E6%9C%BA$/)
-  await expect.poll(async () => page.evaluate(() => window.scrollY)).toBeGreaterThan(0)
+  await expect(page).toHaveURL((url) => url.pathname === "/t8-home.html/" && url.searchParams.get("q") === "Vue 状态机")
+  await expect(page.locator("header[data-state]")).toHaveAttribute("data-state", "scrolled")
+  await expect(page.locator(".public-hero")).toBeHidden()
+  await expect(page.locator("#content-search-input")).toHaveValue("Vue 状态机")
+  await expect(page.locator("header").getByRole("search")).toHaveCount(0)
   expect(errors).toEqual([])
 })
 
 test("keeps scoped failures and empty feed composed", async ({ page }, testInfo) => {
   // Given: 字典与文章流均失败。
   const errors = captureErrors(page)
-  await page.goto("/t8-home.html?mode=failure", { waitUntil: "networkidle" })
+  await page.goto("/t8-home.html#fixture-failure", { waitUntil: "networkidle" })
+  await page.getByTestId("hero-scroll-cue").click()
 
   // Then: 两个失败域分别可重试，个人与搜索表面仍存在。
   await expect(page.getByTestId("taxonomy-error")).toContainText("分类服务暂时不可用")
   await expect(page.getByTestId("feed-error")).toContainText("文章服务暂时不可用")
-  await expect(page.getByRole("heading", { name: "文章搜索" })).toBeVisible()
+  await expect(page.locator("#hero-search-input")).toBeHidden()
+  await expect(page.locator("#content-search-input")).toBeVisible()
   await expect(page.locator("aside[aria-labelledby='profile-card-name']")).toBeVisible()
   await page.screenshot({ path: path.join(evidenceDirectory, `${testInfo.project.name}-failure.png`), fullPage: true })
 
   // When: 切换到真实空文章流。
-  await page.goto("/t8-home.html?mode=empty", { waitUntil: "networkidle" })
+  await page.goto("/t8-home.html#fixture-empty", { waitUntil: "networkidle" })
+  await page.getByTestId("hero-scroll-cue").click()
 
   // Then: 空状态与侧栏同时存在且无运行时错误。
   await expect(page.getByTestId("feed-empty")).toContainText("暂无已发布文章")

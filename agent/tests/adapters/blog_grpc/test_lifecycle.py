@@ -11,13 +11,16 @@ from scyg_agent.adapters.blog_grpc import (
     FailureKind,
     GetArticle,
 )
+from scyg_agent.domain.runs import ContentScope
 
 from .support import FakeBlog, dispatch_call
 from .test_client import identity
 
 
 def command() -> GetArticle:
-    return GetArticle(identity(), BlogUserId("admin"), ArticleId(1))
+    return GetArticle(
+        identity(), BlogUserId("admin"), ArticleId(1), content_scope=ContentScope.AUTHOR
+    )
 
 
 @pytest.mark.anyio

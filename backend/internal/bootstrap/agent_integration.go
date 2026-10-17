@@ -18,6 +18,7 @@ import (
 	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/taxonomy"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/identity/user"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/config"
+	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/publicsearch"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/transport/grpc/blogcontent"
 )
 
@@ -28,6 +29,7 @@ type agentIntegration struct {
 	listen   string
 	errors   <-chan error
 	listener net.Listener
+	public   *publicsearch.Control
 }
 
 func newAgentIntegration(cfg config.Agent, db Database, articles *article.Service, taxonomyService *taxonomy.Service, articleImages *application.ArticleImages) (*agentIntegration, *operation.Service, error) {
@@ -54,6 +56,14 @@ func newAgentIntegration(cfg config.Agent, db Database, articles *article.Servic
 	}
 	healthServer.SetServingStatus("", healthpb.HealthCheckResponse_NOT_SERVING)
 	return &agentIntegration{client: client, server: server, health: healthServer, listen: cfg.BlogContentListen()}, ledger, nil
+}
+
+func (a *agentIntegration) close() error {
+	var redisErr error
+	if a.public != nil {
+		redisErr = a.public.Close()
+	}
+	return errors.Join(redisErr, a.client.Close())
 }
 
 func (a *agentIntegration) start() error {

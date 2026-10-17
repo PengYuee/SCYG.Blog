@@ -15,6 +15,15 @@ export type ArticleListQueryResult =
 
 const optionalId = z.string().regex(/^[1-9]\d*$/).transform(Number).optional()
 const querySchema = z.strictObject({ q: z.string().trim().default(""), articleTypeId: optionalId, tagId: optionalId })
+const homepageSchema = querySchema.extend({
+  mode: z.enum(["normal", "ai"]).default("normal"),
+  runId: z.string().regex(/^[A-Za-z0-9_-][A-Za-z0-9._~-]{0,127}$/).refine((value) => value !== "." && value !== "..").optional(),
+})
+
+/** 首页搜索模式、文章条件和公共任务标识共用同一 URL 边界。 */
+export function parseHomepageQuery(query: LocationQuery) {
+  return homepageSchema.safeParse(query)
+}
 
 /** 在路由边界解析 q/articleTypeId/tagId，拒绝重复或非法值。 */
 export function parseArticleListQuery(query: LocationQuery | Readonly<Record<string, unknown>>): ArticleListQueryResult {

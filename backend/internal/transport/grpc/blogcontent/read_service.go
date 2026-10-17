@@ -7,6 +7,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	agentv1 "github.com/PengYuee/SCYG.Blog/backend/internal/generated/proto/scyg/agent/v1"
 	blogv1 "github.com/PengYuee/SCYG.Blog/backend/internal/generated/proto/scyg/blog/v1"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/article"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/modules/content/taxonomy"
@@ -31,9 +32,9 @@ func pageMetadata(number, size, pages int) ([3]uint32, error) {
 	return result, nil
 }
 
-// SearchArticles reads the authorized, database-paginated management projection.
+// SearchArticles reads only the explicitly requested content projection.
 func (server *Server) SearchArticles(ctx context.Context, request *blogv1.SearchArticlesRequest) (*blogv1.SearchArticlesResponse, error) {
-	ctx, err := server.businessContext(ctx, request.GetUserId())
+	ctx, err := server.readContext(ctx, request.GetUserId(), request.GetContentScope())
 	if err != nil {
 		return nil, err
 	}
@@ -41,8 +42,17 @@ func (server *Server) SearchArticles(ctx context.Context, request *blogv1.Search
 	if err != nil {
 		return nil, err
 	}
+	if request.GetContentScope() == agentv1.ContentScope_CONTENT_SCOPE_PUBLIC && state != "" && state != "published" {
+		return nil, status.Error(codes.InvalidArgument, "public content requires published status")
+	}
 	page, size := paging(request.GetPage(), request.GetPageSize())
-	result, err := server.dependencies.Articles.ListManage(ctx, article.List{Page: page, PageSize: size, Query: request.GetQuery(), Status: state, ArticleTypeID: request.GetArticleTypeId(), TagID: request.GetTagId(), Sort: managementSort(request.GetSort())})
+	query := article.List{Page: page, PageSize: size, Query: request.GetQuery(), Status: state, ArticleTypeID: request.GetArticleTypeId(), TagID: request.GetTagId(), Sort: managementSort(request.GetSort())}
+	var result article.Page
+	if request.GetContentScope() == agentv1.ContentScope_CONTENT_SCOPE_PUBLIC {
+		result, err = server.dependencies.Articles.List(ctx, query)
+	} else {
+		result, err = server.dependencies.Articles.ListManage(ctx, query)
+	}
 	if err != nil {
 		return nil, rpcError(err)
 	}
@@ -57,18 +67,36 @@ func (server *Server) SearchArticles(ctx context.Context, request *blogv1.Search
 	return &blogv1.SearchArticlesResponse{Articles: items, Page: metadata[0], PageSize: metadata[1], TotalItems: result.TotalItems, TotalPages: metadata[2]}, nil
 }
 
-// GetArticle reads current non-deleted content under existing management policy.
+// GetArticle reads only the explicitly requested content projection.
 func (server *Server) GetArticle(ctx context.Context, request *blogv1.GetArticleRequest) (*blogv1.GetArticleResponse, error) {
-	ctx, err := server.businessContext(ctx, request.GetUserId())
+	ctx, err := server.readContext(ctx, request.GetUserId(), request.GetContentScope())
 	if err != nil {
 		return nil, err
 	}
-	result, err := server.dependencies.Articles.GetManage(ctx, article.Get{ID: request.GetArticleId()})
+	var result article.Result
+	if request.GetContentScope() == agentv1.ContentScope_CONTENT_SCOPE_PUBLIC {
+		result, err = server.dependencies.Articles.Get(ctx, article.Get{ID: request.GetArticleId()})
+	} else {
+		result, err = server.dependencies.Articles.GetManage(ctx, article.Get{ID: request.GetArticleId()})
+	}
 	item, err := server.oneArticle(ctx, result, err)
 	if err != nil {
 		return nil, err
 	}
 	return &blogv1.GetArticleResponse{Article: item}, nil
+}
+
+func (server *Server) readContext(ctx context.Context, subject string, scope agentv1.ContentScope) (context.Context, error) {
+	switch scope {
+	case agentv1.ContentScope_CONTENT_SCOPE_AUTHOR:
+		return server.businessContext(ctx, subject)
+	case agentv1.ContentScope_CONTENT_SCOPE_PUBLIC:
+		return publicContext(ctx, subject)
+	case agentv1.ContentScope_CONTENT_SCOPE_UNSPECIFIED:
+		fallthrough
+	default:
+		return nil, status.Error(codes.InvalidArgument, "explicit valid content_scope required")
+	}
 }
 
 // ListTags authorizes taxonomy management access before querying.

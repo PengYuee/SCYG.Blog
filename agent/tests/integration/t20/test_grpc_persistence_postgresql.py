@@ -28,6 +28,7 @@ def request(
     payload: bytes = b'{"message":"persisted input"}',
 ) -> service_pb2.CreateRunRequest:
     return service_pb2.CreateRunRequest(
+        content_scope=common_pb2.CONTENT_SCOPE_AUTHOR,
         user_id=USER,
         idempotency_key=key or str(uuid4()),
         capability=common_pb2.AGENT_CAPABILITY_CHAT,
@@ -36,7 +37,9 @@ def request(
 
 
 def get_request(run_id: str, user: str = USER) -> service_pb2.GetRunRequest:
-    return service_pb2.GetRunRequest(user_id=user, run_id=run_id)
+    return service_pb2.GetRunRequest(
+        content_scope=common_pb2.CONTENT_SCOPE_AUTHOR, user_id=user, run_id=run_id
+    )
 
 
 @pytest.mark.anyio
@@ -69,6 +72,7 @@ async def test_create_get_and_successful_key_survive_server_and_engine_reconstru
             assert replay == fetched
             cross_rpc = await stub.CancelRun(
                 service_pb2.CancelRunRequest(
+                    content_scope=common_pb2.CONTENT_SCOPE_AUTHOR,
                     user_id=USER,
                     run_id="missing-run",
                     idempotency_key=create.idempotency_key,
@@ -80,6 +84,7 @@ async def test_create_get_and_successful_key_survive_server_and_engine_reconstru
                 stub.GetRun(get_request(first.run_id, "other-owner"), timeout=5),
                 stub.CancelRun(
                     service_pb2.CancelRunRequest(
+                        content_scope=common_pb2.CONTENT_SCOPE_AUTHOR,
                         user_id="other-owner",
                         run_id=first.run_id,
                         idempotency_key=str(uuid4()),
@@ -147,6 +152,7 @@ async def test_resume_persists_decision_and_distinguishes_missing_from_null(
         created = await stub.CreateRun(request(), timeout=5)
     interaction_id = await waiting_interaction(database, created.run_id)
     resume = service_pb2.ResumeRunRequest(
+        content_scope=common_pb2.CONTENT_SCOPE_AUTHOR,
         user_id=USER,
         run_id=created.run_id,
         interaction_id=interaction_id,
@@ -160,7 +166,9 @@ async def test_resume_persists_decision_and_distinguishes_missing_from_null(
         assert waiting.status == common_pb2.RUN_STATUS_WAITING_FOR_APPROVAL
         assert waiting.pending_interaction.interaction_id == interaction_id
         assert json.loads(waiting.pending_interaction.payload_json) == {"prompt": "Continue?"}
-        wrong_owner = service_pb2.ResumeRunRequest()
+        wrong_owner = service_pb2.ResumeRunRequest(
+            content_scope=common_pb2.CONTENT_SCOPE_AUTHOR,
+        )
         wrong_owner.CopyFrom(resume)
         wrong_owner.user_id = "other-owner"
         with pytest.raises(grpc.aio.AioRpcError) as captured:
@@ -193,7 +201,9 @@ async def test_stream_ready_before_first_event_cancel_delivery_reconnect_and_own
     async with grpc_stub(database.application()) as stub:
         created = await stub.CreateRun(request(), timeout=5)
         stream = stub.StreamRunEvents(
-            service_pb2.StreamRunEventsRequest(user_id=USER, run_id=created.run_id),
+            service_pb2.StreamRunEventsRequest(
+                content_scope=common_pb2.CONTENT_SCOPE_AUTHOR, user_id=USER, run_id=created.run_id
+            ),
             timeout=5,
         )
         try:
@@ -202,6 +212,7 @@ async def test_stream_ready_before_first_event_cancel_delivery_reconnect_and_own
             assert ("scyg-subscription-ready", "1") in tuple(metadata)
             cancelled = await stub.CancelRun(
                 service_pb2.CancelRunRequest(
+                    content_scope=common_pb2.CONTENT_SCOPE_AUTHOR,
                     user_id=USER,
                     run_id=created.run_id,
                     idempotency_key=str(uuid4()),
@@ -225,6 +236,7 @@ async def test_stream_ready_before_first_event_cancel_delivery_reconnect_and_own
         assert await rebuilt.GetRun(get_request(created.run_id), timeout=5) == cancelled
         replay = rebuilt.StreamRunEvents(
             service_pb2.StreamRunEventsRequest(
+                content_scope=common_pb2.CONTENT_SCOPE_AUTHOR,
                 user_id=USER,
                 run_id=created.run_id,
                 after_event_id=cursor,
@@ -247,7 +259,9 @@ async def test_stream_ready_before_first_event_cancel_delivery_reconnect_and_own
                 grpc.StatusCode.FAILED_PRECONDITION,
             ),
         ):
-            incoming = service_pb2.StreamRunEventsRequest(user_id=user, run_id=run_id)
+            incoming = service_pb2.StreamRunEventsRequest(
+                content_scope=common_pb2.CONTENT_SCOPE_AUTHOR, user_id=user, run_id=run_id
+            )
             if after is not None:
                 incoming.after_event_id = after
             denied = rebuilt.StreamRunEvents(incoming, timeout=5)

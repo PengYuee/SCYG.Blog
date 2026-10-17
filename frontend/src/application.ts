@@ -22,6 +22,9 @@ export function mountApplication(config: RuntimeConfig): void {
   authSession.restore()
   configureAuthTokenProvider(authSession.accessToken)
   configureUnauthorizedHandler(authSession.handleUnauthorized)
+  window.addEventListener("storage", (event) => {
+    if (event.storageArea === window.localStorage && (event.key === "scyg.auth.session" || event.key === null)) authSession.restore()
+  })
   router.beforeEach(createAuthNavigationGuard(authSession))
 
   scrollRestoration.install()

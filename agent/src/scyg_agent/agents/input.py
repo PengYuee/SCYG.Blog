@@ -76,7 +76,7 @@ def _resolve_recipe(
 def _parse_value(
     run_input: RunInput, capability: Capability, recipe: AgentRecipe
 ) -> CapabilityInput:
-    """Strictly parse and digest-check the persisted input payload."""
+    """Verify the canonical snapshot, including omitted default writing preparation fields."""
     if run_input.input_payload is None or run_input.input_digest is None:
         raise InvalidAgentInputError
     try:

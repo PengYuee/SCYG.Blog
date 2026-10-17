@@ -8,6 +8,7 @@ import (
 
 	generated "github.com/PengYuee/SCYG.Blog/backend/internal/generated/openapi"
 	identityauth "github.com/PengYuee/SCYG.Blog/backend/internal/modules/identity/auth"
+	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/authentication"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/observability"
 )
 
@@ -16,10 +17,15 @@ type TokenVerifier interface {
 	Verify(string) (identityauth.Principal, error)
 }
 
+// AnonymousVerifier verifies only the public-search credential domain.
+type AnonymousVerifier interface {
+	Verify(string) (string, error)
+}
+
 // OptionalBearerAuthentication authenticates requests that provide a Bearer token.
 // Public routes do not require or inspect credentials; protected routes reject a
 // supplied malformed or invalid token before authorization runs.
-func OptionalBearerAuthentication(verifier TokenVerifier) gin.HandlerFunc {
+func OptionalBearerAuthentication(verifier TokenVerifier, anonymous ...AnonymousVerifier) gin.HandlerFunc {
 	return func(ctx *gin.Context) {
 		if isPublicRoute(ctx) {
 			ctx.Next()
@@ -33,6 +39,19 @@ func OptionalBearerAuthentication(verifier TokenVerifier) gin.HandlerFunc {
 		parts := strings.Fields(header)
 		if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
 			abortAuthentication(ctx, "认证凭据格式无效")
+			return
+		}
+		publicOnly := ctx.FullPath() == "/api/v1/public/ai/search"
+		dual := strings.HasPrefix(ctx.FullPath(), "/api/v1/runs/") && !strings.HasSuffix(ctx.FullPath(), "/resume")
+		if (publicOnly || dual) && len(anonymous) == 1 && anonymous[0] != nil {
+			if subject, err := anonymous[0].Verify(parts[1]); err == nil {
+				ctx.Request = ctx.Request.WithContext(authentication.WithAnonymousSubject(ctx.Request.Context(), subject))
+				ctx.Next()
+				return
+			}
+		}
+		if publicOnly || verifier == nil {
+			abortAuthentication(ctx, "认证凭据无效")
 			return
 		}
 		principal, err := verifier.Verify(parts[1])
@@ -52,7 +71,9 @@ func RequireAuthenticatedRoute() gin.HandlerFunc {
 			ctx.Next()
 			return
 		}
-		if _, ok := identityauth.PrincipalFromContext(ctx.Request.Context()); !ok {
+		_, author := identityauth.PrincipalFromContext(ctx.Request.Context())
+		_, anonymous := authentication.AnonymousSubject(ctx.Request.Context())
+		if !author && !anonymous {
 			abortAuthentication(ctx, "需要有效的 Bearer 认证凭据")
 			return
 		}
@@ -62,10 +83,10 @@ func RequireAuthenticatedRoute() gin.HandlerFunc {
 
 func isPublicRoute(ctx *gin.Context) bool {
 	// Disabled Agent endpoints are unregistered and must retain the router's 404.
-	if ctx.FullPath() == "" && (strings.HasPrefix(ctx.Request.URL.Path, "/api/v1/ai/") || strings.HasPrefix(ctx.Request.URL.Path, "/api/v1/runs/")) {
+	if ctx.FullPath() == "" && (strings.HasPrefix(ctx.Request.URL.Path, "/api/v1/ai/") || strings.HasPrefix(ctx.Request.URL.Path, "/api/v1/runs/") || strings.HasPrefix(ctx.Request.URL.Path, "/api/v1/public/ai/")) {
 		return true
 	}
-	if ctx.Request.Method == http.MethodPost && ctx.FullPath() == "/api/v1/auth/login" {
+	if ctx.Request.Method == http.MethodPost && (ctx.FullPath() == "/api/v1/auth/login" || ctx.FullPath() == "/api/v1/public/ai/session") {
 		return true
 	}
 	if ctx.Request.Method != http.MethodGet {

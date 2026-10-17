@@ -1,13 +1,15 @@
 """Owner-authorized control operations sharing one successful-key transaction."""
 
 import json
-from dataclasses import dataclass
+import logging
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from hashlib import sha256
 from math import isfinite
-from typing import TYPE_CHECKING, Final, cast, final
+from typing import TYPE_CHECKING, Final, Protocol, cast, final
 from uuid import UUID, uuid4
 
+import anyio
 from pydantic import ValidationError
 from sqlalchemy import DateTime, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
@@ -20,18 +22,27 @@ from scyg_agent.adapters.database.run_records import (
     SuccessfulOperationRecord,
 )
 from scyg_agent.adapters.database.run_repository import PostgreSQLRunRepository
+from scyg_agent.adapters.redis.public_controls import (
+    PublicControlsUnavailableError,
+    PublicQuotaExceededError,
+    PublicReservation,
+)
 from scyg_agent.agents.contracts import (
     INPUT_SCHEMA_VERSION,
+    INTERACTION_REQUEST_ADAPTER,
     Capability,
     FailureKind,
     input_digest,
     input_payload,
     recipe_for_capability,
+    validate_interaction_response,
 )
 from scyg_agent.agents.recipes import RecipeRegistry, default_recipe_registry
+from scyg_agent.config import PublicSearchSettings
 from scyg_agent.domain.ports.event_store import AppendRequest
 from scyg_agent.domain.runs import (
     CommandId,
+    ContentScope,
     EventId,
     InteractionId,
     OperationId,
@@ -53,6 +64,7 @@ if TYPE_CHECKING:
     from sqlalchemy import Result
 
     from scyg_agent.agents.contracts import CapabilityInput
+    from scyg_agent.agents.recipes import AgentRecipe
 
 KEY_LOCK_NAMESPACE = 0x53434147
 _SURROGATE_MIN: Final = 0xD800
@@ -67,6 +79,10 @@ _TERMINAL_RUN: Final = ("FAILED_PRECONDITION", "Run 已结束,不能取消")
 _RUN_NOT_FOUND: Final = ("NOT_FOUND", "未找到 Run")
 _INVALID_PERSISTED_RUN: Final = ("INTERNAL", "Run 持久化状态异常")
 _INVALID_PERSISTED_INTERACTION: Final = ("INTERNAL", "Run 交互状态异常")
+_PUBLIC_UNAVAILABLE: Final = ("UNAVAILABLE", "公共搜索暂不可用")
+_PUBLIC_CAPACITY: Final = ("RESOURCE_EXHAUSTED", "公共搜索任务容量已满")
+_PUBLIC_QUOTA: Final = ("RESOURCE_EXHAUSTED", "公共搜索每日额度已用尽")
+_PUBLIC_PENDING_LIMIT: Final = 10
 
 
 @dataclass(slots=True)
@@ -75,6 +91,7 @@ class ControlError(Exception):
 
     code: str
     message: str
+    retry_after_seconds: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -112,6 +129,31 @@ class ControlSnapshot:
     result_present: bool
     result: object
     interaction: PendingSnapshot | None
+    content_scope: ContentScope = field(kw_only=True)
+
+
+class PublicQuotaPort(Protocol):
+    """Reserve and settle public admission quota without execution-slot ownership."""
+
+    async def reserve(self, owner: str, key: str) -> PublicReservation:
+        """Reserve an operation or raise its quota or availability failure."""
+        ...
+
+    async def consume(self, reservation: PublicReservation) -> None:
+        """Consume the reservation after its operation commits."""
+        ...
+
+    async def refund(self, reservation: PublicReservation) -> None:
+        """Refund the reservation after a definite operation rollback."""
+        ...
+
+
+@dataclass(frozen=True, slots=True)
+class PublicControlConfig:
+    """Bind public admission limits to the quota boundary enforcing them."""
+
+    settings: PublicSearchSettings
+    controls: PublicQuotaPort
 
 
 @final
@@ -124,6 +166,8 @@ class ControlApplication:
         notification_channel: str,
         events: EventSubscriptionService,
         recipes: RecipeRegistry | None = None,
+        *,
+        public: PublicControlConfig | None = None,
     ) -> None:
         """Bind the shared sessions, journal and immutable Recipe registry."""
         self._sessions = sessions
@@ -131,95 +175,186 @@ class ControlApplication:
         self._events = events
         self._recipes = recipes or default_recipe_registry()
         self._runs = PostgreSQLRunRepository(sessions)
+        self._public = public
 
-    async def get(self, user_id: str, run_id: str) -> ControlSnapshot:
+    async def get(
+        self, user_id: str, run_id: str, *, content_scope: ContentScope
+    ) -> ControlSnapshot:
         """Read an owner-authorized consistent public snapshot."""
         async with self._sessions() as session:
-            return await self._snapshot(session, user_id, run_id)
+            return await self._snapshot(session, user_id, run_id, content_scope)
 
-    async def open_events(self, user_id: str, run_id: str, cursor: str | None) -> OpenedEventStream:
+    async def open_events(
+        self, user_id: str, run_id: str, cursor: str | None, *, content_scope: ContentScope
+    ) -> OpenedEventStream:
         """Authorize before opening and validating a durable subscription."""
-        _ = await self.get(user_id, run_id)
+        _ = await self.get(user_id, run_id, content_scope=content_scope)
         return await self._events.open_events(RunId(run_id), cursor)
 
     async def create(
-        self, user_id: str, key: str, capability: Capability, raw_json: bytes
+        self,
+        user_id: str,
+        key: str,
+        capability: Capability,
+        raw_json: bytes,
+        *,
+        content_scope: ContentScope,
     ) -> ControlSnapshot:
-        """Replay a successful key before parsing new business input."""
-        async with self._sessions.begin() as session:
-            replay = await self._reserve(session, user_id, key)
-            if replay is not None:
-                return replay
-            recipe_id = recipe_for_capability(capability)
-            recipe = self._recipes.resolve(recipe_id, "v1")
-            if (
-                recipe is None
-                or not recipe.recipe_id.value
-                or not recipe.version
-                or recipe.capability is not capability
-            ):
-                raise ControlError(*_INVALID_INPUT)
+        """Replay before input/admission checks; refund only proven precommit rollback."""
+        reservation: PublicReservation | None = None
+        commit_started = False
+        async with self._sessions() as session:
+            transaction = await session.begin()
             try:
-                value = cast("CapabilityInput", recipe.input_schema.model_validate_json(raw_json))
-                value_payload = input_payload(value)
-                _validate_json_storage(value_payload)
-                digest = input_digest(value)
-            except (ValidationError, ValueError, UnicodeError, RecursionError):
-                raise ControlError(*_INVALID_INPUT) from None
-            now = await self._now(session)
-            run_id = RunId(f"run_{uuid4().hex}")
-            task, runtime, field = {
-                Capability.SEARCH: (TaskType.RESEARCH, RuntimeKind.DEEP, "query"),
-                Capability.WRITE: (TaskType.COMPOSE, RuntimeKind.DEEP, "topic"),
-                Capability.POLISH: (TaskType.POLISH, RuntimeKind.SIMPLE, "content"),
-                Capability.CHAT: (TaskType.QUESTION, RuntimeKind.SIMPLE, "message"),
-            }[capability]
-            run = Run(
-                run_id,
-                UserId(user_id),
-                task,
-                RuntimeSelection(runtime, "v1"),
-                1,
-                RunStatus.PENDING,
-                now,
-                now,
-                0,
-                None,
-                None,
-            )
-            _ = await self._runs.create_in_session(
-                session,
-                CreateRunRequest(
-                    run,
-                    OperationId(str(uuid4())),
+                replay = await self._reserve(session, user_id, key, content_scope)
+                if replay is not None:
+                    await transaction.rollback()
+                    return replay
+                recipe, value_payload, digest = self._prepare_create(
+                    capability, raw_json, content_scope
+                )
+                if content_scope is ContentScope.PUBLIC:
+                    reservation = await self._admit_public(session, user_id, key, value_payload)
+                now = await self._now(session)
+                run_id = RunId(f"run_{uuid4().hex}")
+                task, runtime, input_field = {
+                    Capability.SEARCH: (TaskType.RESEARCH, RuntimeKind.DEEP, "query"),
+                    Capability.WRITE: (TaskType.COMPOSE, RuntimeKind.DEEP, "topic"),
+                    Capability.POLISH: (TaskType.POLISH, RuntimeKind.SIMPLE, "content"),
+                    Capability.CHAT: (TaskType.QUESTION, RuntimeKind.SIMPLE, "message"),
+                }[capability]
+                run = Run(
+                    run_id,
+                    UserId(user_id),
+                    task,
+                    RuntimeSelection(runtime, "v1"),
+                    1,
+                    RunStatus.PENDING,
                     now,
-                    RunInput(
-                        str(value_payload[field]),
-                        "",
-                        capability.value,
-                        recipe_id.value,
-                        recipe.version,
-                        INPUT_SCHEMA_VERSION,
-                        value_payload,
-                        digest,
-                        "und",
-                        str(run_id),
-                        recipe.model_tier,
-                        "v1",
+                    now,
+                    0,
+                    None,
+                    None,
+                    content_scope=content_scope,
+                )
+                _ = await self._runs.create_in_session(
+                    session,
+                    CreateRunRequest(
+                        run,
+                        OperationId(str(uuid4())),
+                        now,
+                        RunInput(
+                            str(value_payload[input_field]),
+                            "",
+                            capability.value,
+                            recipe.recipe_id.value,
+                            recipe.version,
+                            INPUT_SCHEMA_VERSION,
+                            value_payload,
+                            digest,
+                            "und",
+                            str(run_id),
+                            recipe.model_tier,
+                            "v1",
+                        ),
                     ),
-                ),
-            )
-            return await self._success(session, user_id, key, str(run_id))
+                )
+                snapshot = await self._success(session, user_id, key, str(run_id), content_scope)
+                commit_started = True
+                await transaction.commit()
+            except BaseException:
+                # Only a completed rollback before ANY commit attempt proves absence.
+                with anyio.CancelScope(shield=True):
+                    try:
+                        await session.rollback()
+                    except Exception:
+                        logging.getLogger(__name__).exception("Public create rollback failed")
+                    else:
+                        if not commit_started and reservation is not None:
+                            await self._settle_reservation(reservation, refund=True)
+                raise
+        if reservation is not None:
+            await self._settle_reservation(reservation, refund=False)
+        return snapshot
 
-    async def resume(self, user_id: str, key: str, command: ResumeCommand) -> ControlSnapshot:
+    def _prepare_create(
+        self, capability: Capability, raw_json: bytes, content_scope: ContentScope
+    ) -> tuple["AgentRecipe", dict[str, object], str]:
+        if type(content_scope) is not ContentScope:
+            raise ControlError(*_INVALID_INPUT)
+        if content_scope is ContentScope.PUBLIC and capability is not Capability.SEARCH:
+            raise ControlError(*_INVALID_INPUT)
+        recipe = self._recipes.resolve(recipe_for_capability(capability), "v1")
+        if recipe is None or recipe.capability is not capability:
+            raise ControlError(*_INVALID_INPUT)
+        try:
+            value = cast("CapabilityInput", recipe.input_schema.model_validate_json(raw_json))
+            value_payload = input_payload(value)
+            _validate_json_storage(value_payload)
+            digest = input_digest(value)
+        except (ValidationError, ValueError, UnicodeError, RecursionError):
+            raise ControlError(*_INVALID_INPUT) from None
+        return recipe, value_payload, digest
+
+    async def _admit_public(
+        self, session: AsyncSession, user_id: str, key: str, payload: dict[str, object]
+    ) -> PublicReservation:
+        public = self._public
+        if public is None:
+            raise ControlError(*_PUBLIC_UNAVAILABLE)
+        controls, settings = public.controls, public.settings
+        if (
+            len(str(payload["query"])) > settings.query_max_chars
+            or int(cast("int", payload["max_results"])) > settings.max_results
+        ):
+            raise ControlError(*_INVALID_INPUT)
+        _ = await session.execute(select(func.pg_advisory_xact_lock(KEY_LOCK_NAMESPACE, 0)))
+        count = (
+            await session.execute(
+                select(func.count())
+                .select_from(RunRecord)
+                .where(
+                    RunRecord.content_scope == ContentScope.PUBLIC.value,
+                    RunRecord.status.not_in(("succeeded", "failed", "cancelled")),
+                )
+            )
+        ).scalar_one()
+        if count >= _PUBLIC_PENDING_LIMIT:
+            raise ControlError(*_PUBLIC_CAPACITY)
+        try:
+            return await controls.reserve(user_id, str(UUID(key)))
+        except PublicQuotaExceededError as error:
+            raise ControlError(*_PUBLIC_QUOTA, error.retry_after_seconds) from None
+        except PublicControlsUnavailableError:
+            raise ControlError(*_PUBLIC_UNAVAILABLE) from None
+
+    async def _settle_reservation(self, reservation: PublicReservation, *, refund: bool) -> None:
+        public = self._public
+        if public is None:
+            raise ControlError(*_PUBLIC_UNAVAILABLE)
+        controls = public.controls
+        with anyio.CancelScope(shield=True):
+            try:
+                if refund:
+                    await controls.refund(reservation)
+                else:
+                    await controls.consume(reservation)
+            except PublicControlsUnavailableError:
+                logging.getLogger(__name__).warning("Public quota settlement unavailable")
+
+    async def resume(
+        self, user_id: str, key: str, command: ResumeCommand, *, content_scope: ContentScope
+    ) -> ControlSnapshot:
         """Resolve one pending interaction without overwriting its history."""
         run_id, interaction_id = command.run_id, command.interaction_id
         decision, payload = command.decision, command.payload
         async with self._sessions.begin() as session:
-            replay = await self._reserve(session, user_id, key)
+            replay = await self._reserve(session, user_id, key, content_scope)
             if replay is not None:
                 return replay
-            run = await self._owned_locked(session, user_id, run_id)
+            if content_scope is not ContentScope.AUTHOR:
+                raise ControlError(*_RUN_NOT_FOUND)
+            run = await self._owned_locked(session, user_id, run_id, content_scope)
             if run.status != "waiting_input" or run.pending_interaction_id != interaction_id:
                 raise ControlError(*_INVALID_RUN_STATE)
             interaction = (
@@ -249,6 +384,8 @@ class ControlApplication:
                 raise ControlError(*_INVALID_PAYLOAD) from None
             if kind in {"selection", "text_input"} and payload is None:
                 raise ControlError(*_MISSING_PAYLOAD)
+            if kind in {"selection", "text_input"}:
+                parsed = _validated_interaction_reply(interaction, command, parsed)
             try:
                 digest = sha256(
                     json.dumps(
@@ -285,15 +422,17 @@ class ControlApplication:
                 ),
                 self._channel,
             )
-            return await self._success(session, user_id, key, run_id)
+            return await self._success(session, user_id, key, run_id, content_scope)
 
-    async def cancel(self, user_id: str, key: str, run_id: str) -> ControlSnapshot:
+    async def cancel(
+        self, user_id: str, key: str, run_id: str, *, content_scope: ContentScope
+    ) -> ControlSnapshot:
         """Set cancellation and revoke worker admission under the Run lock."""
         async with self._sessions.begin() as session:
-            replay = await self._reserve(session, user_id, key)
+            replay = await self._reserve(session, user_id, key, content_scope)
             if replay is not None:
                 return replay
-            run = await self._owned_locked(session, user_id, run_id)
+            run = await self._owned_locked(session, user_id, run_id, content_scope)
             if run.status in {"succeeded", "failed"}:
                 raise ControlError(*_TERMINAL_RUN)
             if run.status != "cancelled":
@@ -335,10 +474,10 @@ class ControlApplication:
                     ),
                     self._channel,
                 )
-            return await self._success(session, user_id, key, run_id)
+            return await self._success(session, user_id, key, run_id, content_scope)
 
     async def _reserve(
-        self, session: AsyncSession, user_id: str, key: str
+        self, session: AsyncSession, user_id: str, key: str, content_scope: ContentScope
     ) -> ControlSnapshot | None:
         identity = UUID(key)
         hash_value = int.from_bytes(
@@ -357,7 +496,7 @@ class ControlApplication:
             )
         ).scalar_one_or_none()
         if record is not None:
-            return await self._snapshot(session, user_id, record.run_id)
+            return await self._snapshot(session, user_id, record.run_id, content_scope)
         _ = await session.execute(
             delete(SuccessfulOperationRecord).where(
                 SuccessfulOperationRecord.user_id == user_id,
@@ -368,7 +507,12 @@ class ControlApplication:
         return None
 
     async def _success(
-        self, session: AsyncSession, user_id: str, key: str, run_id: str
+        self,
+        session: AsyncSession,
+        user_id: str,
+        key: str,
+        run_id: str,
+        content_scope: ContentScope,
     ) -> ControlSnapshot:
         await session.flush()
         now = await self._now(session)
@@ -382,13 +526,19 @@ class ControlApplication:
             )
         )
         await session.flush()
-        return await self._snapshot(session, user_id, run_id)
+        return await self._snapshot(session, user_id, run_id, content_scope)
 
-    async def _owned_locked(self, session: AsyncSession, user_id: str, run_id: str) -> RunRecord:
+    async def _owned_locked(
+        self, session: AsyncSession, user_id: str, run_id: str, content_scope: ContentScope
+    ) -> RunRecord:
         run = (
             await session.execute(
                 select(RunRecord)
-                .where(RunRecord.run_id == run_id, RunRecord.owner_user_id == user_id)
+                .where(
+                    RunRecord.run_id == run_id,
+                    RunRecord.owner_user_id == user_id,
+                    RunRecord.content_scope == content_scope.value,
+                )
                 .with_for_update()
             )
         ).scalar_one_or_none()
@@ -396,7 +546,9 @@ class ControlApplication:
             raise ControlError(*_RUN_NOT_FOUND)
         return run
 
-    async def _snapshot(self, session: AsyncSession, user_id: str, run_id: str) -> ControlSnapshot:
+    async def _snapshot(
+        self, session: AsyncSession, user_id: str, run_id: str, content_scope: ContentScope
+    ) -> ControlSnapshot:
         await session.flush()
         result_rows = cast(
             "Result[tuple[RunRecord, AgentRunResultRecord | None, InteractionRecord | None]]",
@@ -415,6 +567,7 @@ class ControlApplication:
                     .where(
                         RunRecord.run_id == run_id,
                         RunRecord.owner_user_id == user_id,
+                        RunRecord.content_scope == content_scope.value,
                     )
                     .execution_options(populate_existing=True)
                 )
@@ -455,6 +608,7 @@ class ControlApplication:
             result is not None,
             result.result_payload if result is not None else None,
             pending,
+            content_scope=ContentScope(run.content_scope),
         )
 
     @staticmethod
@@ -488,3 +642,24 @@ def _validate_json_storage(value: object) -> None:
     elif isinstance(value, list):
         for item in cast("list[object]", value):
             _validate_json_storage(item)
+
+
+def _validated_interaction_reply(
+    interaction: InteractionRecord, command: ResumeCommand, parsed: object
+) -> object:
+    try:
+        request = INTERACTION_REQUEST_ADAPTER.validate_python(interaction.request_payload)
+    except (ValidationError, ValueError):
+        raise ControlError(*_INVALID_PERSISTED_INTERACTION) from None
+    if (
+        request.kind != normalize_interaction_kind(interaction.kind)
+        or request.interaction_id != command.interaction_id
+    ):
+        raise ControlError(*_INVALID_PERSISTED_INTERACTION)
+    try:
+        reply = validate_interaction_response(
+            request, command.decision, payload_present=command.payload is not None, payload=parsed
+        )
+    except (ValidationError, ValueError):
+        raise ControlError(*_INVALID_PAYLOAD) from None
+    return {"article_ids": list(reply)} if isinstance(reply, tuple) else reply

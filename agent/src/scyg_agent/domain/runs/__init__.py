@@ -41,6 +41,7 @@ from .events import (
 )
 from .models import (
     CommandId,
+    ContentScope,
     EventId,
     ExecutionOwnerId,
     InteractionId,
@@ -74,6 +75,7 @@ __all__ = [
     "ClaimRun",
     "CommandId",
     "CommandKind",
+    "ContentScope",
     "DomainEvent",
     "EventId",
     "EventKind",

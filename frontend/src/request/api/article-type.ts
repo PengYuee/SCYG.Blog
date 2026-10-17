@@ -35,18 +35,18 @@ export function createArticleTypeApi(client: HttpTransport, serverUrl: string): 
     async list(filter?: string) {
       const query = filter?.trim()
       const params: NonNullable<ListManageArticleTypesData["query"]> = { pageSize: TAXONOMY_PAGE_SIZE, ...(query === undefined || query.length === 0 ? {} : { q: query }) }
-      const firstPage = mapArticleTypes((await client.get(ARTICLE_TYPE_ROUTE, { params: { ...params, page: 1 } })).data, serverUrl)
+      const firstPage = mapArticleTypes((await client.get(ARTICLE_TYPE_ROUTE, { authPolicy: "author", params: { ...params, page: 1 } })).data, serverUrl)
       const items: AuthorArticleType[] = [...firstPage.items]
-      for (let page = 2; page <= firstPage.totalPages; page += 1) items.push(...mapArticleTypes((await client.get(ARTICLE_TYPE_ROUTE, { params: { ...params, page } })).data, serverUrl).items)
+      for (let page = 2; page <= firstPage.totalPages; page += 1) items.push(...mapArticleTypes((await client.get(ARTICLE_TYPE_ROUTE, { authPolicy: "author", params: { ...params, page } })).data, serverUrl).items)
       return items
     },
     async detail(id: number): Promise<AuthorArticleType> {
       const path: GetManageArticleTypeData["path"] = { articleTypeId: id }
-      return mapArticleType(parseBoundary(zArticleType, (await client.get(`${ARTICLE_TYPE_ROUTE}/${path.articleTypeId}`)).data, "article type detail"), serverUrl)
+      return mapArticleType(parseBoundary(zArticleType, (await client.get(`${ARTICLE_TYPE_ROUTE}/${path.articleTypeId}`, { authPolicy: "author" })).data, "article type detail"), serverUrl)
     },
     async create(request: ArticleTypeCreate): Promise<AuthorArticleType> {
       const payload: CreateManageArticleTypeData["body"] = { name: request.name, image: request.image, menu: request.menu }
-      return mapArticleType(parseBoundary(zArticleType, (await client.post(ARTICLE_TYPE_ROUTE, payload)).data, "article type create"), serverUrl)
+      return mapArticleType(parseBoundary(zArticleType, (await client.post(ARTICLE_TYPE_ROUTE, payload, { authPolicy: "author" })).data, "article type create"), serverUrl)
     },
     async update(request: ArticleTypeUpdateRequest): Promise<AuthorArticleType> {
       const changes: PatchManageArticleTypeData["body"] = {}
@@ -55,12 +55,12 @@ export function createArticleTypeApi(client: HttpTransport, serverUrl: string): 
       if (request.changes.menu !== undefined) changes.menu = request.changes.menu
       const path: PatchManageArticleTypeData["path"] = { articleTypeId: request.id }
       const headers: PatchManageArticleTypeData["headers"] = { "If-Match": `"${request.version}"` }
-      return mapArticleType(parseBoundary(zArticleType, (await client.patch(`${ARTICLE_TYPE_ROUTE}/${path.articleTypeId}`, changes, { headers })).data, "article type update"), serverUrl)
+      return mapArticleType(parseBoundary(zArticleType, (await client.patch(`${ARTICLE_TYPE_ROUTE}/${path.articleTypeId}`, changes, { headers, authPolicy: "author" })).data, "article type update"), serverUrl)
     },
     async delete(target: ArticleTypeDeleteTarget): Promise<void> {
       const path: DeleteManageArticleTypeData["path"] = { articleTypeId: target.id }
       const headers: DeleteManageArticleTypeData["headers"] = { "If-Match": `"${target.version}"` }
-      await client.delete(`${ARTICLE_TYPE_ROUTE}/${path.articleTypeId}`, { headers })
+      await client.delete(`${ARTICLE_TYPE_ROUTE}/${path.articleTypeId}`, { headers, authPolicy: "author" })
     },
   }
 }

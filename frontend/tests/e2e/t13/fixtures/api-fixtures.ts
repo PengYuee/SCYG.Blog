@@ -1,4 +1,5 @@
 import type { Page, Request, Route } from "@playwright/test"
+import type { PublicArticleType, PublicTag } from "../../../../src/request/generated"
 
 type ApiArticle = {
   readonly id: number
@@ -26,13 +27,14 @@ export type ReadFixtureOptions = {
   readonly categoryImage?: string | null
 }
 
-/** 被生产构建禁止的写请求记录器。 */
+/** 意外写请求记录器，用于阻止验收污染后端。 */
 export type MutationRecorder = {
   readonly requests: Request[]
 }
 
 const apiPattern = /\/api\/v1\//
-const page = (items: readonly unknown[]) => ({ items, page: { number: 1, size: 20, totalItems: items.length, totalPages: items.length === 0 ? 0 : 1 } })
+const mutationRecorders = new WeakMap<Page, MutationRecorder>()
+const page = <T>(items: readonly T[]) => ({ items, page: { number: 1, size: 20, totalItems: items.length, totalPages: items.length === 0 ? 0 : 1 } })
 
 /** 构造覆盖首页、列表与详情的确定性中文文章。 */
 const article = (id: number, content = "## 可复现正文\n\n这是用于生产端到端验证的安全中文内容。"):
@@ -65,9 +67,15 @@ const tags = page([
   { id: 2, name: "TypeScript", version: 1, createdAt: "2026-07-12T00:00:00.000Z", updatedAt: null },
 ])
 
-/** 在导航前拦截全部真实公共读取接口。 */
+/** 在导航前拦截公共读取及作者字典读取接口。 */
 export async function installReadFixtures(pageInstance: Page, options: ReadFixtureOptions = {}): Promise<void> {
+  // 先安装共享写阻断底线；较晚注册的专用 mock 优先，非 GET fallback 交给记录器。
+  await installMutationRecorder(pageInstance)
   await pageInstance.route(apiPattern, async (route) => {
+    if (route.request().method() !== "GET") {
+      await route.fallback()
+      return
+    }
     const requestUrl = new URL(route.request().url())
     if (requestUrl.pathname === "/api/v1/articles") {
       await route.fulfill({ status: options.listStatus ?? 200, json: page(articles) })
@@ -76,6 +84,21 @@ export async function installReadFixtures(pageInstance: Page, options: ReadFixtu
     if (requestUrl.pathname.startsWith("/api/v1/articles/")) {
       const detail = { ...article(101, options.detailMarkdown), articleTypeId: 1, articleType: { id: 1, name: "前端工程", image: null } }
       await route.fulfill({ status: options.detailStatus ?? 200, json: detail })
+      return
+    }
+    if (requestUrl.pathname === "/api/v1/article-types") {
+      const items = categories.items.map((item): PublicArticleType => ({
+        id: item.id,
+        name: item.name,
+        image: item.id === 1 ? options.categoryImage ?? item.image : item.image,
+        articleCount: articles.filter((entry) => entry.articleTypeId === item.id).length,
+      }))
+      await route.fulfill({ status: 200, json: page(items) })
+      return
+    }
+    if (requestUrl.pathname === "/api/v1/tags") {
+      const items = tags.items.map((item): PublicTag => ({ id: item.id, name: item.name, articleCount: articles.filter((entry) => entry.tagIds.includes(item.id)).length }))
+      await route.fulfill({ status: 200, json: page(items) })
       return
     }
     if (requestUrl.pathname === "/api/v1/manage/article-types") {
@@ -93,6 +116,8 @@ export async function installReadFixtures(pageInstance: Page, options: ReadFixtu
 
 /** 记录并拒绝任何意外生产写请求，确保测试不会污染后端。 */
 export async function installMutationRecorder(pageInstance: Page): Promise<MutationRecorder> {
+  const existing = mutationRecorders.get(pageInstance)
+  if (existing) return existing
   const requests: Request[] = []
   await pageInstance.route(apiPattern, async (route: Route) => {
     const request = route.request()
@@ -103,5 +128,7 @@ export async function installMutationRecorder(pageInstance: Page): Promise<Mutat
     }
     await route.fallback()
   })
-  return { requests }
+  const recorder = { requests }
+  mutationRecorders.set(pageInstance, recorder)
+  return recorder
 }

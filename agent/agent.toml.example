@@ -30,6 +30,22 @@ worker_poll_milliseconds = 100
 worker_error_backoff_seconds = 1
 worker_drain_seconds = 10
 
+# Every Agent replica must share this policy and Redis key prefix.
+# Public uses at most one local slot; worker_concurrency must remain greater than 1.
+[public_search]
+key_prefix = "scyg:public"
+query_max_chars = 2000
+max_results = 5
+model_max_output_tokens = 2048
+graph_recursion_limit = 16
+max_tool_calls_per_attempt = 6
+max_read_chars_per_attempt = 24000
+run_timeout_seconds = 180
+daily_creations = 100
+execution_concurrency = 1
+lease_seconds = 60
+heartbeat_seconds = 15
+
 [models]
 protocol = "chat_completions"
 

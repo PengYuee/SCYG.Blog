@@ -58,7 +58,10 @@ class RecipeRegistry:
             or any(recipe.version != "v1" or not recipe.prompt for recipe in self.recipes)
             or any(
                 len(set(recipe.tool_names)) != len(recipe.tool_names)
-                or (recipe.recipe_id is not RecipeId.SEARCH_V1 and bool(recipe.tool_names))
+                or (
+                    recipe.recipe_id not in {RecipeId.SEARCH_V1, RecipeId.WRITING_V1}
+                    and bool(recipe.tool_names)
+                )
                 for recipe in self.recipes
             )
         ):
@@ -109,6 +112,7 @@ def default_recipe_registry() -> RecipeRegistry:
                 ArticleDraft,
                 WRITING_PROMPT,
                 "standard",
+                tuple(ReadToolName),
             ),
             AgentRecipe(
                 RecipeId.POLISH_V1,

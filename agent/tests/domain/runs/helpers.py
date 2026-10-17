@@ -8,6 +8,7 @@ from scyg_agent.domain.runs import (
     ClaimRun,
     CommandId,
     CommandKind,
+    ContentScope,
     EventId,
     ExecutionOwnerId,
     FailRun,
@@ -48,6 +49,7 @@ def make_run(status: RunStatus, *, revision: int = 5) -> Run:
         attempt=1,
         execution_owner=execution_owner,
         pending_interaction_id=pending_interaction_id,
+        content_scope=ContentScope.AUTHOR,
     )
 
 

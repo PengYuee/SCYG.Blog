@@ -26,6 +26,7 @@ type rawConfig struct {
 	Auth          rawAuth          `mapstructure:"auth"`
 	ArticleImages rawArticleImages `mapstructure:"article_images"`
 	Agent         rawAgent         `mapstructure:"agent"`
+	PublicSearch  rawPublicSearch  `mapstructure:"public_search"`
 }
 
 type rawApp struct {
@@ -92,6 +93,9 @@ func Load(options Options) (Config, error) {
 		"article_images.directory", "article_images.pending_ttl", "article_images.orphan_grace", "article_images.cleanup_interval",
 		"article_images.upload_request_bytes", "article_images.max_file_bytes", "article_images.max_pixels", "article_images.max_dimension", "article_images.development_author_id",
 		"agent.enabled", "agent.target", "agent.blog_content_listen", "agent.unary_timeout", "agent.sse_idle_timeout", "agent.grpc_shutdown_timeout",
+		"public_search.redis_url", "public_search.prefix", "public_search.timeout", "public_search.token_ttl", "public_search.query_max_chars", "public_search.max_results",
+		"public_search.search_rate", "public_search.search_burst", "public_search.session_rate", "public_search.session_burst", "public_search.read_rate", "public_search.read_burst",
+		"public_search.sse_connections", "public_search.lease_ttl", "public_search.lease_renew_interval",
 	}
 	if !options.DisableEnvironment {
 		for _, key := range keys {
@@ -108,6 +112,8 @@ func Load(options Options) (Config, error) {
 		}
 	}
 	// QA 段由独立 loader 解析；运行时副本在解码前移除该段，避免管理 DSN 进入 Config。
+	// 默认 Redis 命名空间随实际环境变化，显式 YAML/环境前缀仍由所有副本共享。
+	instance.SetDefault("public_search.prefix", "scyg:"+instance.GetString("app.env"))
 	settings := instance.AllSettings()
 	delete(settings, "qa")
 	runtime := viper.New()
@@ -134,6 +140,10 @@ func setDefaults(instance *viper.Viper) {
 		"article_images.upload_request_bytes": int64(6 << 20), "article_images.max_file_bytes": int64(5 << 20), "article_images.max_pixels": int64(25_000_000),
 		"article_images.max_dimension": 8192, "article_images.development_author_id": "",
 		"agent.enabled": false, "agent.target": "127.0.0.1:9090", "agent.blog_content_listen": "127.0.0.1:50051", "agent.unary_timeout": "5s", "agent.sse_idle_timeout": "30s", "agent.grpc_shutdown_timeout": "10s",
+		"public_search.redis_url": "redis://127.0.0.1:6379/0", "public_search.prefix": "scyg:development", "public_search.timeout": "2s", "public_search.token_ttl": "24h",
+		"public_search.query_max_chars": 2000, "public_search.max_results": 5, "public_search.search_rate": 3, "public_search.search_burst": 1,
+		"public_search.session_rate": 10, "public_search.session_burst": 2, "public_search.read_rate": 60, "public_search.read_burst": 10,
+		"public_search.sse_connections": 2, "public_search.lease_ttl": "60s", "public_search.lease_renew_interval": "15s",
 	}
 	for key, value := range defaults {
 		instance.SetDefault(key, value)

@@ -13,6 +13,13 @@ enum AgentCapability {
   AGENT_CAPABILITY_CHAT = 4;
 }
 
+// ContentScope 是由 Blog 固定并由 Agent 持久保存的内容读取范围。
+enum ContentScope {
+  CONTENT_SCOPE_UNSPECIFIED = 0;
+  CONTENT_SCOPE_AUTHOR = 1;
+  CONTENT_SCOPE_PUBLIC = 2;
+}
+
 // RunStatus projects durable internal states without exposing runtime selection.
 enum RunStatus {
   reserved 1, 3, 4;
@@ -39,6 +46,8 @@ enum InteractionType {
 message PublicError {
   string code = 1 [(buf.validate.field).string.min_len = 1];
   string message = 2 [(buf.validate.field).string.min_len = 1];
+  // 仅用于请求错误的等待秒数，不进入 Run.failure 的 HTTP 投影。
+  optional uint32 retry_after_seconds = 3;
 }
 
 // PendingInteraction contains the interaction currently awaiting a response.
@@ -68,4 +77,6 @@ message Run {
   // Presence distinguishes no result from a JSON null result.
   optional bytes result_json = 18;
   PendingInteraction pending_interaction = 19;
+  // 内部控制面用此字段核对用途，浏览器不能选择范围。
+  ContentScope content_scope = 20 [(buf.validate.field).enum = {defined_only: true not_in: [0]}];
 }

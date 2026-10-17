@@ -25,7 +25,8 @@ from scyg_agent.adapters.blog_grpc import (
     TagsSucceeded,
     UpdateArticle,
 )
-from scyg_agent.domain.runs import OperationId, RunId, ToolCallId
+from scyg_agent.domain.runs import ContentScope, OperationId, RunId, ToolCallId
+from scyg_agent.generated.proto.scyg.agent.v1 import common_pb2 as agent_common
 from scyg_agent.generated.proto.scyg.blog.v1 import blog_content_service_pb2 as service_pb2
 from scyg_agent.generated.proto.scyg.blog.v1 import common_pb2
 
@@ -61,7 +62,9 @@ async def test_get_maps_full_management_projection(
         result = await client.invoke(
             "get_article",
             "v1",
-            GetArticle(identity(), BlogUserId("admin"), article_id),
+            GetArticle(
+                identity(), BlogUserId("admin"), article_id, content_scope=ContentScope.AUTHOR
+            ),
             dispatch=dispatch_call,
         )
     assert isinstance(result, ArticleSucceeded)
@@ -93,6 +96,7 @@ async def test_search_maps_management_page(blog_server: tuple[str, FakeBlog]) ->
         type_id,
         tag_id,
         "-updated_at",
+        content_scope=ContentScope.AUTHOR,
     )
     async with BlogGrpcClient(target, 1.0) as client:
         result = await client.invoke("search_articles", "v1", command, dispatch=dispatch_call)
@@ -110,7 +114,9 @@ async def test_search_receives_full_hundred_article_page_above_four_mib(
     fake.search_articles = [article(index) for index in range(1, 101)]
     for item in fake.search_articles:
         item.content = content
-    command = SearchArticles(identity(), BlogUserId("admin"), page_size=100)
+    command = SearchArticles(
+        identity(), BlogUserId("admin"), page_size=100, content_scope=ContentScope.AUTHOR
+    )
     async with BlogGrpcClient(target, 5.0) as client:
         result = await client.invoke("search_articles", "v1", command, dispatch=dispatch_call)
     assert isinstance(result, SearchSucceeded)
@@ -131,7 +137,7 @@ async def test_search_defaults_use_database_pagination(blog_server: tuple[str, F
         result = await client.invoke(
             "search_articles",
             "v1",
-            SearchArticles(identity(), BlogUserId("admin")),
+            SearchArticles(identity(), BlogUserId("admin"), content_scope=ContentScope.AUTHOR),
             dispatch=dispatch_call,
         )
     assert isinstance(result, SearchSucceeded)
@@ -355,3 +361,33 @@ async def test_update_absent_fields_differ_from_explicit_empty(
     )
     assert not clear_request.HasField("article_type_id")
     assert list(clear_request.tag_ids.values) == []
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("scope", [ContentScope.AUTHOR, ContentScope.PUBLIC])
+async def test_read_requests_preserve_explicit_content_scope(
+    blog_server: tuple[str, FakeBlog], scope: ContentScope
+) -> None:
+    target, fake = blog_server
+    async with BlogGrpcClient(target, 1.0) as client:
+        _ = await client.invoke(
+            "get_article",
+            "v1",
+            GetArticle(identity(), BlogUserId("owner"), ArticleId(1), content_scope=scope),
+            dispatch=dispatch_call,
+        )
+        _ = await client.invoke(
+            "search_articles",
+            "v1",
+            SearchArticles(identity(), BlogUserId("owner"), content_scope=scope),
+            dispatch=dispatch_call,
+        )
+    expected = (
+        agent_common.CONTENT_SCOPE_PUBLIC
+        if scope is ContentScope.PUBLIC
+        else agent_common.CONTENT_SCOPE_AUTHOR
+    )
+    assert isinstance(fake.requests[0], service_pb2.GetArticleRequest)
+    assert isinstance(fake.requests[1], service_pb2.SearchArticlesRequest)
+    assert fake.requests[0].content_scope == expected
+    assert fake.requests[1].content_scope == expected

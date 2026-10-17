@@ -2,15 +2,17 @@
 
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
-from typing import TYPE_CHECKING, Required, TypedDict, cast
+from typing import TYPE_CHECKING, Required, TypedDict, cast, override
 
 import pytest
 from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.errors import GraphRecursionError
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.runtime import Runtime
-from langgraph.types import Command, Interrupt, interrupt
+from langgraph.types import Command, Interrupt, StateSnapshot, interrupt
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from scyg_agent.adapters.database.run_records import InteractionRecord, RunRecord
@@ -18,7 +20,10 @@ from scyg_agent.agents import (
     ApprovalRequest,
     ArticleDraft,
     Capability,
+    FailureKind,
     RecipeId,
+    SearchInput,
+    SearchResponse,
     WritingInput,
     input_digest,
     input_payload,
@@ -35,7 +40,7 @@ from scyg_agent.agents.production import (
 )
 from scyg_agent.agents.recipes import default_recipe_registry
 from scyg_agent.agents.runner import AgentFailed, AgentSucceeded, AgentWaitingForApproval
-from scyg_agent.domain.runs import RunId
+from scyg_agent.domain.runs import ContentScope, RunId
 from scyg_agent.domain.runs.input import RunInput
 from scyg_agent.domain.runs.repository import LeaseGuard
 from tests.adapters.database.scripted_session_support import FakeResult, ScriptedSession, session
@@ -174,6 +179,7 @@ async def test_real_writing_after_agent_interrupt_preserves_complete_draft(
         "und",
         Quality.STANDARD,
         execution_guard=guard,
+        content_scope=ContentScope.AUTHOR,
     )
     config: RunnableConfig = {"configurable": {"thread_id": str(RUN_ID)}}
     first = cast(
@@ -216,7 +222,7 @@ async def test_persisted_reply_preserves_payload_presence(
 ) -> None:
     request = ApprovalRequest(
         interaction_id="int_presence01",
-        kind="selection",
+        kind="confirmation",
         title="Choose",
         outline="Options",
     )
@@ -245,7 +251,7 @@ async def test_persisted_reply_preserves_payload_presence(
         run_id=str(RUN_ID),
         status="resolved",
         kind=request.kind,
-        decision="select",
+        decision="approve",
         request_payload=request.model_dump(mode="json"),
         payload_present=present,
         response_payload=payload,
@@ -262,7 +268,7 @@ async def test_persisted_reply_preserves_payload_presence(
     assert isinstance(outcome, AgentSucceeded)
     assert len(replies) == 1
     reply = replies[0]
-    assert reply["decision"] == "select"
+    assert reply["decision"] == "approve"
     assert ("payload" in reply) is present
     if present:
         assert reply["payload"] == payload
@@ -302,6 +308,7 @@ async def test_runner_resumes_matching_persisted_confirmation_without_restarting
         "und",
         Quality.STANDARD,
         execution_guard=guard,
+        content_scope=ContentScope.AUTHOR,
     )
     config: RunnableConfig = {"configurable": {"thread_id": str(RUN_ID)}}
     first = cast(
@@ -355,6 +362,7 @@ async def test_runner_reports_unresolved_checkpoint_without_model_restart(
         "und",
         Quality.STANDARD,
         execution_guard=guard,
+        content_scope=ContentScope.AUTHOR,
     )
     config: RunnableConfig = {"configurable": {"thread_id": str(RUN_ID)}}
     _ = await graph.ainvoke({"structured_response": DRAFT}, config, context=context)
@@ -364,3 +372,73 @@ async def test_runner_reports_unresolved_checkpoint_without_model_restart(
     assert isinstance(outcome, AgentWaitingForApproval)
     assert outcome.request.title == DRAFT.title
     assert script.results == []
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize("exceed", [False, True])
+async def test_public_runner_uses_frozen_scope_deadline_and_graph_budget(
+    monkeypatch: pytest.MonkeyPatch, *, exceed: bool
+) -> None:
+    class PublicInputs(Inputs):
+        @override
+        async def get_input(self, run_id: RunId) -> RunInput:
+            value = SearchInput(query="Published only")
+            return RunInput(
+                "Published only",
+                "",
+                capability="search",
+                recipe_id="search-v1",
+                recipe_version="v1",
+                input_schema_version="v1",
+                input_payload=input_payload(value),
+                input_digest=input_digest(value),
+                locale="und",
+                thread_id=str(run_id),
+                quality="standard",
+                state_schema_version="v1",
+            )
+
+    class PublicGraph:
+        async def aget_state(self, _config: object) -> StateSnapshot:
+            return StateSnapshot(
+                values={},
+                next=(),
+                config={},
+                metadata=None,
+                created_at=None,
+                parent_config=None,
+                tasks=(),
+                interrupts=(),
+            )
+
+        async def ainvoke(
+            self, _payload: object, config: object, *, context: AgentRequestContext
+        ) -> object:
+            assert isinstance(config, dict)
+            assert cast("dict[str, object]", config)["recursion_limit"] == 16
+            assert context.content_scope is ContentScope.PUBLIC
+            assert context.public_budget is not None
+            assert context.public_budget.deadline == run.public_execution_deadline
+            if exceed:
+                reason = "public graph limit"
+                raise GraphRecursionError(reason)
+            return {
+                "structured_response": SearchResponse(
+                    query="Published only", conclusion="No matching public articles"
+                )
+            }
+
+    run = replace(
+        running_run(),
+        content_scope=ContentScope.PUBLIC,
+        public_execution_deadline=datetime.now(UTC) + timedelta(minutes=3),
+    )
+    script = ScriptedSession([FakeResult(active_record()), FakeResult(active_record())])
+    runner = runner_for(PublicGraph(), PublicInputs(), Sessions(session(monkeypatch, script)))
+    outcome = await runner.execute(run, lease())
+    if exceed:
+        assert isinstance(outcome, AgentFailed)
+        assert outcome.failure.kind is FailureKind.POLICY_LIMIT
+        assert outcome.failure.retryable is False
+    else:
+        assert isinstance(outcome, AgentSucceeded)

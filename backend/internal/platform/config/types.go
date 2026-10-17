@@ -136,6 +136,7 @@ type Config struct {
 	auth          Auth
 	articleImages ArticleImages
 	agent         Agent
+	publicSearch  PublicSearch
 }
 
 // App returns immutable application settings.

@@ -5,6 +5,134 @@ export type ClientOptions = {
 };
 
 /**
+ * 匿名公共搜索短期凭证及当前服务端输入限制；不包含模型、Provider 或执行预算。
+ */
+export type PublicSearchSession = {
+    /**
+     * 当前匿名主体的 opaque Bearer 凭证。
+     */
+    accessToken: string;
+    /**
+     * 凭证过期时间。
+     */
+    expiresAt: string;
+    /**
+     * 本次公共搜索允许的 query 最大字符数，不超过 SearchInput 的业务上限。
+     */
+    queryMaxChars: number;
+    /**
+     * 公共搜索允许的最大结果数，不超过 SearchInput 的业务上限。
+     */
+    maxResults: number;
+};
+
+/**
+ * Agent 搜索业务输入，保留 snake_case；公共搜索还须遵守 session 返回的动态限制，服务端冻结公开内容范围。
+ */
+export type SearchInput = {
+    /**
+     * 非空搜索问题。
+     */
+    query: string;
+    /**
+     * 期望结果数，省略时默认 5；公共搜索默认值也不能超过当前 session 的 maxResults。
+     */
+    max_results?: number;
+};
+
+/**
+ * Agent 生成的不透明 URL-safe ASCII Run 标识，长度 1–128，不能等于 . 或 ..。
+ */
+export type AgentRunId = string;
+
+/**
+ * Create、Get、Resume、Cancel 共用的 owner 授权 Run 快照，字段始终存在；无结果、失败或待处理交互时对应值为 null。result 与 failure 可以同时存在，Blog 不实现 Run 状态机。
+ */
+export type AgentRun = {
+    runId: AgentRunId;
+    /**
+     * Run 状态：`queued` 排队，`running` 执行中，`waitingForApproval` 等待交互，`succeeded` 成功，`failed` 失败，`cancelled` 已取消；后三者为终态。
+     */
+    status: 'queued' | 'running' | 'waitingForApproval' | 'succeeded' | 'failed' | 'cancelled';
+    /**
+     * 路由固定能力：`search` 搜索，`write` 写作，`polish` 润色，`chat` 对话。
+     */
+    capability: 'search' | 'write' | 'polish' | 'chat';
+    /**
+     * Agent 选定的 Recipe 标识，创建成功起非空，客户端只读。
+     */
+    readonly recipeId: string;
+    /**
+     * Agent 选定的 Recipe 版本，创建成功起非空，客户端只读。
+     */
+    readonly recipeVersion: string;
+    /**
+     * Run 创建时间，RFC 3339 UTC 字符串。
+     */
+    createdAt: string;
+    /**
+     * Run 最近更新时间，RFC 3339 UTC 字符串。
+     */
+    updatedAt: string;
+    /**
+     * Blog 根据 runId 生成的相对 SSE 订阅路径，例如 /api/v1/runs/run-safe-id/events。
+     */
+    streamUrl: string;
+    /**
+     * Agent 提供的任意 JSON 结果；无结果时为 null，可以与 failure 同时存在。
+     */
+    result: unknown;
+    /**
+     * Agent 提供的公开失败对象，无失败时为 null；Blog 不翻译或解释 code 和 message。
+     */
+    failure: {
+        /**
+         * Agent 提供的失败代码。
+         */
+        code: string;
+        /**
+         * Agent 提供的已脱敏失败说明。
+         */
+        message: string;
+    } | null;
+    /**
+     * 当前待处理交互，无待处理交互时为 null。
+     */
+    pendingInteraction: {
+        /**
+         * Agent 提供的不透明交互标识，Resume 时原样提交。
+         */
+        interactionId: string;
+        /**
+         * 交互类型：`confirmation` 确认，`selection` 选择，`textInput` 文本输入。
+         */
+        type: 'confirmation' | 'selection' | 'textInput';
+        /**
+         * Agent 定义的任意 JSON 交互内容，可以为 null。
+         */
+        payload: unknown;
+    } | null;
+};
+
+/**
+ * 提交交互决定的 JSON object；Blog 不解释 decision 或 payload，payload 省略与显式 null 由 Agent 区分。
+ */
+export type AgentResumeRequest = {
+    /**
+     * 非空不透明交互标识，长度 1–128 个 UTF-8 字节（不是字符数）。
+     */
+    interactionId: string;
+    /**
+     * 非空决定字符串，由 Agent 校验，Blog 不限制枚举值。
+     */
+    decision: string;
+    /**
+     * 可选的任意 JSON 决定内容；省略与显式 null 含义不同，Blog 保留该区别。
+     */
+    payload?: unknown;
+};
+
+/**
  * 用户名和密码登录凭据。
  */
 export type LoginRequest = {
@@ -135,6 +263,10 @@ export type PageInfo = {
  * 错误响应信封，描述请求失败原因。
  */
 export type Problem = {
+    /**
+     * 可选的 Agent 公开错误代码；提供时必须非空，缺失时不返回该字段。
+     */
+    code?: string;
     /**
      * 问题类型 URI。
      */
@@ -480,6 +612,82 @@ export type TagList = {
     items: Array<Tag>;
     page: PageInfo;
 };
+
+/**
+ * Create、Get、Resume、Cancel 共用的 owner 授权 Run 快照，字段始终存在；无结果、失败或待处理交互时对应值为 null。result 与 failure 可以同时存在，Blog 不实现 Run 状态机。
+ */
+export type AgentRunWritable = {
+    runId: AgentRunId;
+    /**
+     * Run 状态：`queued` 排队，`running` 执行中，`waitingForApproval` 等待交互，`succeeded` 成功，`failed` 失败，`cancelled` 已取消；后三者为终态。
+     */
+    status: 'queued' | 'running' | 'waitingForApproval' | 'succeeded' | 'failed' | 'cancelled';
+    /**
+     * 路由固定能力：`search` 搜索，`write` 写作，`polish` 润色，`chat` 对话。
+     */
+    capability: 'search' | 'write' | 'polish' | 'chat';
+    /**
+     * Run 创建时间，RFC 3339 UTC 字符串。
+     */
+    createdAt: string;
+    /**
+     * Run 最近更新时间，RFC 3339 UTC 字符串。
+     */
+    updatedAt: string;
+    /**
+     * Blog 根据 runId 生成的相对 SSE 订阅路径，例如 /api/v1/runs/run-safe-id/events。
+     */
+    streamUrl: string;
+    /**
+     * Agent 提供的任意 JSON 结果；无结果时为 null，可以与 failure 同时存在。
+     */
+    result: unknown;
+    /**
+     * Agent 提供的公开失败对象，无失败时为 null；Blog 不翻译或解释 code 和 message。
+     */
+    failure: {
+        /**
+         * Agent 提供的失败代码。
+         */
+        code: string;
+        /**
+         * Agent 提供的已脱敏失败说明。
+         */
+        message: string;
+    } | null;
+    /**
+     * 当前待处理交互，无待处理交互时为 null。
+     */
+    pendingInteraction: {
+        /**
+         * Agent 提供的不透明交互标识，Resume 时原样提交。
+         */
+        interactionId: string;
+        /**
+         * 交互类型：`confirmation` 确认，`selection` 选择，`textInput` 文本输入。
+         */
+        type: 'confirmation' | 'selection' | 'textInput';
+        /**
+         * Agent 定义的任意 JSON 交互内容，可以为 null。
+         */
+        payload: unknown;
+    } | null;
+};
+
+/**
+ * Agent 生成的不透明 URL-safe ASCII 标识，长度 1–128；只允许 A–Z、a–z、0–9、点、下划线、波浪号、连字符，不能等于 . 或 ..。
+ */
+export type AgentRunId2 = AgentRunId;
+
+/**
+ * 必填 UUID v4。每个新的逻辑操作生成新 key，仅重试同一操作沿用原 key，不得跨 capability、RPC、Run 或 interaction 复用。Create、Resume、Cancel 共用 user_id + key 作用域；仅成功操作持久化，自成功提交起保留 24 小时。有效期内重试返回绑定 Run 的当前状态，不重复执行，也不比较请求摘要或操作类型；重放仍校验 owner。到期后可能作为新请求处理，仍受交互和终态约束。
+ */
+export type AgentIdempotencyKey = string;
+
+/**
+ * 可选的不透明事件游标；提供时必须为 1–256 个 ASCII 字节。Blog 不解析、不比较、不持久化，作为 after_event_id 原样传给 Agent；省略时由 Agent 使用默认订阅位置。
+ */
+export type AgentEventCursor = string;
 
 /**
  * 32 位小写十六进制正文图片标识。
@@ -1881,3 +2089,667 @@ export type GetArticleImageMediaResponses = {
 };
 
 export type GetArticleImageMediaResponse = GetArticleImageMediaResponses[keyof GetArticleImageMediaResponses];
+
+export type AgentPublicSessionData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/public/ai/session';
+};
+
+export type AgentPublicSessionErrors = {
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    400: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    404: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    413: Problem;
+    /**
+     * HTTP 429，请求频率、匿名连接租约、每日额度或公共接纳容量受限，或 Agent RESOURCE_EXHAUSTED。返回既有 RFC 9457 Problem；有可靠等待时长时可提供 Retry-After，不保证请求随后成功，不自动重试创建操作。
+     */
+    429: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    500: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    503: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    default: Problem;
+};
+
+export type AgentPublicSessionError = AgentPublicSessionErrors[keyof AgentPublicSessionErrors];
+
+export type AgentPublicSessionResponses = {
+    /**
+     * 凭证已签发，返回有效期和公共搜索输入限制。
+     */
+    200: PublicSearchSession;
+};
+
+export type AgentPublicSessionResponse = AgentPublicSessionResponses[keyof AgentPublicSessionResponses];
+
+export type AgentPublicSearchData = {
+    /**
+     * 必须携带 application/json（允许 charset 参数）；合法 UTF-8 JSON object，最大 1 MiB；空体、非法 JSON 或业务输入不合法返回 400，超限返回 413，媒体类型缺失或不支持返回 415。业务字段沿 Agent SearchInput 的 snake_case。
+     */
+    body: SearchInput;
+    headers: {
+        /**
+         * 必填 UUID v4。每个新的逻辑操作生成新 key，仅重试同一操作沿用原 key，不得跨 capability、RPC、Run 或 interaction 复用。Create、Resume、Cancel 共用 user_id + key 作用域；仅成功操作持久化，自成功提交起保留 24 小时。有效期内重试返回绑定 Run 的当前状态，不重复执行，也不比较请求摘要或操作类型；重放仍校验 owner。到期后可能作为新请求处理，仍受交互和终态约束。
+         */
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/public/ai/search';
+};
+
+export type AgentPublicSearchErrors = {
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    400: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    401: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    404: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    409: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    413: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    415: Problem;
+    /**
+     * HTTP 429，请求频率、匿名连接租约、每日额度或公共接纳容量受限，或 Agent RESOURCE_EXHAUSTED。返回既有 RFC 9457 Problem；有可靠等待时长时可提供 Retry-After，不保证请求随后成功，不自动重试创建操作。
+     */
+    429: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    500: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    503: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    default: Problem;
+};
+
+export type AgentPublicSearchError = AgentPublicSearchErrors[keyof AgentPublicSearchErrors];
+
+export type AgentPublicSearchResponses = {
+    /**
+     * 创建请求已接受，返回统一 Run 快照。
+     */
+    202: AgentRun;
+};
+
+export type AgentPublicSearchResponse = AgentPublicSearchResponses[keyof AgentPublicSearchResponses];
+
+export type AgentSearchData = {
+    /**
+     * Agent 定义的任意 JSON 请求值，包含显式 null。
+     */
+    body: unknown;
+    headers: {
+        /**
+         * 必填 UUID v4。每个新的逻辑操作生成新 key，仅重试同一操作沿用原 key，不得跨 capability、RPC、Run 或 interaction 复用。Create、Resume、Cancel 共用 user_id + key 作用域；仅成功操作持久化，自成功提交起保留 24 小时。有效期内重试返回绑定 Run 的当前状态，不重复执行，也不比较请求摘要或操作类型；重放仍校验 owner。到期后可能作为新请求处理，仍受交互和终态约束。
+         */
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/ai/search';
+};
+
+export type AgentSearchErrors = {
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    400: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    401: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    404: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    409: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    413: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    415: Problem;
+    /**
+     * HTTP 429，请求频率、匿名连接租约、每日额度或公共接纳容量受限，或 Agent RESOURCE_EXHAUSTED。返回既有 RFC 9457 Problem；有可靠等待时长时可提供 Retry-After，不保证请求随后成功，不自动重试创建操作。
+     */
+    429: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    500: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    503: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    default: Problem;
+};
+
+export type AgentSearchError = AgentSearchErrors[keyof AgentSearchErrors];
+
+export type AgentSearchResponses = {
+    /**
+     * 创建请求已接受，返回统一 Run 快照。
+     */
+    202: AgentRun;
+};
+
+export type AgentSearchResponse = AgentSearchResponses[keyof AgentSearchResponses];
+
+export type AgentWriteData = {
+    /**
+     * Agent 定义的任意 JSON 请求值，包含显式 null。
+     */
+    body: unknown;
+    headers: {
+        /**
+         * 必填 UUID v4。每个新的逻辑操作生成新 key，仅重试同一操作沿用原 key，不得跨 capability、RPC、Run 或 interaction 复用。Create、Resume、Cancel 共用 user_id + key 作用域；仅成功操作持久化，自成功提交起保留 24 小时。有效期内重试返回绑定 Run 的当前状态，不重复执行，也不比较请求摘要或操作类型；重放仍校验 owner。到期后可能作为新请求处理，仍受交互和终态约束。
+         */
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/ai/write';
+};
+
+export type AgentWriteErrors = {
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    400: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    401: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    404: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    409: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    413: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    415: Problem;
+    /**
+     * HTTP 429，请求频率、匿名连接租约、每日额度或公共接纳容量受限，或 Agent RESOURCE_EXHAUSTED。返回既有 RFC 9457 Problem；有可靠等待时长时可提供 Retry-After，不保证请求随后成功，不自动重试创建操作。
+     */
+    429: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    500: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    503: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    default: Problem;
+};
+
+export type AgentWriteError = AgentWriteErrors[keyof AgentWriteErrors];
+
+export type AgentWriteResponses = {
+    /**
+     * 创建请求已接受，返回统一 Run 快照。
+     */
+    202: AgentRun;
+};
+
+export type AgentWriteResponse = AgentWriteResponses[keyof AgentWriteResponses];
+
+export type AgentPolishData = {
+    /**
+     * Agent 定义的任意 JSON 请求值，包含显式 null。
+     */
+    body: unknown;
+    headers: {
+        /**
+         * 必填 UUID v4。每个新的逻辑操作生成新 key，仅重试同一操作沿用原 key，不得跨 capability、RPC、Run 或 interaction 复用。Create、Resume、Cancel 共用 user_id + key 作用域；仅成功操作持久化，自成功提交起保留 24 小时。有效期内重试返回绑定 Run 的当前状态，不重复执行，也不比较请求摘要或操作类型；重放仍校验 owner。到期后可能作为新请求处理，仍受交互和终态约束。
+         */
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/ai/polish';
+};
+
+export type AgentPolishErrors = {
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    400: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    401: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    404: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    409: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    413: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    415: Problem;
+    /**
+     * HTTP 429，请求频率、匿名连接租约、每日额度或公共接纳容量受限，或 Agent RESOURCE_EXHAUSTED。返回既有 RFC 9457 Problem；有可靠等待时长时可提供 Retry-After，不保证请求随后成功，不自动重试创建操作。
+     */
+    429: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    500: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    503: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    default: Problem;
+};
+
+export type AgentPolishError = AgentPolishErrors[keyof AgentPolishErrors];
+
+export type AgentPolishResponses = {
+    /**
+     * 创建请求已接受，返回统一 Run 快照。
+     */
+    202: AgentRun;
+};
+
+export type AgentPolishResponse = AgentPolishResponses[keyof AgentPolishResponses];
+
+export type AgentChatData = {
+    /**
+     * Agent 定义的任意 JSON 请求值，包含显式 null。
+     */
+    body: unknown;
+    headers: {
+        /**
+         * 必填 UUID v4。每个新的逻辑操作生成新 key，仅重试同一操作沿用原 key，不得跨 capability、RPC、Run 或 interaction 复用。Create、Resume、Cancel 共用 user_id + key 作用域；仅成功操作持久化，自成功提交起保留 24 小时。有效期内重试返回绑定 Run 的当前状态，不重复执行，也不比较请求摘要或操作类型；重放仍校验 owner。到期后可能作为新请求处理，仍受交互和终态约束。
+         */
+        'Idempotency-Key': string;
+    };
+    path?: never;
+    query?: never;
+    url: '/api/v1/ai/chat';
+};
+
+export type AgentChatErrors = {
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    400: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    401: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    404: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    409: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    413: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    415: Problem;
+    /**
+     * HTTP 429，请求频率、匿名连接租约、每日额度或公共接纳容量受限，或 Agent RESOURCE_EXHAUSTED。返回既有 RFC 9457 Problem；有可靠等待时长时可提供 Retry-After，不保证请求随后成功，不自动重试创建操作。
+     */
+    429: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    500: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    503: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    default: Problem;
+};
+
+export type AgentChatError = AgentChatErrors[keyof AgentChatErrors];
+
+export type AgentChatResponses = {
+    /**
+     * 创建请求已接受，返回统一 Run 快照。
+     */
+    202: AgentRun;
+};
+
+export type AgentChatResponse = AgentChatResponses[keyof AgentChatResponses];
+
+export type AgentGetData = {
+    body?: never;
+    path: {
+        /**
+         * Agent 生成的不透明 URL-safe ASCII 标识，长度 1–128；只允许 A–Z、a–z、0–9、点、下划线、波浪号、连字符，不能等于 . 或 ..。
+         */
+        runId: AgentRunId;
+    };
+    query?: never;
+    url: '/api/v1/runs/{runId}';
+};
+
+export type AgentGetErrors = {
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    400: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    401: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    404: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    409: Problem;
+    /**
+     * HTTP 429，请求频率、匿名连接租约、每日额度或公共接纳容量受限，或 Agent RESOURCE_EXHAUSTED。返回既有 RFC 9457 Problem；有可靠等待时长时可提供 Retry-After，不保证请求随后成功，不自动重试创建操作。
+     */
+    429: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    500: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    503: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    default: Problem;
+};
+
+export type AgentGetError = AgentGetErrors[keyof AgentGetErrors];
+
+export type AgentGetResponses = {
+    /**
+     * 查询成功，返回统一 Run 快照和已有结果。
+     */
+    200: AgentRun;
+};
+
+export type AgentGetResponse = AgentGetResponses[keyof AgentGetResponses];
+
+export type AgentEventsData = {
+    body?: never;
+    headers?: {
+        /**
+         * 可选的不透明事件游标；提供时必须为 1–256 个 ASCII 字节。Blog 不解析、不比较、不持久化，作为 after_event_id 原样传给 Agent；省略时由 Agent 使用默认订阅位置。
+         */
+        'Last-Event-ID'?: string;
+    };
+    path: {
+        /**
+         * Agent 生成的不透明 URL-safe ASCII 标识，长度 1–128；只允许 A–Z、a–z、0–9、点、下划线、波浪号、连字符，不能等于 . 或 ..。
+         */
+        runId: AgentRunId;
+    };
+    query?: never;
+    url: '/api/v1/runs/{runId}/events';
+};
+
+export type AgentEventsErrors = {
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    400: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    401: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    404: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    409: Problem;
+    /**
+     * HTTP 429，请求频率、匿名连接租约、每日额度或公共接纳容量受限，或 Agent RESOURCE_EXHAUSTED。返回既有 RFC 9457 Problem；有可靠等待时长时可提供 Retry-After，不保证请求随后成功，不自动重试创建操作。
+     */
+    429: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    500: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    503: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    default: Problem;
+};
+
+export type AgentEventsError = AgentEventsErrors[keyof AgentEventsErrors];
+
+export type AgentEventsResponses = {
+    /**
+     * Agent 编码的完整 SSE frame 字节流。
+     */
+    200: string;
+};
+
+export type AgentEventsResponse = AgentEventsResponses[keyof AgentEventsResponses];
+
+export type AgentResumeData = {
+    /**
+     * 必须携带 application/json（允许 charset 参数）；请求体须为合法 UTF-8 JSON，最大 1 MiB，空请求体或非法 JSON 返回 400，超限返回 413，媒体类型缺失或不支持返回 415。顶层必须为 object，含非空 interactionId 和 decision。
+     */
+    body: AgentResumeRequest;
+    headers: {
+        /**
+         * 必填 UUID v4。每个新的逻辑操作生成新 key，仅重试同一操作沿用原 key，不得跨 capability、RPC、Run 或 interaction 复用。Create、Resume、Cancel 共用 user_id + key 作用域；仅成功操作持久化，自成功提交起保留 24 小时。有效期内重试返回绑定 Run 的当前状态，不重复执行，也不比较请求摘要或操作类型；重放仍校验 owner。到期后可能作为新请求处理，仍受交互和终态约束。
+         */
+        'Idempotency-Key': string;
+    };
+    path: {
+        /**
+         * Agent 生成的不透明 URL-safe ASCII 标识，长度 1–128；只允许 A–Z、a–z、0–9、点、下划线、波浪号、连字符，不能等于 . 或 ..。
+         */
+        runId: AgentRunId;
+    };
+    query?: never;
+    url: '/api/v1/runs/{runId}/resume';
+};
+
+export type AgentResumeErrors = {
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    400: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    401: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    404: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    409: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    413: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    415: Problem;
+    /**
+     * HTTP 429，请求频率、匿名连接租约、每日额度或公共接纳容量受限，或 Agent RESOURCE_EXHAUSTED。返回既有 RFC 9457 Problem；有可靠等待时长时可提供 Retry-After，不保证请求随后成功，不自动重试创建操作。
+     */
+    429: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    500: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    503: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    default: Problem;
+};
+
+export type AgentResumeError = AgentResumeErrors[keyof AgentResumeErrors];
+
+export type AgentResumeResponses = {
+    /**
+     * 恢复操作成功，返回最新统一 Run 快照。
+     */
+    200: AgentRun;
+};
+
+export type AgentResumeResponse = AgentResumeResponses[keyof AgentResumeResponses];
+
+export type AgentCancelData = {
+    body?: never;
+    headers: {
+        /**
+         * 必填 UUID v4。每个新的逻辑操作生成新 key，仅重试同一操作沿用原 key，不得跨 capability、RPC、Run 或 interaction 复用。Create、Resume、Cancel 共用 user_id + key 作用域；仅成功操作持久化，自成功提交起保留 24 小时。有效期内重试返回绑定 Run 的当前状态，不重复执行，也不比较请求摘要或操作类型；重放仍校验 owner。到期后可能作为新请求处理，仍受交互和终态约束。
+         */
+        'Idempotency-Key': string;
+    };
+    path: {
+        /**
+         * Agent 生成的不透明 URL-safe ASCII 标识，长度 1–128；只允许 A–Z、a–z、0–9、点、下划线、波浪号、连字符，不能等于 . 或 ..。
+         */
+        runId: AgentRunId;
+    };
+    query?: never;
+    url: '/api/v1/runs/{runId}/cancel';
+};
+
+export type AgentCancelErrors = {
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    400: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    401: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    404: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    409: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    413: Problem;
+    /**
+     * HTTP 429，请求频率、匿名连接租约、每日额度或公共接纳容量受限，或 Agent RESOURCE_EXHAUSTED。返回既有 RFC 9457 Problem；有可靠等待时长时可提供 Retry-After，不保证请求随后成功，不自动重试创建操作。
+     */
+    429: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    500: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    503: Problem;
+    /**
+     * RFC 9457 错误响应。HTTP 400：非法 ID、key、JSON 或请求结构，或 Agent INVALID_ARGUMENT；401：作者 JWT 或匿名公共搜索凭证缺失、无效、过期、用途不匹配，或 UNAUTHENTICATED；404：集成关闭、NOT_FOUND 或 PERMISSION_DENIED（含非 owner 或内容范围不允许）；409：ALREADY_EXISTS、ABORTED 或 FAILED_PRECONDITION；413：body 超过 1 MiB；415：创建或 Resume 的 Content-Type 缺失或不是 application/json；429：RESOURCE_EXHAUSTED 或共享公共限制；503：共享 Redis 等依赖不可用、UNAVAILABLE 或 DEADLINE_EXCEEDED；其他 Agent 错误为 500。建立 SSE 之前同样适用，提交 200 后仅关闭流。Agent 提供的公开 code、message 已脱敏，缺失时使用本地通用消息；不透传 Provider 原始错误、数据库信息、密钥或敏感 Tool 参数。
+     */
+    default: Problem;
+};
+
+export type AgentCancelError = AgentCancelErrors[keyof AgentCancelErrors];
+
+export type AgentCancelResponses = {
+    /**
+     * 取消操作成功，返回最新统一 Run 快照。
+     */
+    200: AgentRun;
+};
+
+export type AgentCancelResponse = AgentCancelResponses[keyof AgentCancelResponses];

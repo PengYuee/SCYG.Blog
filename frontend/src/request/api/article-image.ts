@@ -21,14 +21,14 @@ export function createArticleImageApi(client: HttpTransport, serverUrl: string):
       const body: CreateManageArticleImageData["body"] = { file: image }
       const form = new FormData()
       form.append("file", body.file)
-      const response = await client.post(ARTICLE_IMAGE_UPLOAD_ROUTE, form)
+      const response = await client.post(ARTICLE_IMAGE_UPLOAD_ROUTE, form, { authPolicy: "author" })
       const value = parseBoundary(zArticleImage, response.data, "article image upload")
       return { id: value.id, url: normalizeImageUrl(value.url, serverUrl), expiresAt: value.expiresAt }
     },
     /** 严格按服务端图片标识取消待提交图片。 */
     async deleteImage(id: string): Promise<boolean> {
       const path: DeleteArticleImageData["path"] = { imageId: id }
-      await client.delete(ARTICLE_IMAGE_DELETE_ROUTE.replace("{imageId}", path.imageId))
+      await client.delete(ARTICLE_IMAGE_DELETE_ROUTE.replace("{imageId}", path.imageId), { authPolicy: "author" })
       return true
     },
   }

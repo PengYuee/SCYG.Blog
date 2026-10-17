@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from scyg_agent.adapters.database.run_repository import PostgreSQLRunRepository
 from scyg_agent.domain.runs import (
+    ContentScope,
     ExecutionOwnerId,
     OperationId,
     Run,
@@ -70,6 +71,7 @@ async def test_renew_is_monotonic_and_exact_expiry_is_lost(
         0,
         None,
         None,
+        content_scope=ContentScope.AUTHOR,
     )
     _ = await repository.create(
         CreateRunRequest(run, OperationId("t10:renew"), NOW, RunInput("测试输入", "article-1"))
@@ -82,6 +84,7 @@ async def test_renew_is_monotonic_and_exact_expiry_is_lost(
                 RuntimeKind.SIMPLE,
                 NOW,
                 timedelta(minutes=10),
+                content_scope=ContentScope.AUTHOR,
             )
         )
     )[0]

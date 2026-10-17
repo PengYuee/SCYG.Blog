@@ -1,8 +1,18 @@
+// @vitest-environment jsdom
 import { START_LOCATION } from "vue-router"
 import { describe, expect, it, vi } from "vitest"
 import { createBlogScrollBehavior } from "@/router/scroll-behavior"
 
 describe("router scroll priority", () => {
+  it("keeps the viewport stable when homepage search mode or filters change", async () => {
+    // Given: 用户已经滚动到首页结果区。
+    const restoration = { arm: vi.fn(() => false), cancel: vi.fn(), wait: vi.fn(async () => false) }
+    const behavior = createBlogScrollBehavior(restoration)
+    // When: 切换首页搜索模式，只更新查询参数。
+    const result = await behavior({ hash: "", fullPath: "/?mode=ai", name: "home" }, { fullPath: "/", name: "home" }, null)
+    // Then: 不把用户带回整屏首屏。
+    expect(result).toBe(false)
+  })
   it("prioritizes an eligible initial reload over a non-null history saved position", async () => {
     const restoration = { arm: vi.fn(() => true), cancel: vi.fn(), wait: vi.fn(async () => false) }
     const behavior = createBlogScrollBehavior(restoration)
@@ -25,6 +35,22 @@ describe("router scroll priority", () => {
     expect(await behavior({ hash: "#content", fullPath: "/next#content", name: "article-list" }, { fullPath: "/" }, null)).toEqual({ el: "#content" })
     expect(await behavior({ hash: "", fullPath: "/next", name: "article-list" }, { fullPath: "/" }, null)).toEqual({ top: 0 })
     expect(restoration.cancel).toHaveBeenCalledTimes(2)
+  })
+
+  it("uses the target's scroll margin for routed hashes without changing history priority", async () => {
+    const target = document.createElement("main")
+    target.id = "blog-content"
+    target.style.scrollMarginTop = "72px"
+    document.body.append(target)
+    try {
+      const restoration = { arm: vi.fn(() => false), cancel: vi.fn(), wait: vi.fn(async () => false) }
+      const behavior = createBlogScrollBehavior(restoration)
+      const route = { hash: "#blog-content", fullPath: "/#blog-content", name: "home" }
+      expect(await behavior(route, START_LOCATION, null)).toEqual({ el: "#blog-content", top: 72 })
+      expect(await behavior(route, { fullPath: "/articles" }, { left: 0, top: 420 })).toEqual({ left: 0, top: 420 })
+    } finally {
+      target.remove()
+    }
   })
 
   it.each([

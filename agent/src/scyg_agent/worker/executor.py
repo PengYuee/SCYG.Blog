@@ -33,6 +33,7 @@ from scyg_agent.domain.ports.terminal_commit import (
 )
 from scyg_agent.domain.runs import (
     ApprovalRequiredEvent,
+    ContentScope,
     DomainEvent,
     InteractionId,
     Run,
@@ -199,7 +200,7 @@ async def _publish_agent_outcome(
                 {
                     "interaction_id": request.interaction_id,
                     "title": request.title,
-                    "outline": request.outline,
+                    "kind": request.kind,
                 },
                 occurred_at,
             )
@@ -273,7 +274,29 @@ async def _execute_agent(  # noqa: PLR0913
     """Run the structured AgentRunner while retaining the lease fence."""
     runner = dependencies.agent_runner
     outcome: AgentRunOutcome | None = None
-    with anyio.CancelScope() as execution_scope:
+    deadline = float("inf")
+    if run.content_scope is ContentScope.PUBLIC:
+        if run.public_execution_deadline is None:
+            await _commit_failure(
+                run,
+                lease,
+                dependencies,
+                error_code=FailureKind.POLICY_LIMIT.value,
+                error_message="公共搜索执行时限无效",
+            )
+            return
+        remaining = (run.public_execution_deadline - dependencies.clock()).total_seconds()
+        if remaining <= 0:
+            await _commit_failure(
+                run,
+                lease,
+                dependencies,
+                error_code=FailureKind.POLICY_LIMIT.value,
+                error_message="公共搜索执行时间已达上限",
+            )
+            return
+        deadline = anyio.current_time() + remaining
+    with anyio.CancelScope(deadline=deadline) as execution_scope:
         async with anyio.create_task_group() as tasks:
             _ = tasks.start_soon(_renew, lease, dependencies, config, ownership, execution_scope)
             try:
@@ -284,6 +307,10 @@ async def _execute_agent(  # noqa: PLR0913
                 tasks.cancel_scope.cancel()
     if not ownership["active"]:
         return
+    if execution_scope.cancelled_caught and run.content_scope is ContentScope.PUBLIC:
+        outcome = AgentFailed(
+            AgentFailure(kind=FailureKind.POLICY_LIMIT, message="公共搜索执行时间已达上限")
+        )
     if outcome is None:
         outcome = AgentFailed(_internal_agent_failure())
     accepted = await _commit_agent(run, lease, dependencies, outcome)

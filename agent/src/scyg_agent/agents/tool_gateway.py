@@ -1,6 +1,7 @@
 """从可信运行上下文授权现有 Blog 只读 RPC, 不读取 checkpoint 权限."""
 
 import hashlib
+import json
 from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import asdict
 from typing import Annotated, ClassVar, Protocol, cast, override
@@ -17,6 +18,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from scyg_agent.adapters.blog_grpc.contracts import (
     ArticleId,
+    ArticleResult,
     ArticleSucceeded,
     BlogCommand,
     BlogFailure,
@@ -30,14 +32,16 @@ from scyg_agent.adapters.blog_grpc.contracts import (
     SearchArticles,
     SearchSucceeded,
 )
-from scyg_agent.domain.runs import RunId, ToolCallId, UserId
+from scyg_agent.domain.runs import ContentScope, RunId, ToolCallId, UserId
 from scyg_agent.domain.runs.errors import InvalidIdentifierError
 
 from .context import AgentRequestContext, Quality
+from .public_policy import READ_CHARACTER_LIMIT, PolicyLimitError
 from .recipes import AgentRecipe, RecipeRegistry
 from .tool_catalog import READ_TOOL_CATALOG, ReadToolName
 
 _MAX_RESOURCE_ID = 2**63 - 1
+_PUBLISHED_ARTICLE_STATUS = 2
 
 
 class _RuntimeView(Protocol):
@@ -118,7 +122,17 @@ class _PageArgs(BaseModel):
 
 
 class _SearchArgs(_PageArgs):
-    status: Annotated[int, Field(ge=0, le=3)] = 0
+    status: Annotated[
+        int,
+        Field(
+            ge=0,
+            le=3,
+            description=(
+                "Article status: 0=no filter, 1=draft, 2=published, 3=archived. "
+                "Public search accepts only 0 or 2."
+            ),
+        ),
+    ] = 0
     article_type_id: Annotated[int, Field(ge=0, le=_MAX_RESOURCE_ID)] = 0
     tag_id: Annotated[int, Field(ge=0, le=_MAX_RESOURCE_ID)] = 0
 
@@ -173,7 +187,20 @@ class _ReadAuthorization(AgentMiddleware[AgentState[object], AgentRequestContext
     ) -> ToolMessage | Command[object]:
         """在 SDK handler 注入工具参数之前验证原始调用."""
         self._gateway.validate_tool_call(request)
-        return await handler(request)
+        context = cast("_RuntimeView", cast("_ToolRequestView", request).runtime).context
+        result = await handler(request)
+        if (
+            isinstance(context, AgentRequestContext)
+            and context.public_budget is not None
+            and isinstance(result, ToolMessage)
+        ):
+            return Command(
+                update={
+                    "messages": [result],
+                    "authorized_article_ids": sorted(context.authorized_article_ids),
+                }
+            )
+        return result
 
 
 class BlogReadGateway:
@@ -194,27 +221,33 @@ class BlogReadGateway:
         ) -> dict[str, object]:
             context = self._authorize(ReadToolName.SEARCH_ARTICLES, runtime)
             args = _SearchArgs.model_validate(arguments)
+            page_size = args.page_size
+            if context.public_budget is not None:
+                page_size = min(page_size, context.public_budget.settings.max_results)
             command = SearchArticles(
                 self._identity(context, runtime),
                 BlogUserId(context.owner_user_id.value),
                 args.query,
                 args.page,
-                args.page_size,
+                page_size,
                 args.status,
                 args.article_type_id,
                 args.tag_id,
                 args.sort,
+                content_scope=context.content_scope,
             )
             result = await self._invoke(ReadToolName.SEARCH_ARTICLES, command, context)
             if not isinstance(result, SearchSucceeded):
                 raise BlogToolFailureError(retryable=False)
-            return {
+            payload: dict[str, object] = {
                 "articles": [asdict(article) for article in result.articles],
                 "page": result.page,
                 "page_size": result.page_size,
                 "total_items": result.total_items,
                 "total_pages": result.total_pages,
             }
+            self._authorize_result(context, payload, result.articles)
+            return payload
 
         async def get_article(
             article_id: int, runtime: ToolRuntime[AgentRequestContext, object]
@@ -224,11 +257,14 @@ class BlogReadGateway:
                 self._identity(context, runtime),
                 BlogUserId(context.owner_user_id.value),
                 ArticleId(article_id),
+                content_scope=context.content_scope,
             )
             result = await self._invoke(ReadToolName.GET_ARTICLE, command, context)
             if not isinstance(result, ArticleSucceeded) or result.article.article_id != article_id:
                 raise BlogToolFailureError(retryable=False)
-            return asdict(result.article)
+            payload = asdict(result.article)
+            self._authorize_result(context, payload, (result.article,))
+            return payload
 
         self._tools = {
             ReadToolName.SEARCH_ARTICLES: _ReadTool.from_function(
@@ -318,6 +354,127 @@ class BlogReadGateway:
             raise ToolAccessDeniedError
         return context
 
+    def _authorize_result(
+        self, context: AgentRequestContext, payload: object, articles: tuple[ArticleResult, ...]
+    ) -> None:
+        """Reject whole unauthorized/over-budget results before exposing them."""
+        if context.public_budget is not None:
+            for article in articles:
+                if article.status != _PUBLISHED_ARTICLE_STATUS:
+                    raise ToolAccessDeniedError
+            context.public_budget.authorize_result(payload)
+        context.authorized_article_ids.update(int(article.article_id) for article in articles)
+
+    def _fixed_context(self, context: AgentRequestContext, name: ReadToolName) -> None:
+        """Authorize application nodes without fabricating SDK runtime objects."""
+        recipe = self._registry.resolve(context.recipe_id, context.recipe_version)
+        if (
+            type(context) is not AgentRequestContext
+            or recipe is None
+            or recipe.capability is not context.capability
+            or name not in recipe.tool_names
+        ):
+            raise ToolAccessDeniedError
+        _ = RunId(context.run_id)
+        _ = UserId(context.owner_user_id.value)
+
+    @staticmethod
+    def _fixed_identity(context: AgentRequestContext, stage: str) -> RequestIdentity:
+        digest = hashlib.sha256(f"{context.run_id}:{stage}".encode()).hexdigest()
+        return RequestIdentity(
+            RequestId(f"req_{uuid4().hex}"),
+            CorrelationId(context.run_id),
+            RunId(context.run_id),
+            ToolCallId(f"tool_{digest}"),
+        )
+
+    async def search_references(
+        self, context: AgentRequestContext, query: str
+    ) -> list[dict[str, object]]:
+        """Read only frozen candidate metadata into the writing checkpoint."""
+        self._fixed_context(context, ReadToolName.SEARCH_ARTICLES)
+        args = _SearchArgs(query=query, page=1, page_size=5)
+        command = SearchArticles(
+            self._fixed_identity(context, "writing-candidates"),
+            BlogUserId(context.owner_user_id.value),
+            args.query,
+            1,
+            5,
+            args.status,
+            args.article_type_id,
+            args.tag_id,
+            args.sort,
+            content_scope=context.content_scope,
+        )
+        result = await self._invoke(ReadToolName.SEARCH_ARTICLES, command, context)
+        if not isinstance(result, SearchSucceeded):
+            raise BlogToolFailureError(retryable=False)
+        candidates: list[dict[str, object]] = [
+            dict[str, object](
+                article_id=int(article.article_id),
+                title=article.title,
+                digest=article.digest,
+                status={1: "draft", 2: "published", 3: "archived"}[article.status],
+            )
+            for article in result.articles
+            if int(article.article_id) <= 2**53 - 1
+        ][:5]
+        return candidates
+
+    async def read_reference(
+        self, context: AgentRequestContext, article_id: int
+    ) -> dict[str, object]:
+        """Reauthorize each selected source under the current database lease."""
+        self._fixed_context(context, ReadToolName.GET_ARTICLE)
+        _ = _ArticleArgs(article_id=article_id)
+        command = GetArticle(
+            self._fixed_identity(context, f"writing-reference:{article_id}"),
+            BlogUserId(context.owner_user_id.value),
+            ArticleId(article_id),
+            content_scope=context.content_scope,
+        )
+        result = await self._invoke(ReadToolName.GET_ARTICLE, command, context)
+        if not isinstance(result, ArticleSucceeded) or int(result.article.article_id) != article_id:
+            raise BlogToolFailureError(retryable=False)
+        payload = asdict(result.article)
+        self._authorize_result(context, payload, (result.article,))
+        return payload
+
+    async def reauthorize_sources(
+        self, context: AgentRequestContext, article_ids: set[int]
+    ) -> None:
+        """Validate checkpoint visibility, never serialize fresh bodies into model input.
+
+        One existing public GetArticle RPC per persisted identity, bounded by the
+        checkpoint identity-size limit and the original execution deadline. These
+        visibility checks do not spend the model's attempt-local tool/read budget.
+        """
+        self._fixed_context(context, ReadToolName.GET_ARTICLE)
+        budget = context.public_budget
+        if budget is None or context.content_scope is not ContentScope.PUBLIC:
+            raise ToolAccessDeniedError
+        budget.check_deadline()
+        limit = budget.settings.max_read_chars_per_attempt
+        if len(article_ids) > limit or len(json.dumps(sorted(article_ids))) > limit:
+            raise PolicyLimitError(READ_CHARACTER_LIMIT)
+        for article_id in article_ids:
+            _ = _ArticleArgs(article_id=article_id)
+            command = GetArticle(
+                self._fixed_identity(context, f"checkpoint-visibility:{article_id}"),
+                BlogUserId(context.owner_user_id.value),
+                ArticleId(article_id),
+                content_scope=context.content_scope,
+            )
+            result = await self._dispatch(ReadToolName.GET_ARTICLE, command, context)
+            if (
+                not isinstance(result, ArticleSucceeded)
+                or int(result.article.article_id) != article_id
+            ):
+                raise BlogToolFailureError(retryable=False)
+            if result.article.status != _PUBLISHED_ARTICLE_STATUS:
+                raise ToolAccessDeniedError
+        context.authorized_article_ids.update(article_ids)
+
     @staticmethod
     def _identity(
         context: AgentRequestContext, runtime: ToolRuntime[AgentRequestContext, object]
@@ -341,15 +498,29 @@ class BlogReadGateway:
     async def _invoke(
         self, name: ReadToolName, command: BlogCommand, context: AgentRequestContext
     ) -> BlogResult:
-        """Pass synchronous Call creation to the worker-owned Run-lock fence."""
+        """Charge model-visible reads before entering the common RPC fence."""
+        if context.public_budget is not None:
+            context.public_budget.reserve_tool()
+        return await self._dispatch(name, command, context)
+
+    async def _dispatch(
+        self, name: ReadToolName, command: BlogCommand, context: AgentRequestContext
+    ) -> BlogResult:
+        """Keep every read, including visibility checks, under deadline and lease."""
+        if context.public_budget is not None:
+            context.public_budget.check_deadline()
         try:
             result = await self._client.invoke(
                 name.value, "v1", command, dispatch=context.execution_guard.dispatch
             )
+        except PolicyLimitError:
+            raise
         except (TimeoutError, OSError):
             raise BlogToolFailureError(retryable=True) from None
         except Exception:  # noqa: BLE001  # noqa: BROAD_EXCEPT_OK - 第三方端口边界禁止泄露原始异常。
             raise BlogToolFailureError(retryable=False) from None
+        if context.public_budget is not None:
+            context.public_budget.check_deadline()
         if isinstance(result, BlogFailure):
             raise BlogToolFailureError(retryable=result.retryable)
         return result

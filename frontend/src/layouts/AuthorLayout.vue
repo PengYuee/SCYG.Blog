@@ -22,6 +22,7 @@ const logout = async (): Promise<void> => {
         <div class="flex items-center gap-2 text-sm">
           <RouterLink class="rounded-lg px-4 py-3 hover:bg-surface-hover" to="/author/articles/new">新文章</RouterLink>
           <RouterLink class="rounded-lg px-4 py-3 hover:bg-surface-hover" to="/author/taxonomy">分类与标签</RouterLink>
+          <RouterLink class="rounded-lg px-4 py-3 hover:bg-surface-hover" to="/author/ai">AI 工作台</RouterLink>
           <button type="button" class="rounded-lg px-4 py-3 hover:bg-surface-hover" @click="logout">退出登录</button>
         </div>
       </nav>

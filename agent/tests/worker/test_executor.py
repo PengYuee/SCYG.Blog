@@ -35,6 +35,7 @@ from scyg_agent.domain.ports.terminal_commit import (
     TerminalStateConflict,
 )
 from scyg_agent.domain.runs import (
+    ContentScope,
     ExecutionOwnerId,
     Run,
     RunId,
@@ -78,6 +79,7 @@ def running_run() -> Run:
         1,
         OWNER,
         None,
+        content_scope=ContentScope.AUTHOR,
     )
 
 

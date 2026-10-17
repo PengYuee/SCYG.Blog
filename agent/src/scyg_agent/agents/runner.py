@@ -6,9 +6,9 @@ from typing import Protocol
 from scyg_agent.agents.contracts import (
     OUTPUT_SCHEMA_VERSION,
     AgentFailure,
-    ApprovalRequest,
     Capability,
     CapabilityOutput,
+    InteractionRequest,
     output_digest,
     output_payload,
     validate_capability_output,
@@ -44,7 +44,7 @@ class AgentSucceeded:
 class AgentWaitingForApproval:
     """Carry one sanitized approval request without a terminal result."""
 
-    request: ApprovalRequest
+    request: InteractionRequest
 
 
 @dataclass(frozen=True, slots=True)

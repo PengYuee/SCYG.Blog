@@ -8,6 +8,7 @@ import anyio
 
 from scyg_agent.agents.contracts import Capability
 from scyg_agent.application.control import ControlSnapshot, ResumeCommand
+from scyg_agent.domain.runs import ContentScope
 
 
 class OpenedStream:
@@ -49,6 +50,7 @@ class ScenarioFacade:
             result_present=False,
             result=None,
             interaction=None,
+            content_scope=ContentScope.AUTHOR,
         )
     )
 
@@ -64,10 +66,16 @@ class ScenarioFacade:
         key: str,
         capability: Capability,
         raw_json: bytes,
+        *,
+        content_scope: ContentScope,
     ) -> ControlSnapshot:
+        _ = content_scope
         return self._record("create", user_id, key, capability, raw_json)
 
-    async def get(self, user_id: str, run_id: str) -> ControlSnapshot:
+    async def get(
+        self, user_id: str, run_id: str, *, content_scope: ContentScope
+    ) -> ControlSnapshot:
+        _ = content_scope
         return self._record("get", user_id, run_id)
 
     async def resume(
@@ -75,12 +83,21 @@ class ScenarioFacade:
         user_id: str,
         key: str,
         command: ResumeCommand,
+        *,
+        content_scope: ContentScope,
     ) -> ControlSnapshot:
+        _ = content_scope
         return self._record("resume", user_id, key, command)
 
-    async def cancel(self, user_id: str, key: str, run_id: str) -> ControlSnapshot:
+    async def cancel(
+        self, user_id: str, key: str, run_id: str, *, content_scope: ContentScope
+    ) -> ControlSnapshot:
+        _ = content_scope
         return self._record("cancel", user_id, key, run_id)
 
-    async def open_events(self, user_id: str, run_id: str, cursor: str | None) -> OpenedStream:
+    async def open_events(
+        self, user_id: str, run_id: str, cursor: str | None, *, content_scope: ContentScope
+    ) -> OpenedStream:
+        _ = content_scope
         _ = self._record("open_events", user_id, run_id, cursor)
         return self.opened

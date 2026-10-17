@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { ref } from "vue"
 import ArticleSection from "@/components/article/ArticleSection.vue"
 import HeroSearch from "@/components/public/HeroSearch.vue"
 import ProfileCard from "@/components/public/ProfileCard.vue"
@@ -36,18 +37,23 @@ const transparentHeroObserver: ObserverFactory = (callback) => {
   callback([{ boundingClientRect: { bottom: window.innerHeight + 1 } } as IntersectionObserverEntry], {} as IntersectionObserver)
   return { observe() {}, disconnect() {} }
 }
+const keyword = ref("")
+const submittedKeyword = ref("")
 </script>
 
 <template>
   <BlogLayout :hero-controlled="false" :observer-factory="transparentHeroObserver">
+    <template #hero-search>
+      <HeroSearch v-model:keyword="keyword" @submit="submittedKeyword = keyword" />
+    </template>
     <div class="blog-content-grid" data-testid="showcase-content-grid">
       <div class="space-y-12">
+        <output data-testid="submitted-keyword">{{ submittedKeyword }}</output>
         <ArticleSection title="公共文章原语" :articles="articles" :categories="categories" more-to="/articles" />
         <ArticleSection title="空状态" :articles="[]" :categories="categories" />
       </div>
       <div class="blog-sidebar space-y-6">
         <ProfileCard />
-        <HeroSearch tone="surface" input-id="showcase-article-search-input" />
         <RecommendedArticles :articles="articles" />
         <TagCloud :tags="tags" />
       </div>

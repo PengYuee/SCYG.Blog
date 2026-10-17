@@ -15,11 +15,11 @@ type Props = {
 defineProps<Props>()
 
 /** 弹窗关闭事件。 */
-defineEmits<{ close: [] }>()
+defineEmits<{ close: []; closed: [] }>()
 </script>
 
 <template>
-  <TransitionRoot appear :show="open">
+  <TransitionRoot appear :show="open" @after-leave="$emit('closed')">
     <Dialog as="div" class="relative z-50" @close="$emit('close')">
       <TransitionChild
         enter="ease-out duration-200"

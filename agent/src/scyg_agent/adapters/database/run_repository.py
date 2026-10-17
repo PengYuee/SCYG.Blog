@@ -4,11 +4,11 @@ from collections.abc import Callable
 from typing import final
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, update
+from sqlalchemy import DateTime, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from scyg_agent.domain.runs import ExecutionOwnerId, RunId, RunStatus
+from scyg_agent.domain.runs import ContentScope, ExecutionOwnerId, RunId, RunStatus
 from scyg_agent.domain.runs.cancellation import (
     CancellationQueued,
     CancellationRequested,
@@ -72,6 +72,8 @@ class PostgreSQLRunRepository:
         statement = insert(RunRecord).values(
             run_id=str(run.id),
             owner_user_id=str(run.owner_user_id),
+            content_scope=run.content_scope.value,
+            public_execution_deadline=run.public_execution_deadline,
             operation_id=str(request.operation_id),
             initial_message=request.input.initial_message,
             article_id=request.input.article_id,
@@ -144,6 +146,7 @@ class PostgreSQLRunRepository:
             if (
                 record.run_id != str(run.id)
                 or record.owner_user_id != str(run.owner_user_id)
+                or record.content_scope != run.content_scope.value
                 or record.operation_id != str(request.operation_id)
                 or record.task_type != run.task_type.value
                 or record.runtime_kind != run.runtime.kind.value
@@ -171,6 +174,8 @@ class PostgreSQLRunRepository:
             RunRecord(
                 run_id=str(run.id),
                 owner_user_id=str(run.owner_user_id),
+                content_scope=run.content_scope.value,
+                public_execution_deadline=run.public_execution_deadline,
                 operation_id=str(request.operation_id),
                 initial_message=value.initial_message,
                 article_id=value.article_id,
@@ -222,15 +227,29 @@ class PostgreSQLRunRepository:
         """Claim a bounded disjoint queue slice using SKIP LOCKED."""
         async with self._sessions.begin() as session:
             records = (
-                await session.execute(
-                    claim_candidates_statement(),
-                    {
-                        "now": request.now,
-                        "limit": request.limit,
-                        "runtime_kind": request.runtime_kind.value,
-                    },
+                (
+                    await session.execute(
+                        claim_candidates_statement(),
+                        {
+                            "now": request.now,
+                            "limit": request.limit,
+                            "runtime_kind": request.runtime_kind.value,
+                            "content_scope": request.content_scope.value,
+                        },
+                    )
                 )
-            ).scalars()
+                .scalars()
+                .all()
+            )
+            if request.content_scope is ContentScope.PUBLIC:
+                database_now = (
+                    await session.execute(
+                        select(func.clock_timestamp(type_=DateTime(timezone=True)))
+                    )
+                ).scalar_one()
+                for record in records:
+                    if record.public_execution_deadline is None:
+                        record.public_execution_deadline = database_now + request.public_timeout
             leases = claim_results(records, request, self._token_factory)
             await session.flush()
         return leases

@@ -7,7 +7,7 @@ import json
 from enum import StrEnum
 from typing import Annotated, ClassVar, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
 
 MAX_REFERENCE_ARTICLES = 20
 ResourceId = Annotated[int, Field(strict=True, ge=1, le=2**63 - 1)]
@@ -50,6 +50,19 @@ class WritingInput(ContractModel):
     topic: Annotated[str, Field(min_length=1, max_length=2_000)]
     requirements: Annotated[str, Field(max_length=16_000)] = ""
     reference_article_ids: tuple[ResourceId, ...] = ()
+    request_requirements: Annotated[bool, Field(strict=True)] = False
+    reference_query: Annotated[str, Field(max_length=500)] = ""
+
+    @model_validator(mode="after")
+    def exclusive_preparation(self) -> WritingInput:
+        """Keep deferred requirements and automatic references unambiguous."""
+        if self.request_requirements and self.requirements.strip():
+            reason = "deferred requirements cannot accompany requirements"
+            raise ValueError(reason)
+        if self.reference_query.strip() and self.reference_article_ids:
+            reason = "reference query cannot accompany manual references"
+            raise ValueError(reason)
+        return self
 
     @field_validator("reference_article_ids")
     @classmethod
@@ -92,7 +105,13 @@ def recipe_for_capability(capability: Capability) -> RecipeId:
 
 def input_payload(value: CapabilityInput) -> dict[str, object]:
     """Return the canonical JSON-compatible input snapshot."""
-    return value.model_dump(mode="json")
+    payload = value.model_dump(mode="json")
+    if isinstance(value, WritingInput):
+        if not value.request_requirements:
+            payload.pop("request_requirements")
+        if not value.reference_query:
+            payload.pop("reference_query")
+    return payload
 
 
 def input_digest(value: CapabilityInput) -> str:
@@ -207,6 +226,7 @@ class FailureKind(StrEnum):
     REDIS_FAILURE = "redis_failure"
     TOOL_FAILURE = "tool_failure"
     APPROVAL_REJECTED = "approval_rejected"
+    POLICY_LIMIT = "policy_limit"
     CANCELLED = "cancelled"
     INTERNAL = "internal_failure"
 
@@ -238,9 +258,97 @@ class ApprovalRequest(ContractModel):
     """Approval payload emitted before writing continues."""
 
     interaction_id: Annotated[str, Field(min_length=1, max_length=128)]
-    kind: Literal["confirmation", "selection", "text_input"] = "confirmation"
+    kind: Literal["confirmation"] = "confirmation"
     title: Annotated[str, Field(min_length=1, max_length=1_000)]
     outline: Annotated[str, Field(min_length=1, max_length=16_000)]
+
+
+SelectionResourceId = Annotated[int, Field(strict=True, ge=1, le=2**53 - 1)]
+
+
+class TextInputRequest(ContractModel):
+    """Deferred writing requirements consumed before generation."""
+
+    interaction_id: Annotated[str, Field(min_length=1, max_length=128)]
+    kind: Literal["text_input"] = "text_input"
+    title: Annotated[str, Field(min_length=1, max_length=1_000)]
+    prompt: Annotated[str, Field(min_length=1, max_length=16_000)]
+    min_length: Literal[1] = 1
+    max_length: Literal[16000] = 16000
+
+
+class SelectionOption(ContractModel):
+    """Frozen reference metadata; never include article bodies."""
+
+    article_id: SelectionResourceId
+    title: Annotated[str, Field(min_length=1, max_length=1_000)]
+    digest: Annotated[str, Field(max_length=16_000)]
+    status: Literal["published", "draft", "archived"]
+
+
+class SelectionRequest(ContractModel):
+    """Select only references from the checkpointed candidate set."""
+
+    interaction_id: Annotated[str, Field(min_length=1, max_length=128)]
+    kind: Literal["selection"] = "selection"
+    title: Annotated[str, Field(min_length=1, max_length=1_000)]
+    prompt: Annotated[str, Field(min_length=1, max_length=16_000)]
+    options: Annotated[tuple[SelectionOption, ...], Field(min_length=2, max_length=5)]
+    min_selections: Literal[0] = 0
+    max_selections: Annotated[int, Field(strict=True, ge=2, le=5)]
+
+    @model_validator(mode="after")
+    def matching_bounds(self) -> SelectionRequest:
+        """Require unique candidates and an exact selection upper bound."""
+        ids = {option.article_id for option in self.options}
+        if len(ids) != len(self.options) or self.max_selections != len(self.options):
+            reason = "selection bounds must match unique options"
+            raise ValueError(reason)
+        return self
+
+
+InteractionRequest = Annotated[
+    ApprovalRequest | TextInputRequest | SelectionRequest, Field(discriminator="kind")
+]
+INTERACTION_REQUEST_ADAPTER: TypeAdapter[InteractionRequest] = TypeAdapter(InteractionRequest)
+
+
+class SelectionReplyPayload(ContractModel):
+    """The sole selection response shape, including explicit empty selection."""
+
+    article_ids: Annotated[tuple[SelectionResourceId, ...], Field(max_length=5)]
+
+
+def validate_interaction_response(
+    request: InteractionRequest, decision: str, *, payload_present: bool, payload: object
+) -> str | tuple[int, ...] | None:
+    """Validate persisted responses before resolving or consuming an interaction."""
+    if isinstance(request, ApprovalRequest):
+        if decision not in {"approve", "reject"}:
+            reason = "invalid confirmation decision"
+            raise ValueError(reason)
+        return None
+    if not payload_present:
+        reason = "interaction response payload is required"
+        raise ValueError(reason)
+    if isinstance(request, TextInputRequest):
+        if decision != "submit" or not isinstance(payload, str):
+            reason = "text input requires a string"
+            raise ValueError(reason)
+        text = payload.strip()
+        if not request.min_length <= len(text) <= request.max_length:
+            reason = "text input length is invalid"
+            raise ValueError(reason)
+        return text
+    if decision != "select":
+        reason = "invalid selection decision"
+        raise ValueError(reason)
+    selected = SelectionReplyPayload.model_validate(payload).article_ids
+    allowed = {option.article_id for option in request.options}
+    if len(set(selected)) != len(selected) or not set(selected) <= allowed:
+        reason = "selected references must be unique candidate IDs"
+        raise ValueError(reason)
+    return selected
 
 
 class ApprovalReply(ContractModel):

@@ -24,3 +24,6 @@ def test_initial_revision_uses_the_single_application_role() -> None:
     assert 'GRANT USAGE, CREATE ON SCHEMA langgraph TO "scyg_agent"' in result.stdout
     assert "scyg_checkpoint" not in result.stdout
     assert "CREATE TABLE agent_runs" in result.stdout
+    assert "UPDATE agent_runs SET content_scope = 'author'" in result.stdout
+    assert "ALTER COLUMN content_scope SET NOT NULL" in result.stdout
+    assert "public_execution_deadline" in result.stdout

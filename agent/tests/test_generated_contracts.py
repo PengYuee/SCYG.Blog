@@ -1,6 +1,7 @@
 """Generated protobuf wire and presence behavior."""
 
 from scyg_agent.generated.proto.scyg.agent.v1 import agent_control_service_pb2 as agent_pb
+from scyg_agent.generated.proto.scyg.agent.v1 import common_pb2 as agent_common
 from scyg_agent.generated.proto.scyg.blog.v1 import blog_content_service_pb2 as blog_pb
 
 
@@ -11,6 +12,7 @@ def test_agent_resume_preserves_absent_and_explicit_null_payload() -> None:
         idempotency_key="46aaeb1e-b23a-439e-a5b1-f9346e2f4629",
         interaction_id="interaction-1",
         decision="approve",
+        content_scope=agent_common.CONTENT_SCOPE_AUTHOR,
     )
     absent = agent_pb.ResumeRunRequest.FromString(request.SerializeToString())
     assert not absent.HasField("payload_json")

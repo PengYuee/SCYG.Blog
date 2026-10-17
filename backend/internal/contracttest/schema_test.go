@@ -93,10 +93,10 @@ func Test_OpenAPI_success_shapes_and_headers(t *testing.T) {
 	// When / Then
 	for label, operation := range all {
 		switch operation.OperationID {
-		case "agentSearch", "agentWrite", "agentPolish", "agentChat":
+		case "agentSearch", "agentWrite", "agentPolish", "agentChat", "agentPublicSearch":
 			assertJSONSuccess(t, operation, "202")
 			continue
-		case "agentGet", "agentResume", "agentCancel":
+		case "agentGet", "agentResume", "agentCancel", "agentPublicSession":
 			assertJSONSuccess(t, operation, "200")
 			continue
 		case "agentEvents":

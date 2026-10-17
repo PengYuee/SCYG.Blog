@@ -1,12 +1,13 @@
 """Application-owned request context for Agent execution."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 
-from scyg_agent.domain.runs import UserId
+from scyg_agent.domain.runs import ContentScope, UserId
 
 from .contracts import Capability, RecipeId
 from .execution import ExecutionDispatch
+from .public_policy import PublicAttemptBudget
 
 MAX_LOCALE_LENGTH = 32
 
@@ -35,10 +36,19 @@ class AgentRequestContext:
     locale: str
     quality: Quality
     execution_guard: ExecutionDispatch
+    content_scope: ContentScope = field(kw_only=True)
+    public_budget: PublicAttemptBudget | None = None
+    authorized_article_ids: set[int] = field(default_factory=set)
     scopes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
         """Reject a context whose recipe identity disagrees with capability."""
+        if type(self.content_scope) is not ContentScope:
+            raise InvalidAgentContextError
+        if self.content_scope is ContentScope.PUBLIC and (
+            self.capability is not Capability.SEARCH or self.public_budget is None
+        ):
+            raise InvalidAgentContextError
         expected = {
             Capability.SEARCH: RecipeId.SEARCH_V1,
             Capability.WRITE: RecipeId.WRITING_V1,

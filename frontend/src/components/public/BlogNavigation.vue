@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ArrowRightEndOnRectangleIcon, HomeIcon, NewspaperIcon, PencilSquareIcon } from "@heroicons/vue/24/outline"
+import { ArrowRightEndOnRectangleIcon, HomeIcon, PencilSquareIcon } from "@heroicons/vue/24/outline"
 import { computed, inject, type Component } from "vue"
 import { RouterLink, useRoute } from "vue-router"
 import { authSessionKey } from "@/services/auth-session"
@@ -8,24 +8,22 @@ import { authSessionKey } from "@/services/auth-session"
 type NavigationTone = "hero" | "overlay" | "surface"
 /** 公共导航目标定义。 */
 type NavigationTarget = {
-  /** 稳定目标标识。 */ readonly id: "home" | "articles" | "author-write" | "login"
-  /** 规范完整路径。 */ readonly to: "/" | "/articles" | "/author/articles/new" | "/login"
+  /** 稳定目标标识。 */ readonly id: "home" | "articles" | "author-write" | "login" | "ai-search"
+  /** 规范完整路径。 */ readonly to: "/" | "/articles" | "/author/articles/new" | "/login" | "/ai/search"
   /** 中文可见标签。 */ readonly label: string
   /** 对应的 Heroicons 图标。 */ readonly icon: Component
   /** 根据当前路径判断活动态。 */ readonly isActive: (path: string) => boolean
 }
 
 /** 公共导航输入属性。 */
-withDefaults(defineProps<{ readonly tone?: NavigationTone }>(), { tone: "surface" })
+withDefaults(defineProps<{ readonly tone?: NavigationTone; readonly homeAction?: (() => void) | undefined; readonly homeCurrent?: boolean }>(), { tone: "surface" })
 
-const AUTHOR_TARGET = { id: "author-write", to: "/author/articles/new", label: "写作台", icon: PencilSquareIcon, isActive: (path: string) => path.startsWith("/author") } as const satisfies NavigationTarget
+const AUTHOR_TARGET = { id: "author-write", to: "/author/articles/new", label: "进入管理", icon: PencilSquareIcon, isActive: (path: string) => path.startsWith("/author") } as const satisfies NavigationTarget
 const LOGIN_TARGET = { id: "login", to: "/login", label: "登录", icon: ArrowRightEndOnRectangleIcon, isActive: (path: string) => path === "/login" } as const satisfies NavigationTarget
 
 const authSession = inject(authSessionKey, null)
 /** Hero 与固定头部共享导航，并随真实认证状态切换登录或写作入口。 */
 const navTargets = computed<readonly NavigationTarget[]>(() => [
-  { id: "home", to: "/", label: "首页", icon: HomeIcon, isActive: (path: string) => path === "/" },
-  { id: "articles", to: "/articles", label: "文章", icon: NewspaperIcon, isActive: (path: string) => path.startsWith("/articles") },
   authSession?.currentState().kind === "authenticated" ? AUTHOR_TARGET : LOGIN_TARGET,
 ])
 /** 当前路由用于导航活动态和同路由交互。 */
@@ -51,12 +49,14 @@ const handleNavigationClick = (event: MouseEvent, target: NavigationTarget): voi
 
 <template>
   <nav class="public-navigation flex items-center gap-2" :class="`public-navigation--${tone}`" aria-label="主要导航">
+    <button v-if="homeAction" type="button" class="navigation-link relative inline-flex min-h-11 items-center gap-2 rounded-[var(--radius-control)] px-4 text-sm font-semibold" :aria-current="homeCurrent ? 'page' : undefined" @click="homeAction"><HomeIcon class="size-5" aria-hidden="true" />主页</button>
+    <RouterLink v-else to="/" class="navigation-link relative inline-flex min-h-11 items-center gap-2 rounded-[var(--radius-control)] px-4 text-sm font-semibold"><HomeIcon class="size-5" aria-hidden="true" />主页</RouterLink>
     <RouterLink
       v-for="target in navTargets"
       :key="target.id"
       :to="target.to"
       class="navigation-link relative inline-flex min-h-11 items-center gap-2 rounded-[var(--radius-control)] px-4 text-sm font-semibold"
-      :class="isTargetActive(target) ? 'after:absolute after:inset-x-4 after:bottom-2 after:h-0.5 after:bg-accent' : ''"
+      :class="isTargetActive(target) ? 'bg-accent-soft text-accent' : ''"
       :aria-current="ariaCurrent(target)"
       @click="handleNavigationClick($event, target)"
     >

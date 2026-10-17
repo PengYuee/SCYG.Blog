@@ -8,6 +8,8 @@ from uuid import UUID
 from google.protobuf.message import Message
 from grpc import aio
 
+from scyg_agent.domain.runs import ContentScope
+from scyg_agent.generated.proto.scyg.agent.v1 import common_pb2 as agent_common_pb2
 from scyg_agent.generated.proto.scyg.blog.v1 import blog_content_service_pb2 as service_pb2
 from scyg_agent.generated.proto.scyg.blog.v1 import blog_content_service_pb2_grpc as service_grpc
 
@@ -155,6 +157,11 @@ class BlogGrpcClient:
             kind = FailureKind.INVALID_TOOL
         elif _COMMANDS.get(tool_name) is not type(command):
             kind = FailureKind.WRONG_COMMAND
+        elif (
+            isinstance(command, (SearchArticles, GetArticle))
+            and type(command.content_scope) is not ContentScope
+        ):
+            kind = FailureKind.INVALID_ARGUMENT
         elif isinstance(command, (CreateArticle, UpdateArticle, PublishArticle, ArchiveArticle)):
             try:
                 operation = UUID(command.operation_id.value)
@@ -173,7 +180,15 @@ class BlogGrpcClient:
         match command:
             case GetArticle():
                 prepared = _bind(
-                    service_pb2.GetArticleRequest(user_id=user, article_id=command.article_id),
+                    service_pb2.GetArticleRequest(
+                        user_id=user,
+                        article_id=command.article_id,
+                        content_scope=(
+                            agent_common_pb2.CONTENT_SCOPE_PUBLIC
+                            if command.content_scope is ContentScope.PUBLIC
+                            else agent_common_pb2.CONTENT_SCOPE_AUTHOR
+                        ),
+                    ),
                     self._stub.GetArticle,
                     article_response,
                     deadline,
@@ -182,6 +197,11 @@ class BlogGrpcClient:
                 prepared = _bind(
                     service_pb2.SearchArticlesRequest(
                         user_id=user,
+                        content_scope=(
+                            agent_common_pb2.CONTENT_SCOPE_PUBLIC
+                            if command.content_scope is ContentScope.PUBLIC
+                            else agent_common_pb2.CONTENT_SCOPE_AUTHOR
+                        ),
                         query=command.query,
                         page=command.page,
                         page_size=command.page_size,

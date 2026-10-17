@@ -45,7 +45,11 @@ func New(options Options) (func(*gin.Engine) error, error) {
 	}
 	return func(engine *gin.Engine) error {
 		if options.TokenVerifier != nil {
-			engine.Use(OptionalBearerAuthentication(options.TokenVerifier))
+			var public AnonymousVerifier
+			if options.Agent != nil && options.Agent.Public != nil {
+				public = options.Agent.Public.Tokens
+			}
+			engine.Use(OptionalBearerAuthentication(options.TokenVerifier, public))
 		}
 		engine.Use(RequireAuthenticatedRoute())
 		// 契约校验仅作用于生成路由，避免文档和健康端点被 OpenAPI 内容契约拦截。
@@ -56,6 +60,9 @@ func New(options Options) (func(*gin.Engine) error, error) {
 		if options.Agent != nil {
 			if options.Agent.Client == nil || options.Agent.ReadyTimeout <= 0 || options.Agent.IdleTimeout <= 0 {
 				return errors.New("agent 配置无效")
+			}
+			if options.Agent.Public != nil && (options.Agent.Public.Tokens == nil || options.Agent.Public.Control == nil) {
+				return errors.New("public search 配置无效")
 			}
 			agentHandler{*options.Agent}.register(engine)
 		}

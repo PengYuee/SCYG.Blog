@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 from typing import TYPE_CHECKING, cast
 
 from scyg_agent.agents.contracts import Capability
+from scyg_agent.domain.runs import ContentScope
 from scyg_agent.generated.proto.scyg.agent.v1 import common_pb2
 
 if TYPE_CHECKING:
@@ -53,6 +54,15 @@ _KEY = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}",
     flags=re.IGNORECASE | re.ASCII,
 )
+
+
+def parse_content_scope(value: int) -> ContentScope:
+    """Reject missing and unknown authorization scopes."""
+    if value == common_pb2.CONTENT_SCOPE_AUTHOR:
+        return ContentScope.AUTHOR
+    if value == common_pb2.CONTENT_SCOPE_PUBLIC:
+        return ContentScope.PUBLIC
+    raise InvalidGrpcRequestError
 
 
 def parse_capability(value: int) -> Capability:
@@ -133,6 +143,11 @@ def run_to_proto(snapshot: "ControlSnapshot") -> common_pb2.Run:
         recipe_version=snapshot.recipe_version,
         created_at=_timestamp(snapshot.created_at),
         updated_at=_timestamp(snapshot.updated_at),
+        content_scope=(
+            common_pb2.CONTENT_SCOPE_PUBLIC
+            if snapshot.content_scope is ContentScope.PUBLIC
+            else common_pb2.CONTENT_SCOPE_AUTHOR
+        ),
     )
     if snapshot.failure_code is not None:
         run.failure.CopyFrom(

@@ -17,6 +17,7 @@ def claim_candidates_statement() -> Select[tuple[RunRecord]]:
         select(RunRecord)
         .where(
             RunRecord.runtime_kind == runtime_kind,
+            RunRecord.content_scope == bindparam("content_scope", type_=String()),
             or_(
                 and_(
                     RunRecord.status.in_(("pending", "pending_resume")),

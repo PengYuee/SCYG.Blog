@@ -17,8 +17,29 @@ test("verifies desktop public primitives through Microsoft Edge", async ({ page 
   const content = page.locator("#blog-content")
   const header = page.locator("header[data-state]")
   await expect(header).toHaveAttribute("data-state", "transparent")
+  await expect(hero).toBeVisible()
+  await expect(content).toBeHidden()
+  const heroHeight = await hero.evaluate((element) => element.getBoundingClientRect().height)
+  expect(Math.abs(heroHeight - (page.viewportSize()?.height ?? 0))).toBeLessThanOrEqual(1)
 
   // Then: Hero、内容边界、300px 侧栏、三列和横向边界均符合桌面契约。
+  const quote = page.getByTestId("hero-quote")
+  const originalQuote = await quote.textContent()
+  await page.getByTestId("quote-refresh").click()
+  await expect(quote).not.toHaveText(originalQuote ?? "")
+  const externalLinks = page.locator('a[target="_blank"]')
+  expect(await externalLinks.count()).toBe(8)
+  for (const link of await externalLinks.all()) await expect(link).toHaveAttribute("rel", "noopener noreferrer")
+  await page.emulateMedia({ reducedMotion: "reduce" })
+  const motion = await page.locator(".hero-entrance").evaluate((element) => ({ animationName: getComputedStyle(element).animationName, transform: getComputedStyle(element).transform }))
+  expect(motion.animationName).toBe("none")
+  expect(motion.transform).toBe("none")
+  await page.locator("#hero-search-input").fill("  Vue 3  ")
+  await page.locator("form[role='search']").first().press("Enter")
+  await page.getByRole("button", { name: "进入内容区", exact: true }).click()
+  await expect(hero).toBeHidden()
+  await expect(content).toBeVisible()
+  await expect(page.getByTestId("submitted-keyword")).toHaveText("Vue 3")
   const geometry = await page.evaluate(() => {
     const heroElement = document.querySelector<HTMLElement>(".public-hero")
     const contentElement = document.querySelector<HTMLElement>("#blog-content")
@@ -35,41 +56,15 @@ test("verifies desktop public primitives through Microsoft Edge", async ({ page 
     }
   })
   expect(geometry).not.toBeNull()
-  expect(Math.abs((geometry?.heroHeight ?? 0) - (geometry?.viewportHeight ?? 1))).toBeLessThanOrEqual(1)
-  expect(Math.abs((geometry?.contentTop ?? 0) - (geometry?.heroHeight ?? 1))).toBeLessThanOrEqual(1)
+  expect(geometry?.heroHeight).toBe(0)
+  expect(geometry?.contentTop).toBe(0)
   expect(geometry?.sidebarWidth).toBe(300)
   expect(geometry?.cardColumns).toBe(3)
   expect(geometry?.overflow).toBe(0)
 
-  // When: 显式换一句并检查全部站外链接策略。
-  const quote = page.getByTestId("hero-quote")
-  const originalQuote = await quote.textContent()
-  await page.getByTestId("quote-refresh").click()
-  await expect(quote).not.toHaveText(originalQuote ?? "")
-  const externalLinks = page.locator('a[target="_blank"]')
-  expect(await externalLinks.count()).toBe(8)
-  for (const link of await externalLinks.all()) await expect(link).toHaveAttribute("rel", "noopener noreferrer")
-
-  // When: 用户启用减少动态效果。
-  await page.emulateMedia({ reducedMotion: "reduce" })
-  await page.evaluate(() => {
-    const nativeScrollIntoView = Element.prototype.scrollIntoView
-    Element.prototype.scrollIntoView = function scrollIntoView(options): void {
-      document.documentElement.dataset["scrollBehavior"] = typeof options === "object" ? options.behavior ?? "auto" : "auto"
-      nativeScrollIntoView.call(this, options)
-    }
-  })
-  const motion = await page.locator(".hero-entrance").evaluate((element) => ({ animationName: getComputedStyle(element).animationName, transform: getComputedStyle(element).transform }))
-  expect(motion.animationName).toBe("none")
-  expect(motion.transform).toBe("none")
-
-  // When: 首页提交搜索。
-  await page.locator("#hero-search-input").fill("  Vue 3  ")
-  await page.locator("form[role='search']").first().press("Enter")
-  await expect(page).toHaveURL(/\/t6-showcase\.html\/articles\?q=Vue\+3$/)
-  await expect.poll(async () => page.evaluate(() => window.scrollY)).toBeGreaterThan(0)
+  await expect(page).toHaveURL(/\/t6-showcase\.html\/?$/)
   await expect(header).toHaveAttribute("data-state", "scrolled")
-  await expect(page.locator("html")).toHaveAttribute("data-scroll-behavior", "auto")
+  expect(await page.evaluate(() => window.scrollY)).toBe(0)
   await page.screenshot({ path: path.join(evidenceDirectory, `${testInfo.project.name}-settled.png`), fullPage: true })
   expect(errors).toEqual([])
 })

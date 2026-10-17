@@ -139,6 +139,28 @@ def test_legacy_provider_options_are_not_configuration_aliases(
         _ = load_settings(config_file)
 
 
+@pytest.mark.parametrize("capacity", [1, 10, 100])
+def test_public_admission_capacity_is_not_a_configurable_override(
+    configured_environment: None, tmp_path: Path, capacity: int
+) -> None:
+    assert configured_environment is None
+    config_file = tmp_path / "agent.toml"
+    _ = config_file.write_text(
+        f"[public_search]\nadmission_capacity = {capacity}\n", encoding="utf-8"
+    )
+    with pytest.raises(ValidationError):
+        _ = load_settings(config_file)
+
+
+def test_environment_cannot_override_fixed_public_admission_capacity(
+    configured_environment: None, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    assert configured_environment is None
+    monkeypatch.setenv("SCYG_AGENT_PUBLIC_SEARCH__ADMISSION_CAPACITY", "100")
+    with pytest.raises(ValidationError):
+        _ = load_settings()
+
+
 @pytest.mark.anyio
 async def test_database_config_builds_bounded_secret_engine() -> None:
     config = AsyncDatabaseConfig(

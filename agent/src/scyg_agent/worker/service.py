@@ -1,12 +1,15 @@
 """公平、容量有界且可优雅停止的单进程 Worker."""
 
+from contextlib import suppress
+from datetime import timedelta
 from typing import final
 
 import anyio
 from anyio.abc import TaskGroup
 from sqlalchemy.exc import SQLAlchemyError
 
-from scyg_agent.domain.runs import ExecutionOwnerId, RuntimeKind
+from scyg_agent.adapters.redis.public_controls import PublicControlsUnavailableError
+from scyg_agent.domain.runs import ContentScope, ExecutionOwnerId, RuntimeKind
 from scyg_agent.domain.runs.repository import ClaimRequest, RunLease
 
 from .config import WorkerConfig
@@ -66,7 +69,9 @@ class Worker:
                 while not self._stop_requested.is_set():
                     kind = kinds[index]
                     index = (index + 1) % len(kinds)
-                    claimed = await self._poll(kind, tasks)
+                    public_claimed = await self._poll_public(tasks)
+                    claimed = await self._poll(kind, tasks) or public_claimed
+                    # Public gets first opportunity without monopolizing author capacity.
                     self._heartbeat.set()
                     if not claimed:
                         await anyio.sleep(self._config.poll_interval.total_seconds())
@@ -103,6 +108,7 @@ class Worker:
                         kind,
                         self._dependencies.clock(),
                         self._config.lease_duration,
+                        content_scope=ContentScope.AUTHOR,
                     )
                 )
             )
@@ -116,15 +122,112 @@ class Worker:
             _ = tasks.start_soon(self._execute, lease)
         return bool(leases)
 
+    async def _renew_public(
+        self, token: str, scope: anyio.CancelScope, alive: dict[str, bool]
+    ) -> None:
+        controls = self._dependencies.public_controls
+        if controls is None:
+            return
+        while True:
+            await anyio.sleep(controls.settings.heartbeat_seconds)
+            try:
+                valid = await controls.renew_execution(token)
+            except PublicControlsUnavailableError:
+                valid = False
+            if not valid:
+                alive["valid"] = False
+                scope.cancel()
+                return
+
+    async def _release_public(self, token: str) -> None:
+        controls = self._dependencies.public_controls
+        if controls is None:
+            return
+        with anyio.CancelScope(shield=True):
+            # Failed release expires; never release another holder's lease.
+            with suppress(PublicControlsUnavailableError):
+                await controls.release_execution(token)
+
+    async def _poll_public(self, tasks: TaskGroup) -> bool:
+        controls = self._dependencies.public_controls
+        if controls is None or self._active >= self._config.capacity - 1:
+            return False
+        try:
+            token = await controls.acquire_execution()
+        except PublicControlsUnavailableError:
+            return False
+        if token is None:
+            return False
+        transferred = False
+        alive = {"valid": True}
+        try:
+            with anyio.CancelScope() as scope:
+                async with anyio.create_task_group() as renewal:
+                    _ = renewal.start_soon(self._renew_public, token, scope, alive)
+                    try:
+                        leases = await finish_persistence(
+                            self._dependencies.repository.claim(
+                                ClaimRequest(
+                                    1,
+                                    self._owner,
+                                    RuntimeKind.DEEP,
+                                    self._dependencies.clock(),
+                                    self._config.lease_duration,
+                                    content_scope=ContentScope.PUBLIC,
+                                    public_timeout=timedelta(
+                                        seconds=controls.settings.run_timeout_seconds
+                                    ),
+                                )
+                            )
+                        )
+                        if leases and alive["valid"] and await controls.renew_execution(token):
+                            if not self._active:
+                                self._drained = anyio.Event()
+                            self._active += 1
+                            _ = tasks.start_soon(self._execute_public, leases[0], token)
+                            transferred = True
+                    except (SQLAlchemyError, PublicControlsUnavailableError):
+                        return False
+                    finally:
+                        renewal.cancel_scope.cancel()
+        finally:
+            if not transferred:
+                await self._release_public(token)
+        return transferred
+
+    async def _execute_public(self, lease: RunLease, token: str) -> None:
+        alive = {"valid": True}
+        started = False
+        try:
+            with anyio.CancelScope() as scope:
+                async with anyio.create_task_group() as renewal:
+                    _ = renewal.start_soon(self._renew_public, token, scope, alive)
+                    try:
+                        controls = self._dependencies.public_controls
+                        if controls is not None and await controls.renew_execution(token):
+                            started = True
+                            await self._execute(lease)
+                    except PublicControlsUnavailableError:
+                        pass
+                    finally:
+                        renewal.cancel_scope.cancel()
+        finally:
+            if not started:
+                self._active -= 1
+                if not self._active:
+                    self._drained.set()
+            # All runner children have exited before freeing the distributed slot.
+            await self._release_public(token)
+
     async def _execute(self, lease: RunLease) -> None:
         """占用统一信号量并在所有退出路径释放预留."""
-        async with self._limit:
-            try:
+        try:
+            async with self._limit:
                 try:
                     await execute_lease(lease, self._dependencies, self._config)
                 except SQLAlchemyError:
                     await anyio.sleep(self._config.error_backoff.total_seconds())
-            finally:
-                self._active -= 1
-                if not self._active:
-                    self._drained.set()
+        finally:
+            self._active -= 1
+            if not self._active:
+                self._drained.set()

@@ -3,6 +3,78 @@
 import * as z from 'zod';
 
 /**
+ * 匿名公共搜索短期凭证及当前服务端输入限制；不包含模型、Provider 或执行预算。
+ */
+export const zPublicSearchSession = z.strictObject({
+    accessToken: z.string().min(1),
+    expiresAt: z.iso.datetime(),
+    queryMaxChars: z.int().gte(1).lte(16000),
+    maxResults: z.int().gte(1).lte(20)
+});
+
+/**
+ * Agent 搜索业务输入，保留 snake_case；公共搜索还须遵守 session 返回的动态限制，服务端冻结公开内容范围。
+ */
+export const zSearchInput = z.strictObject({
+    query: z.string().min(1).max(16000),
+    max_results: z.int().gte(1).lte(20).optional().default(5)
+});
+
+/**
+ * Agent 生成的不透明 URL-safe ASCII Run 标识，长度 1–128，不能等于 . 或 ..。
+ */
+export const zAgentRunId = z.string().min(1).max(128).regex(/^[A-Za-z0-9._~-]+$/);
+
+/**
+ * Create、Get、Resume、Cancel 共用的 owner 授权 Run 快照，字段始终存在；无结果、失败或待处理交互时对应值为 null。result 与 failure 可以同时存在，Blog 不实现 Run 状态机。
+ */
+export const zAgentRun = z.strictObject({
+    runId: zAgentRunId,
+    status: z.enum([
+        'queued',
+        'running',
+        'waitingForApproval',
+        'succeeded',
+        'failed',
+        'cancelled'
+    ]),
+    capability: z.enum([
+        'search',
+        'write',
+        'polish',
+        'chat'
+    ]),
+    recipeId: z.string().min(1).readonly(),
+    recipeVersion: z.string().min(1).readonly(),
+    createdAt: z.iso.datetime().regex(/Z$/),
+    updatedAt: z.iso.datetime().regex(/Z$/),
+    streamUrl: z.string().regex(/^\/api\/v1\/runs\/[A-Za-z0-9._~-]{1,128}\/events$/),
+    result: z.unknown(),
+    failure: z.strictObject({
+        code: z.string(),
+        message: z.string()
+    }).nullable(),
+    pendingInteraction: z.strictObject({
+        interactionId: z.string(),
+        type: z.enum([
+            'confirmation',
+            'selection',
+            'textInput'
+        ]),
+        payload: z.unknown()
+    }).nullable()
+});
+
+/**
+ * 提交交互决定的 JSON object；Blog 不解释 decision 或 payload，payload 省略与显式 null 由 Agent 区分。
+ */
+export const zAgentResumeRequest = z.strictObject({
+    interactionId: z.string().min(1),
+    decision: z.string().min(1),
+    payload: z.unknown().optional()
+});
+
+/**
  * 用户名和密码登录凭据。
  */
 export const zLoginRequest = z.strictObject({
@@ -92,6 +164,7 @@ export const zPageInfo = z.strictObject({
  * 错误响应信封，描述请求失败原因。
  */
 export const zProblem = z.strictObject({
+    code: z.string().min(1).optional(),
     type: z.string(),
     title: z.string().min(1),
     status: z.int().gte(400).lte(599),
@@ -270,6 +343,59 @@ export const zTagList = z.strictObject({
     items: z.array(zTag),
     page: zPageInfo
 });
+
+/**
+ * Create、Get、Resume、Cancel 共用的 owner 授权 Run 快照，字段始终存在；无结果、失败或待处理交互时对应值为 null。result 与 failure 可以同时存在，Blog 不实现 Run 状态机。
+ */
+export const zAgentRunWritable = z.strictObject({
+    runId: zAgentRunId,
+    status: z.enum([
+        'queued',
+        'running',
+        'waitingForApproval',
+        'succeeded',
+        'failed',
+        'cancelled'
+    ]),
+    capability: z.enum([
+        'search',
+        'write',
+        'polish',
+        'chat'
+    ]),
+    createdAt: z.iso.datetime().regex(/Z$/),
+    updatedAt: z.iso.datetime().regex(/Z$/),
+    streamUrl: z.string().regex(/^\/api\/v1\/runs\/[A-Za-z0-9._~-]{1,128}\/events$/),
+    result: z.unknown(),
+    failure: z.strictObject({
+        code: z.string(),
+        message: z.string()
+    }).nullable(),
+    pendingInteraction: z.strictObject({
+        interactionId: z.string(),
+        type: z.enum([
+            'confirmation',
+            'selection',
+            'textInput'
+        ]),
+        payload: z.unknown()
+    }).nullable()
+});
+
+/**
+ * Agent 生成的不透明 URL-safe ASCII 标识，长度 1–128；只允许 A–Z、a–z、0–9、点、下划线、波浪号、连字符，不能等于 . 或 ..。
+ */
+export const zAgentRunId2 = zAgentRunId;
+
+/**
+ * 必填 UUID v4。每个新的逻辑操作生成新 key，仅重试同一操作沿用原 key，不得跨 capability、RPC、Run 或 interaction 复用。Create、Resume、Cancel 共用 user_id + key 作用域；仅成功操作持久化，自成功提交起保留 24 小时。有效期内重试返回绑定 Run 的当前状态，不重复执行，也不比较请求摘要或操作类型；重放仍校验 owner。到期后可能作为新请求处理，仍受交互和终态约束。
+ */
+export const zAgentIdempotencyKey = z.uuid().regex(/^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$/);
+
+/**
+ * 可选的不透明事件游标；提供时必须为 1–256 个 ASCII 字节。Blog 不解析、不比较、不持久化，作为 after_event_id 原样传给 Agent；省略时由 Agent 使用默认订阅位置。
+ */
+export const zAgentEventCursor = z.string().min(1).max(256).regex(/^[\x00-\x7F]+$/);
 
 /**
  * 32 位小写十六进制正文图片标识。

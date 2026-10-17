@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onUnmounted, ref, watch } from "vue"
-import { RouterLink } from "vue-router"
+import { useRouter } from "vue-router"
 import BlogNavigation from "@/components/public/BlogNavigation.vue"
 import { AUTHOR_NAME } from "@/content/profile"
 
@@ -16,9 +16,12 @@ type Props = {
   /** 是否由完整 Hero 离开视口的时机控制固定头部。 */ readonly heroControlled?: boolean
   /** 是否在公共短 Hero 上使用始终可见的覆盖头部。 */ readonly publicOverlay?: boolean
   /** 测试可替换的观察器工厂。 */ readonly observerFactory?: ObserverFactory | undefined
+  /** 首页两个互斥场景直接决定头部表面。 */ readonly scene?: "hero" | "content"
+  readonly homeAction?: (() => void) | undefined
 }
 
 const props = withDefaults(defineProps<Props>(), { heroControlled: false, publicOverlay: false })
+const router = useRouter()
 /** 首页首帧隐藏，公共短 Hero 与带边界场景首帧透明，其他场景直接显示正文表面。 */
 const headerState = ref<HeaderState>(props.heroControlled ? "hidden" : props.publicOverlay || props.boundary !== null ? "transparent" : "scrolled")
 /** 当前活动观察器，由组件生命周期独占并释放。 */
@@ -30,21 +33,33 @@ let activeBoundary: Element | null = null
 const createObserver: ObserverFactory = (callback) => new IntersectionObserver(callback, { root: null, threshold: 0 })
 /** 根据 Hero 底边返回固定头部状态。 */
 const resolveHeaderState = (boundaryBottom: number): HeaderState => {
-  if (boundaryBottom <= 0) return "scrolled"
+  const navigationHeight = Number.parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--layout-nav-height")) || 0
+  if (boundaryBottom <= navigationHeight) return "scrolled"
   return props.heroControlled ? "hidden" : "transparent"
 }
 /** 根据 Hero 底边同步固定头部状态，覆盖平滑滚动时观察器可能遗漏的临界通知。 */
 const syncHeaderState = (): void => {
   if (activeBoundary !== null) headerState.value = resolveHeaderState(activeBoundary.getBoundingClientRect().bottom)
 }
+async function returnHome(event: MouseEvent): Promise<void> {
+  if (event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return
+  event.preventDefault()
+  if (router.currentRoute.value.fullPath === "/") { window.scrollTo({ top: 0 }); return }
+  const failure = await router.push("/")
+  if (failure === undefined) window.scrollTo({ top: 0 })
+}
 
 watch(
-  () => [props.boundary, props.heroControlled, props.publicOverlay] as const,
-  ([boundary, heroControlled, publicOverlay]) => {
+  () => [props.boundary, props.heroControlled, props.publicOverlay, props.scene] as const,
+  ([boundary, heroControlled, publicOverlay, scene]) => {
     activeObserver?.disconnect()
     activeObserver = null
     activeBoundary = null
     window.removeEventListener("scroll", syncHeaderState)
+    if (scene !== undefined) {
+      headerState.value = scene === "hero" ? "transparent" : "scrolled"
+      return
+    }
     if (boundary === null && !heroControlled && !publicOverlay) {
       headerState.value = "scrolled"
       return
@@ -80,9 +95,16 @@ onUnmounted(() => {
     :data-state="headerState"
     :aria-hidden="headerState === 'hidden' ? 'true' : undefined"
   >
-    <div class="blog-shell flex h-full items-center justify-between">
-      <RouterLink to="/" class="rounded-[var(--radius-control)] font-[family-name:var(--font-family-display)] text-xl font-bold">{{ AUTHOR_NAME }}</RouterLink>
-      <BlogNavigation :tone="headerState === 'transparent' ? 'overlay' : 'surface'" />
+    <div class="blog-shell flex h-full items-center justify-between gap-6">
+      <a :href="router.resolve('/').href" class="shrink-0 rounded-[var(--radius-control)] font-[family-name:var(--font-family-display)] text-xl font-bold" @click="returnHome">{{ AUTHOR_NAME }}</a>
+      <div v-if="headerState === 'scrolled' && $slots['search']" class="header-search min-w-0 flex-1">
+        <slot name="search" />
+      </div>
+      <BlogNavigation :tone="headerState === 'transparent' ? 'overlay' : 'surface'" :home-action="homeAction" :home-current="scene === 'hero'" />
     </div>
   </header>
 </template>
+
+<style scoped>
+.header-search { max-width: calc(var(--layout-reading-measure) - var(--space-24)); }
+</style>

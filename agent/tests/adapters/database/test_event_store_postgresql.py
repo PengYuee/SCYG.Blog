@@ -35,6 +35,7 @@ from scyg_agent.domain.ports.event_store import (
 )
 from scyg_agent.domain.runs import (
     CommandId,
+    ContentScope,
     EventId,
     OperationId,
     Run,
@@ -85,6 +86,7 @@ async def event_environment() -> AsyncIterator[tuple[PostgreSQLEventStore, Async
         0,
         None,
         None,
+        content_scope=ContentScope.AUTHOR,
     )
     _ = await repository.create(
         CreateRunRequest(run, OperationId("t11:create"), NOW, RunInput("测试输入", "article-1"))

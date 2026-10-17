@@ -1,5 +1,8 @@
 import { Buffer } from "node:buffer"
 import { expect, test, type Page } from "@playwright/test"
+import type { LoginResponse } from "../../src/request/generated"
+
+const authorSession: LoginResponse = { accessToken: "edge-image-author", tokenType: "Bearer", expiresAt: "2099-01-01T00:00:00Z" }
 
 /** 受控本地 API 根地址，与运行时配置一致。 */
 const API_ROOT = "http://127.0.0.1:8080"
@@ -22,6 +25,8 @@ type ApiScenario = {
 
 /** 为写作台安装可观测的受控本地 API。 */
 async function installApi(page: Page, scenario: ApiScenario): Promise<void> {
+  await page.addInitScript((session) => localStorage.setItem("scyg.auth.session", JSON.stringify(session)), authorSession)
+  await page.route("**/config.json", (route) => route.fulfill({ json: { serverUrl: API_ROOT } }))
   await page.route(`${API_ROOT}/**`, async (route) => {
     const request = route.request()
     const url = new URL(request.url())
@@ -102,6 +107,7 @@ test("Edge 上传 JPEG 后写入远程 URL，保存成功不删除", async ({ pa
   page.on("requestfailed", (request) => { browserErrors.push(`requestfailed: ${request.method()} ${request.url()}`) })
   await installApi(page, api)
   await page.goto("/author/articles/new")
+  await page.getByTestId("article-title").fill("Edge 图片保存验收")
   await page.getByTestId("article-slug").fill("edge-test-article")
   await page.getByRole("combobox").click()
   await page.getByRole("option", { name: "工程笔记", exact: true }).click()
@@ -134,7 +140,7 @@ test("Edge 上传失败保持正文不变", async ({ page }) => {
   const editor = page.getByRole("textbox").last()
   const original = await editor.textContent()
   // When: 选择 PNG 文件。
-  await page.locator('input[type="file"]').first().setInputFiles("public/images/hero-sky.png")
+  await page.locator('input[type="file"]').first().setInputFiles({ name: "upload-failure.png", mimeType: "image/png", buffer: PNG_BYTES })
   // Then: 失败反馈为中文且受控正文未变化。
   await expect(page.getByText("图片上传失败").first()).toBeVisible()
   await expect(editor).toHaveText(original)
@@ -146,7 +152,11 @@ test("Edge 保存失败与离页均按 id 取消，DELETE 失败由 TTL 兜底",
   const api = scenario({ saveFails: true, deleteFails: true })
   await installApi(page, api)
   await page.goto("/author/articles/new")
-  await page.locator('input[type="file"]').first().setInputFiles("public/images/hero-sky.png")
+  await page.getByTestId("article-title").fill("Edge 图片保存失败验收")
+  await page.getByTestId("article-slug").fill("edge-image-save-failure")
+  await page.getByRole("combobox").click()
+  await page.getByRole("option", { name: "工程笔记", exact: true }).click()
+  await page.locator('input[type="file"]').first().setInputFiles({ name: "save-failure.png", mimeType: "image/png", buffer: PNG_BYTES })
   await expect(page.locator(`img[src="${API_ROOT}${IMAGE_PATH}"]`)).toBeAttached()
   await page.getByTestId("save-article").click()
   // When: 保存失败触发取消，随后离开页面验证取消集合已收敛。

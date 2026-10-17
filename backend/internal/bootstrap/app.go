@@ -115,7 +115,7 @@ func (app *App) cleanupStartFailure(ctx context.Context, root error, cleanupHTTP
 		return app.shutdownErr
 	}
 	if app.agent != nil {
-		app.shutdownErr = errors.Join(app.shutdownErr, app.agent.client.Close())
+		app.shutdownErr = errors.Join(app.shutdownErr, app.agent.close())
 	}
 	databaseErr := app.database.Close()
 	telemetryContext, cancelTelemetry := context.WithTimeout(context.WithoutCancel(ctx), app.config.HTTP().ShutdownTimeout())
@@ -226,7 +226,7 @@ func (app *App) Shutdown(ctx context.Context) error {
 	app.observer.WorkerStopped()
 	var clientErr error
 	if app.agent != nil {
-		clientErr = app.agent.client.Close()
+		clientErr = app.agent.close()
 	}
 	databaseErr := app.database.Close()
 	if databaseErr == nil {

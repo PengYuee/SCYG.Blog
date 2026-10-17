@@ -60,14 +60,14 @@ func TestClientBoundsUnaryButPreservesSubscriptionLifetime(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	// Establish the connection via a subscription, so unary timing does not depend on dial startup.
-	stream, err := client.StreamRunEvents(ctx, &pb.StreamRunEventsRequest{UserId: "owner", RunId: "safe-run"})
+	stream, err := client.StreamRunEvents(ctx, &pb.StreamRunEventsRequest{UserId: "owner", ContentScope: pb.ContentScope_CONTENT_SCOPE_AUTHOR, RunId: "safe-run"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, err := stream.Header(); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := client.GetRun(ctx, &pb.GetRunRequest{UserId: "owner", RunId: "safe-run"}); status.Code(err) != codes.DeadlineExceeded {
+	if _, err := client.GetRun(ctx, &pb.GetRunRequest{UserId: "owner", ContentScope: pb.ContentScope_CONTENT_SCOPE_AUTHOR, RunId: "safe-run"}); status.Code(err) != codes.DeadlineExceeded {
 		t.Fatalf("unary not bounded: %v", err)
 	}
 	frame, err := stream.Recv()
@@ -86,7 +86,7 @@ type largeResultServer struct {
 }
 
 func (server largeResultServer) GetRun(context.Context, *pb.GetRunRequest) (*pb.Run, error) {
-	return &pb.Run{RunId: "safe-run", Status: pb.RunStatus_RUN_STATUS_SUCCEEDED, Capability: pb.AgentCapability_AGENT_CAPABILITY_CHAT, ResultJson: server.result}, nil
+	return &pb.Run{RunId: "safe-run", ContentScope: pb.ContentScope_CONTENT_SCOPE_AUTHOR, Status: pb.RunStatus_RUN_STATUS_SUCCEEDED, Capability: pb.AgentCapability_AGENT_CAPABILITY_CHAT, ResultJson: server.result}, nil
 }
 
 func (server largeResultServer) StreamRunEvents(_ *pb.StreamRunEventsRequest, stream grpc.ServerStreamingServer[pb.RunEventFrame]) error {
@@ -115,11 +115,11 @@ func TestClientReceivesLargeRunResultAndCompleteEventFrame(t *testing.T) {
 	t.Cleanup(func() { _ = client.Close() })
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	run, err := client.GetRun(ctx, &pb.GetRunRequest{UserId: "owner", RunId: "safe-run"})
+	run, err := client.GetRun(ctx, &pb.GetRunRequest{UserId: "owner", ContentScope: pb.ContentScope_CONTENT_SCOPE_AUTHOR, RunId: "safe-run"})
 	if err != nil || run.GetStatus() != pb.RunStatus_RUN_STATUS_SUCCEEDED || !bytes.Equal(run.GetResultJson(), result) {
 		t.Fatalf("large Run result lost: %v", err)
 	}
-	stream, err := client.StreamRunEvents(ctx, &pb.StreamRunEventsRequest{UserId: "owner", RunId: "safe-run"})
+	stream, err := client.StreamRunEvents(ctx, &pb.StreamRunEventsRequest{UserId: "owner", ContentScope: pb.ContentScope_CONTENT_SCOPE_AUTHOR, RunId: "safe-run"})
 	if err != nil {
 		t.Fatal(err)
 	}

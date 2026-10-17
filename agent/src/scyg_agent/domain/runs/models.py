@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import ClassVar, Final, Self, override
@@ -137,6 +137,21 @@ class RuntimeKind(StrEnum):
             raise InvalidEnumValueError(cls.__name__, raw) from None
 
 
+class ContentScope(StrEnum):
+    """Freeze the trusted content authorization boundary for a Run."""
+
+    AUTHOR = "author"
+    PUBLIC = "public"
+
+    @classmethod
+    def parse(cls, raw: str) -> Self:
+        """Parse an external scope into the trusted authorization catalog."""
+        try:
+            return cls(raw)
+        except ValueError:
+            raise InvalidEnumValueError(cls.__name__, raw) from None
+
+
 class RunStatus(StrEnum):
     """Represent the complete durable Run lifecycle."""
 
@@ -191,11 +206,21 @@ class Run:
     attempt: int
     execution_owner: ExecutionOwnerId | None
     pending_interaction_id: InteractionId | None
+    content_scope: ContentScope = field(kw_only=True)
+    public_execution_deadline: datetime | None = None
 
     def __post_init__(self) -> None:
         """Enforce revision, time, and execution ownership invariants."""
         validate_utc_timestamp(self.created_at, "created_at")
         validate_utc_timestamp(self.updated_at, "updated_at")
+        if type(self.content_scope) is not ContentScope:
+            invariant = "content_scope must be an exact ContentScope"
+            raise InvalidRunError(invariant)
+        if self.public_execution_deadline is not None:
+            validate_utc_timestamp(self.public_execution_deadline, "public_execution_deadline")
+            if self.content_scope is not ContentScope.PUBLIC:
+                invariant = "only public Runs have an execution deadline"
+                raise InvalidRunError(invariant)
         self._validate_progress()
         self._validate_state()
 

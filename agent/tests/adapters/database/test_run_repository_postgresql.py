@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async
 
 from scyg_agent.adapters.database.run_repository import PostgreSQLRunRepository
 from scyg_agent.domain.runs import (
+    ContentScope,
     ExecutionOwnerId,
     InteractionId,
     OperationId,
@@ -158,7 +159,12 @@ async def test_cancellation_before_claim_is_carried_by_new_lease(
     lease = (
         await repository.claim(
             ClaimRequest(
-                1, ExecutionOwnerId("worker_cancel000"), RuntimeKind.SIMPLE, NOW, LEASE_DURATION
+                1,
+                ExecutionOwnerId("worker_cancel000"),
+                RuntimeKind.SIMPLE,
+                NOW,
+                LEASE_DURATION,
+                content_scope=ContentScope.AUTHOR,
             )
         )
     )[0]
@@ -177,7 +183,12 @@ async def test_expiry_reclaim_replaces_fence_and_rejects_every_stale_mutation(
     old = (
         await repository.claim(
             ClaimRequest(
-                1, ExecutionOwnerId("worker_original"), RuntimeKind.SIMPLE, NOW, LEASE_DURATION
+                1,
+                ExecutionOwnerId("worker_original"),
+                RuntimeKind.SIMPLE,
+                NOW,
+                LEASE_DURATION,
+                content_scope=ContentScope.AUTHOR,
             )
         )
     )[0]
@@ -192,6 +203,7 @@ async def test_expiry_reclaim_replaces_fence_and_rejects_every_stale_mutation(
                 RuntimeKind.SIMPLE,
                 boundary,
                 LEASE_DURATION,
+                content_scope=ContentScope.AUTHOR,
             )
         )
     )[0]
@@ -243,14 +255,24 @@ async def test_claim_transaction_rolls_back_when_token_factory_fails(
     with pytest.raises(RuntimeError, match="injected token failure"):
         _ = await failing_repository.claim(
             ClaimRequest(
-                2, ExecutionOwnerId("worker_failure00"), RuntimeKind.SIMPLE, NOW, LEASE_DURATION
+                2,
+                ExecutionOwnerId("worker_failure00"),
+                RuntimeKind.SIMPLE,
+                NOW,
+                LEASE_DURATION,
+                content_scope=ContentScope.AUTHOR,
             )
         )
 
     # Then: the short transaction rolled back and both rows remain claimable.
     leases = await repository.claim(
         ClaimRequest(
-            2, ExecutionOwnerId("worker_recovery0"), RuntimeKind.SIMPLE, NOW, LEASE_DURATION
+            2,
+            ExecutionOwnerId("worker_recovery0"),
+            RuntimeKind.SIMPLE,
+            NOW,
+            LEASE_DURATION,
+            content_scope=ContentScope.AUTHOR,
         )
     )
     assert len(leases) == 2
@@ -277,7 +299,12 @@ async def test_create_is_idempotent_and_waiting_input_releases_ownership(
     lease = (
         await repository.claim(
             ClaimRequest(
-                1, ExecutionOwnerId("worker_waiting00"), RuntimeKind.SIMPLE, NOW, LEASE_DURATION
+                1,
+                ExecutionOwnerId("worker_waiting00"),
+                RuntimeKind.SIMPLE,
+                NOW,
+                LEASE_DURATION,
+                content_scope=ContentScope.AUTHOR,
             )
         )
     )[0]
@@ -349,6 +376,7 @@ def _capability_request(
         attempt=0,
         execution_owner=None,
         pending_interaction_id=None,
+        content_scope=ContentScope.AUTHOR,
     )
     return CreateRunRequest(
         run,
@@ -375,7 +403,14 @@ async def _claim_into(
 ) -> None:
     """Collect one concurrent claim result after its transaction commits."""
     leases = await repository.claim(
-        ClaimRequest(4, ExecutionOwnerId(worker), RuntimeKind.SIMPLE, NOW, LEASE_DURATION)
+        ClaimRequest(
+            4,
+            ExecutionOwnerId(worker),
+            RuntimeKind.SIMPLE,
+            NOW,
+            LEASE_DURATION,
+            content_scope=ContentScope.AUTHOR,
+        )
     )
     claims.append(leases)
 
@@ -388,7 +423,14 @@ async def _claim_kind_into(
 ) -> None:
     """按运行时族收集一次并发认领结果."""
     leases = await repository.claim(
-        ClaimRequest(4, ExecutionOwnerId(worker), runtime_kind, NOW, LEASE_DURATION)
+        ClaimRequest(
+            4,
+            ExecutionOwnerId(worker),
+            runtime_kind,
+            NOW,
+            LEASE_DURATION,
+            content_scope=ContentScope.AUTHOR,
+        )
     )
     claims.append(leases)
 
@@ -417,6 +459,7 @@ async def _seed(
             attempt=0,
             execution_owner=None,
             pending_interaction_id=None,
+            content_scope=ContentScope.AUTHOR,
         )
         _ = await repository.create(
             CreateRunRequest(

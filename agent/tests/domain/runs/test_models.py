@@ -7,6 +7,7 @@ import pytest
 
 from scyg_agent.domain.runs import (
     CommandId,
+    ContentScope,
     EventId,
     ExecutionOwnerId,
     InteractionId,
@@ -161,3 +162,19 @@ def test_run_timestamp_is_timezone_aware_utc() -> None:
     # Then: the exact deterministic instant is retained.
     assert run.created_at == NOW
     assert run.created_at.utcoffset() is not None
+
+
+def test_content_scope_is_closed_and_public_deadline_is_author_forbidden() -> None:
+    assert ContentScope.parse("public") is ContentScope.PUBLIC
+    with pytest.raises(InvalidEnumValueError):
+        _ = ContentScope.parse("unspecified")
+    with pytest.raises(InvalidRunError):
+        _ = replace(make_run(RunStatus.PENDING), public_execution_deadline=NOW)
+    public = replace(
+        make_run(RunStatus.PENDING),
+        content_scope=ContentScope.PUBLIC,
+        public_execution_deadline=NOW,
+    )
+    assert public.public_execution_deadline == NOW
+    with pytest.raises(InvalidTimestampError):
+        _ = replace(public, public_execution_deadline=NOW.replace(tzinfo=None))

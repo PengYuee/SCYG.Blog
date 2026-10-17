@@ -11,7 +11,7 @@ const desktopViewports = [
 const browserName = "edge"
 const browserUse = { channel: "msedge" as const }
 
-/** Playwright 开发验收配置：作者图片上传等场景使用显式 Fake 作者运行时；T13 生产验收由独立配置负责。 */
+/** 开发验收复用真实认证守卫与受控 HTTP fixture；T13 生产验收由独立配置负责。 */
 export default defineConfig({
   testDir: "./tests/e2e",
   testMatch: "**/*.spec.ts",
@@ -34,6 +34,5 @@ export default defineConfig({
     url: "http://127.0.0.1:4173/",
     reuseExistingServer: false,
     timeout: 60_000,
-    env: { VITE_FAKE_AUTHOR: "true" },
   },
 })

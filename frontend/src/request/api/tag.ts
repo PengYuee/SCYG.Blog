@@ -34,29 +34,29 @@ export function createTagApi(client: HttpTransport): TagApi {
     async list(filter?: string): Promise<readonly AuthorTag[]> {
       const query = filter?.trim()
       const params: NonNullable<ListManageTagsData["query"]> = { pageSize: TAXONOMY_PAGE_SIZE, ...(query === undefined || query.length === 0 ? {} : { q: query }) }
-      const firstPage = mapTags((await client.get(TAG_ROUTE, { params: { ...params, page: 1 } })).data)
+      const firstPage = mapTags((await client.get(TAG_ROUTE, { authPolicy: "author", params: { ...params, page: 1 } })).data)
       const items: AuthorTag[] = [...firstPage.items]
-      for (let page = 2; page <= firstPage.totalPages; page += 1) items.push(...mapTags((await client.get(TAG_ROUTE, { params: { ...params, page } })).data).items)
+      for (let page = 2; page <= firstPage.totalPages; page += 1) items.push(...mapTags((await client.get(TAG_ROUTE, { authPolicy: "author", params: { ...params, page } })).data).items)
       return items
     },
     async detail(id: number): Promise<AuthorTag> {
       const path: GetManageTagData["path"] = { tagId: id }
-      return mapTag(parseBoundary(zTag, (await client.get(`${TAG_ROUTE}/${path.tagId}`)).data, "tag detail"))
+      return mapTag(parseBoundary(zTag, (await client.get(`${TAG_ROUTE}/${path.tagId}`, { authPolicy: "author" })).data, "tag detail"))
     },
     async create(name: string): Promise<AuthorTag> {
       const payload: CreateManageTagData["body"] = { name }
-      return mapTag(parseBoundary(zTag, (await client.post(TAG_ROUTE, payload)).data, "创建标签响应"))
+      return mapTag(parseBoundary(zTag, (await client.post(TAG_ROUTE, payload, { authPolicy: "author" })).data, "创建标签响应"))
     },
     async update(request: TagUpdateRequest): Promise<AuthorTag> {
       const changes: PatchManageTagData["body"] = request.changes.name === undefined ? {} : { name: request.changes.name }
       const path: PatchManageTagData["path"] = { tagId: request.id }
       const headers: PatchManageTagData["headers"] = { "If-Match": `"${request.version}"` }
-      return mapTag(parseBoundary(zTag, (await client.patch(`${TAG_ROUTE}/${path.tagId}`, changes, { headers })).data, "tag update"))
+      return mapTag(parseBoundary(zTag, (await client.patch(`${TAG_ROUTE}/${path.tagId}`, changes, { headers, authPolicy: "author" })).data, "tag update"))
     },
     async delete(target: TagDeleteTarget): Promise<void> {
       const path: DeleteManageTagData["path"] = { tagId: target.id }
       const headers: DeleteManageTagData["headers"] = { "If-Match": `"${target.version}"` }
-      await client.delete(`${TAG_ROUTE}/${path.tagId}`, { headers })
+      await client.delete(`${TAG_ROUTE}/${path.tagId}`, { headers, authPolicy: "author" })
     },
   }
 }

@@ -23,6 +23,7 @@ message CreateRunRequest {
   string idempotency_key = 9 [(buf.validate.field).string.pattern = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"];
   AgentCapability capability = 10 [(buf.validate.field).enum = {defined_only: true not_in: [0]}];
   bytes json_payload = 11 [(buf.validate.field).bytes = {min_len: 1 max_len: 1048576}];
+  ContentScope content_scope = 12 [(buf.validate.field).enum = {defined_only: true not_in: [0]}];
 }
 
 // GetRunRequest addresses an opaque URL-safe run owned by user_id.
@@ -32,6 +33,7 @@ message GetRunRequest {
 
   string user_id = 4 [(buf.validate.field).string = {min_bytes: 1 max_bytes: 128}];
   string run_id = 5 [(buf.validate.field).string = {pattern: "^[A-Za-z0-9._~-]{1,128}$" not_in: [".", ".."]}];
+  ContentScope content_scope = 6 [(buf.validate.field).enum = {defined_only: true not_in: [0]}];
 }
 
 // StreamRunEventsRequest forwards the browser cursor without interpretation by Blog.
@@ -39,6 +41,7 @@ message StreamRunEventsRequest {
   string user_id = 1 [(buf.validate.field).string = {min_bytes: 1 max_bytes: 128}];
   string run_id = 2 [(buf.validate.field).string = {pattern: "^[A-Za-z0-9._~-]{1,128}$" not_in: [".", ".."]}];
   optional string after_event_id = 3 [(buf.validate.field).string = {pattern: "^[\\x00-\\x7F]{1,256}$"}];
+  ContentScope content_scope = 4 [(buf.validate.field).enum = {defined_only: true not_in: [0]}];
 }
 
 // RunEventFrame contains one complete SSE frame, including its terminating newline.
@@ -54,6 +57,7 @@ message ResumeRunRequest {
   string interaction_id = 4 [(buf.validate.field).string = {min_bytes: 1 max_bytes: 128}];
   string decision = 5 [(buf.validate.field).string.min_len = 1];
   optional bytes payload_json = 6 [(buf.validate.field).bytes = {min_len: 1 max_len: 1048576}];
+  ContentScope content_scope = 7 [(buf.validate.field).enum = {defined_only: true not_in: [0]}];
 }
 
 // CancelRunRequest establishes a durable cancellation fence.
@@ -61,4 +65,5 @@ message CancelRunRequest {
   string user_id = 1 [(buf.validate.field).string = {min_bytes: 1 max_bytes: 128}];
   string run_id = 2 [(buf.validate.field).string = {pattern: "^[A-Za-z0-9._~-]{1,128}$" not_in: [".", ".."]}];
   string idempotency_key = 3 [(buf.validate.field).string.pattern = "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-4[0-9a-fA-F]{3}-[89aAbB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$"];
+  ContentScope content_scope = 4 [(buf.validate.field).enum = {defined_only: true not_in: [0]}];
 }

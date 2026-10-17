@@ -26,6 +26,7 @@ import (
 	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/database"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/httpserver"
 	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/observability"
+	"github.com/PengYuee/SCYG.Blog/backend/internal/platform/publicsearch"
 	rest "github.com/PengYuee/SCYG.Blog/backend/internal/transport/rest"
 	"github.com/PengYuee/SCYG.Blog/backend/migrations"
 )
@@ -224,7 +225,18 @@ func New(ctx context.Context, options Options, dependencies Dependencies) (*App,
 			return nil, fail(ctx, fmt.Errorf("构造 Agent 集成: %w", err))
 		}
 		stack = append(stack, cleanupStep{name: "Agent client", close: func(context.Context) error { return integration.client.Close() }})
-		agentOptions = &rest.AgentOptions{Client: integration.client, ReadyTimeout: cfg.Agent().UnaryTimeout(), IdleTimeout: cfg.Agent().SSEIdleTimeout()}
+		publicCfg := cfg.PublicSearch()
+		publicTokens, tokenErr := authentication.NewPublicSearchTokens([]byte(authConfig.JWTSecret()), authConfig.Issuer(), publicCfg.TokenTTL(), time.Now)
+		if tokenErr != nil {
+			return nil, fail(ctx, fmt.Errorf("构造匿名凭证: %w", tokenErr))
+		}
+		publicControl, controlErr := publicsearch.New(ctx, publicCfg)
+		if controlErr != nil {
+			return nil, fail(ctx, fmt.Errorf("构造公共搜索 Redis: %w", controlErr))
+		}
+		stack = append(stack, cleanupStep{name: "公共搜索 Redis", close: func(context.Context) error { return publicControl.Close() }})
+		integration.public = publicControl
+		agentOptions = &rest.AgentOptions{Client: integration.client, ReadyTimeout: cfg.Agent().UnaryTimeout(), IdleTimeout: cfg.Agent().SSEIdleTimeout(), Public: &rest.PublicSearchOptions{Tokens: publicTokens, Control: publicControl, Config: publicCfg}}
 	}
 	cleanupRunner, err := dependencies.NewImageCleanup(db, imageFilesystem, imagePolicy, clock)
 	if err != nil {

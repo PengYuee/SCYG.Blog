@@ -4,6 +4,7 @@ package scyg.blog.v1;
 
 import "scyg/blog/v1/article.proto";
 import "scyg/blog/v1/common.proto";
+import "scyg/agent/v1/common.proto";
 
 // BlogContentService executes existing Blog management operations as user_id.
 service BlogContentService {
@@ -30,6 +31,8 @@ message SearchArticlesRequest {
   int64 article_type_id = 8;
   int64 tag_id = 9;
   string sort = 10;
+  // 可信服务端范围；public 只使用公开查询，不能进入管理读取。
+  scyg.agent.v1.ContentScope content_scope = 11;
 }
 
 // SearchArticlesResponse returns one database-paginated management projection.
@@ -47,6 +50,7 @@ message SearchArticlesResponse {
 message GetArticleRequest {
   string user_id = 1;
   int64 article_id = 2;
+  scyg.agent.v1.ContentScope content_scope = 3;
 }
 
 message GetArticleResponse {

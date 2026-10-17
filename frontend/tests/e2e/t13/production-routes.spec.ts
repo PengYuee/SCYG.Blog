@@ -5,9 +5,11 @@ import { expectHealthy, gotoReady, observePageHealth } from "./helpers/page-heal
 /** 每个路由显式提供唯一就绪 Locator，禁止通用 selector 掩盖重复节点。 */
 const publicRoutes: readonly { readonly path: string; readonly ready: (page: Page) => Locator }[] = [
   { path: "/", ready: (page) => page.locator("#hero-profile-name") },
-  { path: "/articles", ready: (page) => page.getByRole("heading", { name: "文章归档", level: 1 }) },
+  { path: "/?q=Edge", ready: (page) => page.getByRole("heading", { name: "“Edge”的搜索结果", level: 2 }) },
+  { path: "/#blog-content", ready: (page) => page.getByRole("heading", { name: "最新文章", level: 2 }) },
+  { path: "/articles", ready: (page) => page.getByRole("heading", { name: "最新文章", level: 2 }) },
   { path: "/articles/101", ready: (page) => page.getByRole("heading", { name: "在 Edge 中验证中文博客的完整阅读体验", level: 1 }) },
-  { path: "/login", ready: (page) => page.getByRole("heading", { name: "登录功能暂不可用", level: 1 }) },
+  { path: "/login", ready: (page) => page.getByRole("heading", { name: "作者登录", level: 1 }) },
 ]
 
 for (const route of publicRoutes) {
@@ -23,26 +25,32 @@ for (const route of publicRoutes) {
 
     // Then: 页面唯一语义标题正确，且没有浏览器、网络或写入异常。
     await expect(ready).toBeVisible()
+    if (route.path === "/articles") await expect(page).toHaveURL((url) => url.pathname === "/" && url.hash === "#home-results")
+    if (route.path === "/") {
+      await expect(page.locator(".public-hero")).toBeVisible()
+      await expect(page.locator("#blog-content")).toBeHidden()
+    } else if (route.path.startsWith("/?") || route.path.startsWith("/#") || route.path === "/articles") {
+      await expect(page.locator(".public-hero")).toBeHidden()
+      await expect(page.locator("#blog-content")).toBeVisible()
+    }
     expect(mutations.requests).toEqual([])
     expectHealthy(health)
   })
 }
 
-const unavailableRoutes = ["/author/articles/new", "/author/articles/101/edit", "/author/taxonomy"] as const
-for (const path of unavailableRoutes) {
-  test(`生产作者路由 ${path} 保持不可用`, async ({ page }) => {
-    // Given: 记录任何绕过生产保护的写请求。
+const protectedRoutes = ["/author/articles/new", "/author/articles/101/edit?source=bookmark", "/author/taxonomy"] as const
+for (const path of protectedRoutes) {
+  test(`匿名访问作者深链 ${path} 返回登录并保留目标`, async ({ page }) => {
     const health = observePageHealth(page)
     const mutations = await installMutationRecorder(page)
     await installReadFixtures(page)
-    const ready = page.getByRole("heading", { name: "写作功能暂不可用", level: 1 })
+    const ready = page.getByRole("heading", { name: "作者登录", level: 1 })
 
-    // When: 直接访问受保护作者路由。
     await gotoReady(page, path, ready)
 
-    // Then: 呈现真实不可用边界，不重定向到登录且零 mutation。
-    await expect(page).toHaveURL(path)
-    await expect(ready).toBeVisible()
+    await expect(page).toHaveURL((url) => url.pathname === "/login" && url.searchParams.get("redirect") === path)
+    await expect(page.getByLabel("用户名", { exact: true })).toBeVisible()
+    await expect(page.getByLabel("密码", { exact: true })).toBeVisible()
     expect(mutations.requests).toEqual([])
     expectHealthy(health)
   })
@@ -62,11 +70,11 @@ test("管理根路由与未来子路由使用独立不可用边界", async ({ pa
   expectHealthy(health)
 })
 
-const legacyTruthTable: readonly { readonly from: string; readonly to: string; readonly ready: (page: Page) => Locator }[] = [
+const legacyTruthTable: readonly { readonly from: string; readonly to: string; readonly redirect?: string; readonly ready: (page: Page) => Locator }[] = [
   { from: "/main", to: "/", ready: (page) => page.locator("#hero-profile-name") },
   { from: "/article/101", to: "/articles/101", ready: (page) => page.getByRole("heading", { name: "在 Edge 中验证中文博客的完整阅读体验", level: 1 }) },
-  { from: "/writeBlog", to: "/author/articles/new", ready: (page) => page.getByRole("heading", { name: "写作功能暂不可用", level: 1 }) },
-  { from: "/writeBlog?id=101", to: "/author/articles/101/edit", ready: (page) => page.getByRole("heading", { name: "写作功能暂不可用", level: 1 }) },
+  { from: "/writeBlog", to: "/login", redirect: "/author/articles/new", ready: (page) => page.getByRole("heading", { name: "作者登录", level: 1 }) },
+  { from: "/writeBlog?id=101", to: "/login", redirect: "/author/articles/101/edit", ready: (page) => page.getByRole("heading", { name: "作者登录", level: 1 }) },
 ]
 for (const route of legacyTruthTable) {
   test(`旧地址 ${route.from} 按真值表规范化`, async ({ page }) => {
@@ -77,7 +85,7 @@ for (const route of legacyTruthTable) {
     // When: 打开旧地址。
     await gotoReady(page, route.from, ready)
     // Then: URL 与唯一稳定标题均符合映射。
-    await expect(page).toHaveURL(route.to)
+    await expect(page).toHaveURL((url) => url.pathname === route.to && (route.redirect === undefined ? url.search === "" : url.searchParams.get("redirect") === route.redirect))
     await expect(ready).toBeVisible()
     expectHealthy(health)
   })

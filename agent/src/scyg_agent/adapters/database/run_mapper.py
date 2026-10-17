@@ -1,6 +1,7 @@
 """Trusted-row mapper between SQLAlchemy Run records and the pure domain."""
 
 from scyg_agent.domain.runs import (
+    ContentScope,
     ExecutionOwnerId,
     InteractionId,
     Run,
@@ -30,6 +31,8 @@ def map_run(record: RunRecord) -> Run | DataIntegrityError:
         return Run(
             id=run_id,
             owner_user_id=UserId(record.owner_user_id),
+            content_scope=ContentScope.parse(record.content_scope),
+            public_execution_deadline=record.public_execution_deadline,
             task_type=TaskType.parse(record.task_type),
             runtime=RuntimeSelection(
                 RuntimeKind.parse(record.runtime_kind), record.runtime_version

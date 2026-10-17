@@ -1,11 +1,11 @@
 """Frozen BlogContent commands and complete management projections."""
 
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import NewType
 
-from scyg_agent.domain.runs import OperationId, RunId, ToolCallId
+from scyg_agent.domain.runs import ContentScope, OperationId, RunId, ToolCallId
 
 RequestId = NewType("RequestId", str)
 CorrelationId = NewType("CorrelationId", str)
@@ -33,6 +33,7 @@ class GetArticle:
     identity: RequestIdentity
     user_id: BlogUserId
     article_id: ArticleId
+    content_scope: ContentScope = field(kw_only=True)
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,6 +42,7 @@ class SearchArticles:
 
     identity: RequestIdentity
     user_id: BlogUserId
+    content_scope: ContentScope = field(kw_only=True)
     query: str = ""
     page: int = 1
     page_size: int = 20

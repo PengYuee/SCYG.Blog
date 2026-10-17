@@ -16,7 +16,7 @@ func Test_OpenAPI_operation_policy_matrix(t *testing.T) {
 	public := map[string]struct{}{
 		"login": {}, "listArticles": {}, "getArticle": {},
 		"listPublicArticleTypes": {}, "getPublicArticleType": {}, "listPublicTags": {},
-		"getPublicTag": {}, "getArticleImageMedia": {},
+		"getPublicTag": {}, "getArticleImageMedia": {}, "agentPublicSession": {},
 	}
 
 	// When / Then
@@ -38,8 +38,15 @@ func Test_OpenAPI_operation_policy_matrix(t *testing.T) {
 				t.Fatalf("%s must explicitly disable inherited security", label)
 			}
 		} else {
-			if operation.Security != nil {
-				t.Fatalf("%s must inherit top-level bearer security", label)
+			switch operation.OperationID {
+			case "agentPublicSearch":
+				assertSecurityAlternatives(t, operation, []string{"PublicSearchBearerAuth"})
+			case "agentGet", "agentEvents", "agentCancel":
+				assertSecurityAlternatives(t, operation, []string{"bearerAuth", "PublicSearchBearerAuth"})
+			default:
+				if operation.Security != nil {
+					t.Fatalf("%s must inherit top-level bearer security", label)
+				}
 			}
 			assertProblemResponse(t, operation, "401")
 		}
@@ -52,14 +59,34 @@ func Test_OpenAPI_operation_policy_matrix(t *testing.T) {
 
 func Test_OpenAPI_bearer_security_contract(t *testing.T) {
 	document := loadAuthoritativeSpec(t)
-	if document.Components == nil || len(document.Components.SecuritySchemes) != 1 || document.Components.SecuritySchemes["bearerAuth"] == nil {
-		t.Fatal("components must declare bearerAuth")
+	if document.Components == nil || len(document.Components.SecuritySchemes) != 2 {
+		t.Fatal("components must declare author and public search bearer schemes")
+	}
+	for _, name := range []string{"bearerAuth", "PublicSearchBearerAuth"} {
+		ref := document.Components.SecuritySchemes[name]
+		if ref == nil || ref.Value == nil || ref.Value.Type != "http" || ref.Value.Scheme != "bearer" {
+			t.Fatalf("security scheme %s must use HTTP bearer", name)
+		}
 	}
 	if len(document.Security) != 1 || len(document.Security[0]) != 1 {
 		t.Fatal("top-level security must require bearerAuth")
 	}
 	if _, exists := document.Security[0]["bearerAuth"]; !exists {
 		t.Fatal("top-level security must require bearerAuth")
+	}
+}
+
+func assertSecurityAlternatives(t *testing.T, operation *openapi3.Operation, schemes []string) {
+	t.Helper()
+	if operation.Security == nil || len(*operation.Security) != len(schemes) {
+		t.Fatalf("operation %s must declare security alternatives %v", operation.OperationID, schemes)
+	}
+	for index, name := range schemes {
+		requirement := (*operation.Security)[index]
+		scopes, exists := requirement[name]
+		if !exists || len(requirement) != 1 || len(scopes) != 0 {
+			t.Fatalf("operation %s security alternative %d must only require %s", operation.OperationID, index, name)
+		}
 	}
 }
 

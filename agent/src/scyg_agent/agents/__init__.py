@@ -3,6 +3,7 @@
 from .context import AgentRequestContext, Quality
 from .contracts import (
     INPUT_SCHEMA_VERSION,
+    INTERACTION_REQUEST_ADAPTER,
     OUTPUT_SCHEMA_VERSION,
     AgentFailure,
     AgentInterrupt,
@@ -17,6 +18,7 @@ from .contracts import (
     ChatInput,
     ChatResponse,
     FailureKind,
+    InteractionRequest,
     InvalidCapabilityInputError,
     InvalidCapabilityOutputError,
     PolishInput,
@@ -24,6 +26,10 @@ from .contracts import (
     RecipeId,
     SearchInput,
     SearchResponse,
+    SelectionOption,
+    SelectionReplyPayload,
+    SelectionRequest,
+    TextInputRequest,
     WritingInput,
     input_digest,
     input_payload,
@@ -32,6 +38,7 @@ from .contracts import (
     recipe_for_capability,
     validate_capability_input,
     validate_capability_output,
+    validate_interaction_response,
 )
 from .input import AgentInputSnapshot, InvalidAgentInputError, decode_agent_input
 from .recipes import (
@@ -51,6 +58,7 @@ from .runner import (
 
 __all__ = [
     "INPUT_SCHEMA_VERSION",
+    "INTERACTION_REQUEST_ADAPTER",
     "OUTPUT_SCHEMA_VERSION",
     "AgentFailed",
     "AgentFailure",
@@ -73,6 +81,7 @@ __all__ = [
     "ChatInput",
     "ChatResponse",
     "FailureKind",
+    "InteractionRequest",
     "InvalidAgentInputError",
     "InvalidCapabilityInputError",
     "InvalidCapabilityOutputError",
@@ -84,6 +93,10 @@ __all__ = [
     "RecipeRegistry",
     "SearchInput",
     "SearchResponse",
+    "SelectionOption",
+    "SelectionReplyPayload",
+    "SelectionRequest",
+    "TextInputRequest",
     "WritingInput",
     "decode_agent_input",
     "default_recipe_registry",
@@ -94,5 +107,6 @@ __all__ = [
     "recipe_for_capability",
     "validate_capability_input",
     "validate_capability_output",
+    "validate_interaction_response",
     "validated_agent_success",
 ]

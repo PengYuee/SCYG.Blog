@@ -25,6 +25,7 @@ def test_claim_query_uses_bounded_skip_locked_ordering() -> None:
     assert "run_id" in compiled
     assert "LIMIT" in compiled
     assert "runtime_kind" in compiled
+    assert "agent_runs.content_scope =" in compiled
     assert compiled.index("runtime_kind") < compiled.index("LIMIT")
 
 

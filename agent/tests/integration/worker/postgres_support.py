@@ -24,6 +24,7 @@ from scyg_agent.agents.runner import AgentRunner
 from scyg_agent.application.control import ControlApplication
 from scyg_agent.application.event_subscription import EventSubscriptionService
 from scyg_agent.domain.runs import (
+    ContentScope,
     ExecutionOwnerId,
     OperationId,
     Run,
@@ -81,7 +82,9 @@ async def exercise_two_workers(database: WorkerDatabaseFixture) -> None:
             control = ControlApplication(
                 sessions, "agent_events", EventSubscriptionService(database.event_store())
             )
-            _ = await control.cancel("user-worker-pg", str(uuid4()), str(cancel_run))
+            _ = await control.cancel(
+                "user-worker-pg", str(uuid4()), str(cancel_run), content_scope=ContentScope.AUTHOR
+            )
             await first.stop()
             probe.gate.set()
             await wait_for_completion(sessions, probe, first, second)
@@ -149,6 +152,7 @@ async def seed_runs(sessions: async_sessionmaker[AsyncSession]) -> None:
             0,
             None,
             None,
+            content_scope=ContentScope.AUTHOR,
         )
         _ = await repository.create(
             CreateRunRequest(

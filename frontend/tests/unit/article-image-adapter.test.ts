@@ -34,9 +34,9 @@ describe("article image API adapter", () => {
     const postCall = vi.mocked(transport.post).mock.calls[0]
     expect(postCall?.[0]).toBe("/api/v1/manage/article-images")
     expect(postCall?.[1]).toBeInstanceOf(FormData)
-    expect(postCall).toHaveLength(2)
+    expect(postCall?.[2]).toEqual({ authPolicy: "author" })
     expect(uploaded).toEqual({ id: "0123456789abcdef0123456789abcdef", url: "https://api.test/media/article-images/ffffffffffffffffffffffffffffffff.png", expiresAt: "2026-07-14T00:00:00Z" })
-    expect(transport.delete).toHaveBeenCalledWith("/api/v1/article-images/0123456789abcdef0123456789abcdef")
+    expect(transport.delete).toHaveBeenCalledWith("/api/v1/article-images/0123456789abcdef0123456789abcdef", { authPolicy: "author" })
   })
   it("rejects image resources outside the controlled media path", async () => {
     const transport = client()

@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from scyg_agent.adapters.database.run_records import RunRecord
 from scyg_agent.adapters.database.run_repository import PostgreSQLRunRepository
-from scyg_agent.domain.runs import ExecutionOwnerId, RunId, RunStatus
+from scyg_agent.domain.runs import ContentScope, ExecutionOwnerId, RunId, RunStatus
 from scyg_agent.domain.runs.cancellation import (
     CancellationQueued,
     CancellationRequested,
@@ -56,6 +56,7 @@ def _row(status: RunStatus) -> RunRecord:
         error_code=None,
         error_message=None,
         error_metadata=None,
+        content_scope=ContentScope.AUTHOR.value,
     )
 
 

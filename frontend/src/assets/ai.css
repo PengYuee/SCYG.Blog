@@ -1,0 +1,31 @@
+.ai-workspace { max-width: var(--layout-container); margin-inline: auto; display: grid; gap: var(--space-6); }
+.ai-workspace h1 { font-family: var(--font-family-display); font-size: var(--font-size-h1); }
+.ai-workspace h2 { font-size: var(--font-size-h2); margin-bottom: var(--space-4); }
+.ai-workspace h3 { font-size: var(--font-size-h3); margin-block: var(--space-4); }
+.ai-panel { min-width: 0; padding: var(--space-6); border: var(--border-width) solid var(--color-border-subtle); border-radius: var(--radius-panel); background: var(--color-surface); box-shadow: var(--shadow-card); display: grid; gap: var(--space-4); }
+.ai-workspace form, .ai-workspace fieldset { display: grid; min-width: 0; gap: var(--space-4); }
+.ai-workspace label { display: grid; gap: var(--space-2); }
+.ai-workspace label:has(input[type=radio]), .ai-workspace label:has(input[type=checkbox]) { display: flex; align-items: center; min-height: 44px; }
+.ai-workspace textarea, .ai-workspace input:not([type=radio]):not([type=checkbox]) { width: 100%; min-height: 44px; padding: var(--space-3); border: var(--border-width) solid var(--color-border); border-radius: var(--radius-control); background: var(--color-surface-muted); color: var(--color-text-primary); }
+.ai-workspace textarea { resize: vertical; }
+.ai-workspace input[type=checkbox], .ai-workspace input[type=radio] { accent-color: var(--color-accent); width: 20px; height: 20px; flex-shrink: 0; }
+.ai-workspace button { min-height: 44px; padding: var(--space-3) var(--space-5); border: var(--border-width) solid var(--color-border); border-radius: var(--radius-control); background: var(--color-accent-soft); color: var(--color-accent); justify-self: start; }
+.ai-workspace button:hover:not(:disabled) { background: var(--color-surface-hover); }
+.ai-workspace button:disabled { opacity: .55; cursor: not-allowed; }
+.ai-workspace a { color: var(--color-accent); min-height: 44px; display: inline-flex; align-items: center; text-decoration: underline; }
+.ai-workspace :is(button, input, textarea, a):focus-visible { outline: var(--focus-outline-width) solid var(--color-accent); outline-offset: var(--focus-outline-offset); box-shadow: 0 0 0 var(--focus-halo-width) var(--color-focus-ring); }
+.ai-reference { padding: var(--space-4); border: var(--border-width) solid var(--color-border); border-radius: var(--radius-card); background: var(--color-surface-muted); }
+.ai-comparison { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-6); }
+.ai-workspace .blog-markdown { display: block; min-width: 0; overflow-wrap: anywhere; }
+.ai-workspace .blog-markdown > aside { display: none; }
+
+/* 普通搜索和公共 AI 搜索共用标题下的次要说明行。 */
+.search-result-summary { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-height: calc(var(--space-10) + var(--space-1)); }
+.search-result-note { display: flex; flex: 1; min-width: 0; align-items: flex-start; gap: var(--space-2); color: var(--color-text-secondary); font-size: var(--font-size-small); font-weight: 400; line-height: var(--line-height-small); overflow-wrap: anywhere; text-wrap: pretty; }
+.search-result-spinner { flex-shrink: 0; width: var(--space-4); height: var(--space-4); margin-top: var(--space-1); color: var(--color-accent); animation: search-result-spin calc(var(--duration-slow) * 3) linear infinite; }
+.search-result-action { display: inline-flex; align-items: center; justify-content: center; gap: var(--space-1); min-height: calc(var(--space-10) + var(--space-1)); padding-inline: var(--space-2); border-radius: var(--radius-control); color: var(--color-text-secondary); font-size: var(--font-size-small); }
+.search-result-action:hover:not(:disabled) { background: var(--color-surface-hover); color: var(--color-text-primary); }
+.search-result-action:disabled { opacity: .55; cursor: not-allowed; }
+.search-result-action svg { width: var(--space-4); height: var(--space-4); }
+@keyframes search-result-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .search-result-spinner { animation: none; } }
